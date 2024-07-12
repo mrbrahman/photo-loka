@@ -15,7 +15,7 @@ Currently this project is very much a work-in-progress.
 5. In other words, we don't want to be locked-down by any one particular tool (including this one!).
 6. Some kind of sensible, not too constrained search is needed, even though it may (will) not be as good as Google.
 
-(*) For those who are no aware, a photo/video taken by a modern camera/phone not only stores the image/video content, but also metadata about the photo/video (for e.g. GPS coordinates, time of the photo/video, duration for videos, photo/video dimensions, orientation, recognized faces etc)
+(*) For those who are not aware, a photo/video taken by a modern camera/phone not only stores the image/video content, but also metadata about the photo/video (for e.g. GPS coordinates, time of the photo/video, duration for videos, photo/video dimensions, orientation, recognized faces etc)
 
 # Key Terms
 1. **Photo / Video**: The individual photo / video (duh!)
