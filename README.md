@@ -75,6 +75,19 @@ Currently this project is very much a work-in-progress.
   npm install
   ```
 
+- **Special instructions for HEIC support**
+
+  For heic support, need to do some extra stuff at the moment.
+  
+  See https://github.com/lovell/sharp/issues/4164 for more details
+  ```bash
+  # https://sharp.pixelplumbing.com/api-output#heif
+  brew install vips libheif libde265 x265
+
+  # https://sharp.pixelplumbing.com/install#building-from-source
+  npm install --build-from-source node-addon-api node-gyp sharp
+  ```
+
 - **Start server**
   ```bash
   node server.mjs
