@@ -25,6 +25,8 @@
     "fluent-ffmpeg": "^2.1.2",
     "minimist": "^1.2.5",
     "morgan": "^1.10.0",
+    "node-addon-api": "^8.1.0",
+    "node-gyp": "^10.2.0",
     "sharp": "^0.33.4",
     "uuid": "^10.0.0",
     "winston": "^3.8.2"
