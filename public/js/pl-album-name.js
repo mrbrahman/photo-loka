@@ -1,4 +1,4 @@
-import {notify} from './utils.mjs';
+import {notify, throttle} from './utils.mjs';
 
 class PlAlbumName extends HTMLElement {
 
@@ -127,7 +127,7 @@ class PlAlbumName extends HTMLElement {
         // TODO: Once it becomes available, will need to use that
         // But for now, just use an alert
         if (rows.length > 0){
-          notify(rows.join('<BR>'), 'neutral', 'info-circle', -1);
+          notify(rows.join('<BR>'), 'neutral', 'info-circle');
         }
       }).catch(err=>{
         notify(`<strong>Error</strong>:</br>${err}`, 'danger', 'exclamation-octagon', -1);
@@ -146,12 +146,46 @@ class PlAlbumName extends HTMLElement {
     // cannot notify here since blur is called even when save is pressed (before save is called)
   }
 
+  #throttleKeyDown = throttle(()=>{
+    let txt = this.shadowRoot.getElementById('album-name').innerText
+    this.#suggestAlbumNames(txt)
+  }, 1500)
+
+  #suggestAlbumNames = (txt) => {
+    fetch(`/searchForExistingAlbums?searchStr=${txt.substring(15).trim()}&wantFullName=false`)
+      .then(async (res)=>{
+        let isJson = res.headers.get('content-type')?.includes('application/json');
+        let output = isJson ? await res.json() : null;
+
+        // TODO: error message
+        if(!res.ok){
+          console.log(output.error);
+  
+          return Promise.reject(output.error || res.status+':'+res.statusText)
+        }
+        let rows = output.map(d=>`${d.similar}: ${d.cnt}`)
+
+        // ideally would want to do this in an auto-complete kind of feature
+        // but sl-combobox is still not planned. See https://github.com/shoelace-style/shoelace/discussions/2103
+        // TODO: Once it becomes available, will need to use that
+        // But for now, just use an alert
+        if (rows.length > 0){
+          notify(rows.join('<BR>'), 'neutral', 'info-circle');
+        }
+      }).catch(err=>{
+        notify(`<strong>Error</strong>:</br>${err}`, 'danger', 'exclamation-octagon', -1);
+  
+      });
+  }
+
   #handleKey = (evt) => {
     if (evt.key == "Escape"){
       this.#handleCancel();
     } else if(evt.key == "Enter"){
       evt.preventDefault(); // we don't want an actual \n in the album name
       this.#handleSave();
+    } else {
+      this.#throttleKeyDown();
     }
   }
 
