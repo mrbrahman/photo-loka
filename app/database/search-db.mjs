@@ -156,6 +156,7 @@ export function searchForExistingAlbums(searchStr, wantFullName){
     from metadata 
     where metadata match '{album} : ("${searchStr}"*)'
     group by 1
+    limit 10
   `;
 
   var stmt = db.prepare(sql);
