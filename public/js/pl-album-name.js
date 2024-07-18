@@ -106,6 +106,33 @@ class PlAlbumName extends HTMLElement {
       range.setEnd(albumNameText, len);
       sel.removeAllRanges();
       sel.addRange(range);
+
+      // TODO: remove hardcoding, may be when there is at least one other person using this sytem :-)
+      let searchStr = albumNameText.textContent.substring(0,15);
+      fetch(`/searchForExistingAlbums?searchStr=${searchStr}&wantFullName=true`)
+      .then(async (res)=>{
+        let isJson = res.headers.get('content-type')?.includes('application/json');
+        let output = isJson ? await res.json() : null;
+
+        // TODO: error message
+        if(!res.ok){
+          console.log(output.error);
+  
+          return Promise.reject(output.error || res.status+':'+res.statusText)
+        }
+        let rows = output.map(d=>`${d.similar}: ${d.cnt}`)
+
+        // ideally would want to do this in an auto-complete kind of feature
+        // but sl-combobox is still not planned. See https://github.com/shoelace-style/shoelace/discussions/2103
+        // TODO: Once it becomes available, will need to use that
+        // But for now, just use an alert
+        if (rows.length > 0){
+          notify(rows.join('<BR>'), 'neutral', 'info-circle', -1);
+        }
+      }).catch(err=>{
+        notify(`<strong>Error</strong>:</br>${err}`, 'danger', 'exclamation-octagon', -1);
+  
+      });
     }
 
   }
