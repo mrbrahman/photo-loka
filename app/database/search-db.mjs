@@ -145,3 +145,19 @@ function transformSearchResultsFromDb(rows){
   });
 }
 
+export function searchForExistingAlbums(searchStr, wantFullName){
+  // sqlite substr is '1' based
+  // TODO: Remove hardcoding of 16 - get it from collection.apply_folder_pattern
+  // TODO: How to even more generalize it? For e.g. someone may want '<album name> YYYY-MM-DD'
+  
+  // note: wantFullName is string (from REST)
+  let sql = `
+    select ${wantFullName==="true"?"album":"trim(substr(album, 16))"} as similar, count(*) cnt
+    from metadata 
+    where metadata match '{album} : ("${searchStr}"*)'
+    group by 1
+  `;
+
+  var stmt = db.prepare(sql);
+  return stmt.all();
+}

@@ -26,3 +26,7 @@ export function getVideo(uuid){
   let filename = getFileName(uuid);
   return streamVideo(uuid, filename);
 }
+
+export function searchForExistingAlbums(searchStr, wantFullName){
+  return db.searchForExistingAlbums(searchStr, wantFullName)
+}

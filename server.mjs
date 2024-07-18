@@ -84,6 +84,10 @@ app.post('/search', function(req,res){
   res.json(s.search.search(collection_id, searchText));
 });
 
+app.get('/searchForExistingAlbums', function(req,res){
+  res.json(s.search.searchForExistingAlbums(req.query.searchStr, req.query.wantFullName))
+})
+
 // *****************************************
 // collection functions
 // *****************************************
