@@ -148,8 +148,12 @@ class PlAlbumName extends HTMLElement {
 
   #throttleKeyDown = throttle(()=>{
     let txt = this.shadowRoot.getElementById('album-name').innerText
-    this.#suggestAlbumNames(txt)
-  }, 1500)
+    // need at least 2 charcters to perform lookup
+    // TODO: remove hardcoding
+    if(!txt.includes('TBD') && txt.trim().length > 16){
+      this.#suggestAlbumNames(txt)
+    }
+  }, 1000)
 
   #suggestAlbumNames = (txt) => {
     fetch(`/searchForExistingAlbums?searchStr=${txt.substring(15).trim()}&wantFullName=false`)
