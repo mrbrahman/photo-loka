@@ -155,6 +155,7 @@ export function searchForExistingAlbums(searchStr, wantFullName){
     select ${wantFullName==="true"?"album":"trim(substr(album, 16))"} as similar, count(*) cnt
     from metadata 
     where metadata match '{album} : ("${searchStr}"*)'
+    and album not like '%TBD%'
     group by 1
     limit 10
   `;
