@@ -15,6 +15,11 @@ if(!fs.existsSync(path.dirname(dbFile))){
 
 export const db = new Database(dbFile, {  }); // verbose: console.log
 
+// PRAGMA statements to make sqlite run faster
+// found at https://stackoverflow.com/a/27290180/8098748
+db.pragma("journal_mode = WAL");
+db.pragma("synchronous = NORMAL");
+
 // for first time run setup db
 if(fs.statSync(dbFile).size == 0){
   dbSetup()
