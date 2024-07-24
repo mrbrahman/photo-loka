@@ -15,7 +15,7 @@ Currently this project is very much a work-in-progress.
 5. In other words, we don't want to be locked-down by any one particular tool (including this one!).
 6. Some kind of sensible, not too constrained search is needed, even though it may (will) not be as good as Google.
 
-(*) For those who are not aware, a photo/video taken by a modern camera/phone not only stores the image/video content, but also metadata about the photo/video (for e.g. GPS coordinates, time of the photo/video, duration for videos, photo/video dimensions, orientation, recognized faces etc)
+(*) For those who are not aware, a photo/video taken by a modern camera/phone not only stores the image/video content, but also metadata about the photo/video. For e.g. GPS coordinates, dimensions, orientation, duration for videos etc. There are also provisions to update metadata when they are discovered. For e.g. recognized faces, address based on reverse geo-coding etc.
 
 # Key Terms
 1. **Photo / Video**: The individual photo / video (duh!)
@@ -24,32 +24,59 @@ Currently this project is very much a work-in-progress.
 4. **Indexing**: The process of reading media and cataloging metadata to help with search. Also thumbnail generation.
 
 # Current Features
+## Media Management
 - Index media photos, videos and audio
   - Indexer has the ability to run and gather metadata for multiple photos at the same time. See `updateIndexerConcurrency` below
   - Indexer can also watch specific folders for new files, and as new files become available, bring them into the respective collection and index them
+- Rename albums (similar to renaming folders on a File Explorer program)
+
+## Metadata management
+- Mark as favorite / stars (there is no favorite in exif, but there is a 'rating' field)
+
+## UI features
 - Display photos and videos on a responsive, progressive, scrollable grid
-- Search photos based on their metadata
+- Slideshow
+- Search photos based on their metadata, using SQLite FTS5
+    1. Github *like* search features (key value pairs)
+       e.g. `album:trip camera:samsung type:video`
+    2. When multiple conditions are prsent, by default they are "AND"ed.
+        e.g. `album:trip camera:samsung type:video`
+        will translate as
+        `{album}: "trip"* AND {camera}: "samsung"* AND {type}: "video"*`
+    3. This can be overwritten using the "logical" or "l" input. E.g. `l:or`
+    4. The input from "logical" keyword applies to all conditions
+        e.g. `album:trip camera:samsung type:video l:or`
+        will translate as
+        `{album}: "trip"* OR {camera}: "samsung"* OR {type}: "video"*`
+    5. Any un-prefixed condition will be applied to/restricted to all [search-enabled columns](https://github.com/mrbrahman/rewind-replay/blob/develop/app/database/search-db.mjs#L3)
+    6. For advanced needs (including querying non restricted columns - for e.g. `file_date`), use the "raw"
+       input using SQLite FTS syntax. Thich will be used as-is in the filter.
+        e.g. 
+          - `raw:"metadata match '{album}: (states* AND trip*)'"`
+          - `raw:"strftime('%W',file_date)=strftime('%W',date()) and strftime('%Y',file_date) != strftime('%Y',date())"` (all 'past' photos of current week)
+    7. "raw" can be clubbled with other filters, if needed
 
 
 # Features TODO
 **Near future**
-- Slideshow
-- Mark as favorite / stars
 - Add/change "tags" (keywords)
-- Optional staging area
 - Ability to move / delete files
 - Ability to rename files (mainly videos) similar to folders
+- Optional staging area (?)
 
 **After near future**
+- Clustering photos on map
+- Face recognition
 - An acutal form to setup collections
 - Form to update config and save it to persistant storage (file?)
+- Monitor indexer progress
+- Enable multiple collections
 - Ability to upload photos from device
 - Intelligent scrollbar (folder levels?)
-- Monitor indexer progress
-- Face recognition
 - Object detection (computer vision)
-- Clustering photos on map
 - PWA
+- Authentication and Authorization
+- Sharing photos/albums
 
 # How to install & use
 
@@ -57,13 +84,13 @@ Currently this project is very much a work-in-progress.
   - [Node](https://nodejs.org/en/) (to run the server)
   - [SQLite3](https://www.sqlite.org/download.html) (for better-sqlite3)
   - [ffmpeg](https://ffmpeg.org/download.html) (for fluent-ffmpeg)
-  - (for future) g++ (for tensorflow.js)
   - On Linux, simply run 
     ```bash
-    sudo apt install node sqlite3 g++ ffmpeg
+    sudo apt install node sqlite3 ffmpeg
     ```
 
 - **Install code (just clone this repo)**
+  See https://github.com/lovell/sharp/issues/4164 for more details
   ```bash
   git clone https://github.com/mrbrahman/rewind-replay.git
   ```
@@ -75,11 +102,10 @@ Currently this project is very much a work-in-progress.
   npm install
   ```
 
-- **Special instructions for HEIC support**
+- **Special instructions for HEIC support (TBD for Linux)**
 
   For heic support, need to do some extra stuff at the moment.
   
-  See https://github.com/lovell/sharp/issues/4164 for more details
   ```bash
   # https://sharp.pixelplumbing.com/api-output#heif
   brew install vips libheif libde265 x265
@@ -139,7 +165,7 @@ Currently this project is very much a work-in-progress.
 - nodejs server
 - SQLite 3 database
 
-## Supporting tools
+## Supporting
 - Sqlite3 provided FTS5 for searches
 - sharp for image operations
 - fluent-ffmpeg for video operations
