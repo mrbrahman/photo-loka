@@ -29,6 +29,7 @@ Currently this project is very much a work-in-progress.
   - Indexer has the ability to run and gather metadata for multiple photos at the same time. See `updateIndexerConcurrency` below
   - Indexer can also watch specific folders for new files, and as new files become available, bring them into the respective collection and index them
 - Rename albums (similar to renaming folders on a File Explorer program)
+- Delete files
 
 ## Metadata management
 - Mark as favorite / stars (there is no favorite in exif, but there is a 'rating' field)
@@ -60,7 +61,7 @@ Currently this project is very much a work-in-progress.
 # Features TODO
 **Near future**
 - Add/change "tags" (keywords)
-- Ability to move / delete files
+- Select files and move them to a different album (and eventually collection)
 - Ability to rename files (mainly videos) similar to folders
 - Optional staging area (?)
 
