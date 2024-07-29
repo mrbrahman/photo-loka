@@ -96,7 +96,10 @@ router.on('/', function(){
   fetch('/getAll').then(response=>response.json())
     .then(result=>{
       showGallery(result);
-      document.getElementById("progress-bar").classList.add("hide");
+      // wait for one sec and then hide the progress bar
+      setTimeout(()=>{
+        document.getElementById("progress-bar").classList.add("hide");
+      }, 1000)
     })
   ;
 });
@@ -123,7 +126,9 @@ router.on('/search/:searchText', function(p){
   .then(response=>response.json())
   .then(result=>{
     showGallery(result);
-    document.getElementById("progress-bar").classList.add("hide");
+    setTimeout(()=>{
+      document.getElementById("progress-bar").classList.add("hide");
+    }, 1000)
   })
 });
 

@@ -26,7 +26,7 @@
     #app {
       display: grid;
       grid-template-columns: 1fr;
-      grid-template-rows: 1px 60px 1fr;
+      grid-template-rows: 3px 60px 1fr; /* first has to be the same as sl-progress-bar height */
       height: 100svh; /* note the svh */
       width: 100vw;
     }
@@ -548,7 +548,7 @@
 </head>
 <body>
   <div id="app">
-    <sl-progress-bar id="progress-bar" class="hide" indeterminate style="--height:1px;"></sl-progress-bar>
+    <sl-progress-bar id="progress-bar" class="hide" indeterminate style="--height:3px;"></sl-progress-bar>
 
     <!-- Navigation Header -->
     <nav id="nav-header">
