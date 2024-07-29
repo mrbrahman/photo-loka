@@ -23,12 +23,22 @@
       padding: 0px;
     }
 
+    :root {
+      --progress-bar-height: 4px;
+    }
+
     #app {
       display: grid;
       grid-template-columns: 1fr;
-      grid-template-rows: 3px 60px 1fr; /* first has to be the same as sl-progress-bar height */
+      grid-template-rows: var(--progress-bar-height) 60px 1fr;
       height: 100svh; /* note the svh */
       width: 100vw;
+    }
+
+    sl-progress-bar {
+      margin-top: 1px;
+      --height: var(--progress-bar-height);
+      --indicator-color: orange;
     }
 
     sl-progress-bar.hide {
@@ -548,7 +558,7 @@
 </head>
 <body>
   <div id="app">
-    <sl-progress-bar id="progress-bar" class="hide" indeterminate style="--height:3px;"></sl-progress-bar>
+    <sl-progress-bar id="progress-bar" class="hide"></sl-progress-bar>
 
     <!-- Navigation Header -->
     <nav id="nav-header">

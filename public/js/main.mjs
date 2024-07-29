@@ -10,7 +10,7 @@ import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/compone
 import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/menu/menu.js';
 import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/progress-bar/progress-bar.js'
 
-import {notify} from './utils.mjs';
+import {notify, showProgressBar, hideProgressBar} from './utils.mjs';
 
 import './pl-thumb.js';
 import './pl-album.js';
@@ -91,15 +91,12 @@ router.on('/', function(){
     return;
   }
   
-  document.getElementById("progress-bar").classList.remove("hide");
+  showProgressBar();
 
   fetch('/getAll').then(response=>response.json())
     .then(result=>{
       showGallery(result);
-      // wait for one sec and then hide the progress bar
-      setTimeout(()=>{
-        document.getElementById("progress-bar").classList.add("hide");
-      }, 1000)
+      hideProgressBar();
     })
   ;
 });
@@ -114,7 +111,7 @@ router.on('/search/:searchText', function(p){
     return;
   }
 
-  document.getElementById("progress-bar").classList.remove("hide");
+  showProgressBar();
 
   fetch('/search', {
     method: 'POST',
@@ -126,9 +123,7 @@ router.on('/search/:searchText', function(p){
   .then(response=>response.json())
   .then(result=>{
     showGallery(result);
-    setTimeout(()=>{
-      document.getElementById("progress-bar").classList.add("hide");
-    }, 1000)
+    hideProgressBar();
   })
 });
 
