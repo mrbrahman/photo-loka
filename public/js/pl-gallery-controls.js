@@ -26,15 +26,13 @@ class PlGalleryControls extends HTMLElement {
   }
 
   #handleClose = (evt)=>{
-    let closed = new Event('pl-gallery-controls-closed', {composed: true, bubbles: true});
+    let closed = new Event('pl-gallery-controls-closed');
     this.dispatchEvent(closed);
   }
 
   #handleRatingChanged = (evt)=>{
     let newRating = evt.target.value;
     let ratingChanged = new CustomEvent('pl-gallery-controls-rating-changed', {
-      composed: true, 
-      bubbles: true,
       detail: {newRating}
     });
     this.dispatchEvent(ratingChanged);
@@ -46,7 +44,7 @@ class PlGalleryControls extends HTMLElement {
   }
 
   #handleDelete = (evt)=>{
-    let deleted = new Event('pl-gallery-events-delete-pressed', {composed: true, bubbles: true});
+    let deleted = new Event('pl-gallery-events-delete-pressed');
     this.dispatchEvent(deleted);
   }
 

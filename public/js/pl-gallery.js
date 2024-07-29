@@ -46,12 +46,6 @@ class PlGallery extends HTMLElement {
 
     this.addEventListener('pl-album-item-selected', this.#handleItemsSelected);
 
-    this.addEventListener('pl-gallery-controls-closed', this.#handleGalleryControlsClosed);
-
-    this.addEventListener('pl-gallery-controls-rating-changed', this.#handleGalleryControlsRatingChanged);
-    
-    this.addEventListener('pl-gallery-events-delete-pressed', this.#handleGalleryControlsDeletePressed);
-
     this.shadowRoot.getElementById('gallery')
       .addEventListener('scroll', this.#throttleHandleScroll)
     ;
@@ -69,6 +63,10 @@ class PlGallery extends HTMLElement {
         this.shadowRoot.getElementById('gallery').append(c);
         c.ctr = this.#itemsSelectedCnt;
         
+        c.addEventListener('pl-gallery-controls-closed', this.#handleGalleryControlsClosed);
+        c.addEventListener('pl-gallery-controls-rating-changed', this.#handleGalleryControlsRatingChanged);
+        c.addEventListener('pl-gallery-events-delete-pressed', this.#handleGalleryControlsDeletePressed);
+  
         // this is needed to enable transition
         setTimeout(()=>{
           c.style.top = '80%';
@@ -76,7 +74,7 @@ class PlGallery extends HTMLElement {
 
       } else {
         this.shadowRoot.querySelector('pl-gallery-controls').ctr = this.#itemsSelectedCnt;
-      }
+      }  
       
     } else if(this.#itemsSelectedCnt == 0){
 
