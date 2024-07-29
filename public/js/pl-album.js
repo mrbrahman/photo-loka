@@ -94,8 +94,6 @@ class PlAlbum extends HTMLElement {
     });
 
     this.dispatchEvent( new CustomEvent('pl-album-item-selected', {
-      composed: true,
-      bubbles: true,
       detail: {
         cnt: cntChanged * (selected ? 1 : -1)
       }
@@ -126,8 +124,6 @@ class PlAlbum extends HTMLElement {
 
     // #2 create an event and pass it to gallery, which will be used in pl-gallery-controls
     this.dispatchEvent( new CustomEvent('pl-album-item-selected', {
-      composed: true,
-      bubbles: true,
       detail: {
         cnt: evt.target.selected ? 1 : -1
       }
@@ -168,7 +164,7 @@ class PlAlbum extends HTMLElement {
   #performLayoutChangesIfNeeded(){
     // check if album is empty
     if (this.data.length == 0){
-      let albumEmptyEvent = new Event('pl-album-empty', {composed: true, bubbles: true});
+      let albumEmptyEvent = new Event('pl-album-empty');
       this.dispatchEvent(albumEmptyEvent);
 
       return; // nothing else to do here
@@ -190,7 +186,7 @@ class PlAlbum extends HTMLElement {
     // if there is any height change resulting from this delete, fire an event, so 
     // the wrapper pl-gallery can paint as needed
     if(lastAlbumHeight != this.album_height){
-      let albumHeightChangeEvent = new Event('pl-album-height-changed', {composed: true, bubbles: true});
+      let albumHeightChangeEvent = new Event('pl-album-height-changed');
       this.dispatchEvent(albumHeightChangeEvent);
     }
   }
@@ -214,8 +210,6 @@ class PlAlbum extends HTMLElement {
 
     // since the selected items are unselected, send an unselected message to gallery
     this.dispatchEvent( new CustomEvent('pl-album-item-selected', {
-      composed: true,
-      bubbles: true,
       detail: {
         cnt: -unselectedCnt
       }
@@ -284,8 +278,6 @@ class PlAlbum extends HTMLElement {
     if(deletedCnt > 0){
       // since the selected items are deleted, send an unselected message to gallery
       this.dispatchEvent( new CustomEvent('pl-album-item-selected', {
-        composed: true,
-        bubbles: true,
         detail: {
           cnt: -deletedCnt
         }

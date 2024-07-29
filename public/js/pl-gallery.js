@@ -32,6 +32,10 @@ class PlGallery extends HTMLElement {
         data: d.items,
         width: this.shadowRoot.getElementById('gallery').clientWidth
       });
+
+      album.addEventListener('pl-album-height-changed', this.#handleAlbumHeightChange);
+      album.addEventListener('pl-album-empty', this.#removeAlbum);
+      album.addEventListener('pl-album-item-selected', this.#handleItemsSelected);
     
       return album;
     });
@@ -39,12 +43,6 @@ class PlGallery extends HTMLElement {
     this.shadowRoot.getElementById('gallery').append(...this.#albums);
     this.#reAssignAlbumPositions();
     this.#selectivelyPaintAlbums();
-
-    this.addEventListener('pl-album-height-changed', this.#handleAlbumHeightChange);
-
-    this.addEventListener('pl-album-empty', this.#removeAlbum);
-
-    this.addEventListener('pl-album-item-selected', this.#handleItemsSelected);
 
     this.shadowRoot.getElementById('gallery')
       .addEventListener('scroll', this.#throttleHandleScroll)
@@ -253,18 +251,12 @@ class PlGallery extends HTMLElement {
 
   disconnectedCallback() {
     this.shadowRoot.getElementById('gallery')
-      .removeEventListener('pl-album-height-changed', this.#handleAlbumHeightChange)
-    ;
-  
-    this.shadowRoot.getElementById('gallery')
       .removeEventListener('scroll', this.#throttleHandleScroll)
     ;
     
     window
       .removeEventListener('resize', this.#throttleHandleResize)
     ;
-
-    // TODO other listeners
   }
 
   attributeChangedCallback(name, oldVal, newVal) {
