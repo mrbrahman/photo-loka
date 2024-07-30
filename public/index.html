@@ -328,18 +328,20 @@
         transition: top 0.3s;
       }
 
-      pl-gallery-controls {
-        position: sticky;
-        top: 0%;
-        transition: top 0.4s;
-      }
-
     </style>
     <div id="gallery"></div>
   </template>
 
   <template id="PL-GALLERY-CONTROLS">
     <style>
+      :host {
+        position: absolute;
+        top: 2px;
+        left: 5px;
+        right: 5px;
+        z-index: 1;
+      }
+      
       #container {
         display: grid;
         height: 65px;
@@ -347,6 +349,7 @@
         grid-template-columns: auto 1fr;
         align-items: center;
         box-shadow: 0 0 5px #333;
+        border-radius: 5px;
         background-color: white;
       }
 

@@ -56,34 +56,28 @@ class PlGallery extends HTMLElement {
     this.#itemsSelectedCnt += evt.detail.cnt;
 
     if(this.#itemsSelectedCnt > 0){
-      if(!this.shadowRoot.querySelector('pl-gallery-controls')){
+      if(!document.body.querySelector('pl-gallery-controls')){
         let c = document.createElement('pl-gallery-controls');
-        this.shadowRoot.getElementById('gallery').append(c);
+        document.body.append(c);
         c.ctr = this.#itemsSelectedCnt;
         
         c.addEventListener('pl-gallery-controls-closed', this.#handleGalleryControlsClosed);
         c.addEventListener('pl-gallery-controls-rating-changed', this.#handleGalleryControlsRatingChanged);
         c.addEventListener('pl-gallery-events-delete-pressed', this.#handleGalleryControlsDeletePressed);
-  
-        // this is needed to enable transition
-        setTimeout(()=>{
-          c.style.top = '80%';
-        }, 10);
+        
+        // TODO: Transition while entering and exiting DOM
+        // other option is to keep the element in the DOM and change display
 
       } else {
-        this.shadowRoot.querySelector('pl-gallery-controls').ctr = this.#itemsSelectedCnt;
+        document.body.querySelector('pl-gallery-controls').ctr = this.#itemsSelectedCnt;
       }  
       
     } else if(this.#itemsSelectedCnt == 0){
 
-      let c = this.shadowRoot.querySelector('pl-gallery-controls');
+      let c = document.body.querySelector('pl-gallery-controls');
       c.ctr = 0;
       c.style.top = '0%';
-      
-      // TODO: wait for CSS animation to complete
-      setTimeout(()=>{
-        c.remove();
-      }, 400);
+      c.remove();
     }
 
   }
