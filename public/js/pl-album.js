@@ -247,7 +247,7 @@ class PlAlbum extends HTMLElement {
         }
       })
       .catch(err=>{
-        notify(`<strong>Error</strong>:</br>${err}`, 'danger', 'exclamation-octagon', -1);
+        notify(`<strong>Error</strong>:</br>${err}`, 'error', -1);
       });
 
     }) 

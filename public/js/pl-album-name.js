@@ -66,10 +66,10 @@ class PlAlbumName extends HTMLElement {
       this.shadowRoot.getElementById('album-name').blur();
       this.shadowRoot.getElementById('edit-controls').style.visibility = 'hidden';
 
-      notify('Album name updated successfully');
+      notify('Album name updated successfully', 'success');
       
     }).catch(err=>{
-      notify(`<strong>Error</strong>:</br>${err}`, 'danger', 'exclamation-octagon', -1);
+      notify(`<strong>Error</strong>:</br>${err}`, 'error', -1);
 
     });
 
@@ -127,10 +127,10 @@ class PlAlbumName extends HTMLElement {
         // TODO: Once it becomes available, will need to use that
         // But for now, just use an alert
         if (rows.length > 0){
-          notify(rows.join('<BR>'), 'neutral', 'info-circle');
+          notify(rows.join('<BR>'), 'info', 5000);
         }
       }).catch(err=>{
-        notify(`<strong>Error</strong>:</br>${err}`, 'danger', 'exclamation-octagon', -1);
+        notify(`<strong>Error</strong>:</br>${err}`, 'error', -1);
   
       });
     }
@@ -174,10 +174,10 @@ class PlAlbumName extends HTMLElement {
         // TODO: Once it becomes available, will need to use that
         // But for now, just use an alert
         if (rows.length > 0){
-          notify(rows.join('<BR>'), 'neutral', 'info-circle');
+          notify(rows.join('<BR>'), 'info', 5000);
         }
       }).catch(err=>{
-        notify(`<strong>Error</strong>:</br>${err}`, 'danger', 'exclamation-octagon', -1);
+        notify(`<strong>Error</strong>:</br>${err}`, 'error', -1);
   
       });
   }

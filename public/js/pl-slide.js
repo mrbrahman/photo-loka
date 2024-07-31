@@ -88,7 +88,7 @@ class PlSlide extends HTMLElement {
         }
       })
       .catch(err=>{
-        notify(`<strong>Error</strong>:</br>${err}`, 'danger', 'exclamation-octagon', -1);
+        notify(`<strong>Error</strong>:</br>${err}`, 'error', -1);
 
         // revert rating on screen (extra for this flow)
         this.shadowRoot.getElementById('rating').value = item.data.rating;

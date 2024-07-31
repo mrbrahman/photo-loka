@@ -5,15 +5,22 @@ function escapeHtml(html) {
   return div.innerHTML;
 }
 
-// TODO: standardize this for info, warnings, errors etc.
+let info = {variant: 'primary', icon: 'info-circle'};
+let success = {variant: 'success', icon: 'check2-circle'};
+let warning = {variant: 'warning', icon: 'exclamation-triangle'};
+let error = {variant: 'danger', icon: 'exclamation-octagon'};
 
 // Custom function to emit toast notifications
-export function notify(message, variant = 'primary', icon = 'info-circle', duration = 3000) {
+export function notify(message, type='info', duration=3000) {
+  // type should be one of: info, success, warning, error
+  // if something else is found, just set to info
+  let t = type == 'info' ? info : 'success' ? success : 'warning' ? warning : 'error' ? error : info;
+
   const alert = Object.assign(document.createElement('sl-alert'), {
-    variant,
+    variant: t.variant,
     closable: true,
     innerHTML: `
-      <sl-icon name="${icon}" slot="icon"></sl-icon>
+      <sl-icon name="${t.icon}" slot="icon"></sl-icon>
       ${message}
     `
   });

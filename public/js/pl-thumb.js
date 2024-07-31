@@ -138,7 +138,7 @@ class PlThumb extends HTMLElement {
           this.#addRatingListener();
         }, 1000);
         
-        notify(`<strong>Error</strong>:</br>${err}`, 'danger', 'exclamation-octagon', -1);
+        notify(`<strong>Error</strong>:</br>${err}`, 'error', -1);
         
       })
   }
