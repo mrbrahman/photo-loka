@@ -76,7 +76,7 @@ class PlGallery extends HTMLElement {
 
       let c = document.body.querySelector('pl-gallery-controls');
       c.ctr = 0;
-      c.style.top = '0%';
+      // c.style.top = '0%';
       c.remove();
     }
 
@@ -86,6 +86,11 @@ class PlGallery extends HTMLElement {
     this.#albums.forEach(album=>{
       album.unselectSelectedItems();
     });
+    
+    this.#itemsSelectedCnt = 0;
+    let c = document.body.querySelector('pl-gallery-controls');
+    c.ctr = 0;
+    c.remove();
   }
 
   #handleGalleryControlsRatingChanged = (evt)=>{

@@ -209,11 +209,11 @@ class PlAlbum extends HTMLElement {
     this.shadowRoot.querySelector('pl-album-name').albumSelectedValue = 'none';
 
     // since the selected items are unselected, send an unselected message to gallery
-    this.dispatchEvent( new CustomEvent('pl-album-item-selected', {
-      detail: {
-        cnt: -unselectedCnt
-      }
-    }) );
+    // this.dispatchEvent( new CustomEvent('pl-album-item-selected', {
+    //   detail: {
+    //     cnt: -unselectedCnt
+    //   }
+    // }) );
   }
 
   changeRatingSelectedItems(newRating) {
