@@ -33,12 +33,12 @@ class PlAlbum extends HTMLElement {
       // painting of layout will selectively happen from the wrapper, so not doing anything here
     }
 
+    this.shadowRoot.querySelector('pl-album-name')
+      .addEventListener('r3-select-all-clicked', this.#handleSelectAll, true)
+    ;
+    
     this.shadowRoot.getElementById('container')
       .addEventListener('r3-item-deleted', this.#handleItemDeleted, true)
-    ;
-
-    this.shadowRoot.getElementById('container')
-      .addEventListener('r3-select-all-clicked', this.#handleSelectAll, true)
     ;
 
     this.shadowRoot.getElementById('container')
