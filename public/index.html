@@ -365,10 +365,12 @@
         justify-content: flex-end;
       }
       #col1 > * {
-        padding-left: 10px;
+        padding-right: 2px;
+        padding-left: 2px;
       }
       #col2 > * {
-        padding-right: 10px;
+        padding-right: 2px;
+        padding-left: 2px;
       }
 
       sl-rating {
@@ -388,14 +390,25 @@
       </div>
       
       <div class="col" id="col2">
-        <sl-icon-button id="clear-rating" src="assets/star-slash-svgrepo-com.svg"></sl-icon-button>
         <sl-rating id="rating"></sl-rating>
         <sl-icon-button name="tags-fill">Keywords</sl-icon-button>
         <sl-icon-button id="delete" name="trash-fill">Delete</sl-icon-button>
-        <sl-icon-button name="file-code-fill">Organize</sl-icon-button> <!-- this will be dropdown -->
-        <sl-icon-button name="download">Download</sl-icon-button>
-        <!-- do I need the 3 dots for additional stuff? -->
-        <!-- <sl-icon-button name="three-dots-vertical">More Options</sl-icon-button> -->
+        <sl-icon-button name="file-code-fill">Organize</sl-icon-button>
+        
+        <!-- rest actions from the dropdown -->
+        <sl-dropdown>
+          <sl-icon-button name="three-dots-vertical" slot="trigger"></sl-icon-button>
+          <sl-menu style="max-width: 200px;">
+            <sl-menu-item>
+              Share
+              <sl-icon slot="suffix" name="share-fill"></sl-icon>
+            </sl-menu-item>            
+            <sl-menu-item>
+              Update location
+              <sl-icon slot="suffix" name="geo-alt-fill"></sl-icon>
+            </sl-menu-item>
+          </sl-menu>
+        </sl-dropdown>
       </div>
     </div>
   </template>
