@@ -14,7 +14,7 @@ let error = {variant: 'danger', icon: 'exclamation-octagon'};
 export function notify(message, type='info', duration=3000) {
   // type should be one of: info, success, warning, error
   // if something else is found, just set to info
-  let t = type == 'info' ? info : 'success' ? success : 'warning' ? warning : 'error' ? error : info;
+  let t = type == 'info' ? info : type == 'success' ? success : type == 'warning' ? warning : type == 'error' ? error : info;
 
   const alert = Object.assign(document.createElement('sl-alert'), {
     variant: t.variant,
