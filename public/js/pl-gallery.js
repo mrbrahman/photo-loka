@@ -35,8 +35,8 @@ class PlGallery extends HTMLElement {
     this.shadowRoot.appendChild(
       document.getElementById(this.nodeName).content.cloneNode(true)
     );
-    console.log("logging data... ")
-    console.log(this.data);
+    // console.log("logging data... ")
+    // console.log(this.data);
 
     this.#albums = this.data.map(d=>{
 
