@@ -184,6 +184,7 @@ class PlAlbumName extends HTMLElement {
 
   #handleKey = (evt) => {
     if (evt.key == "Escape"){
+      evt.stopPropagation();
       this.#handleCancel();
     } else if(evt.key == "Enter"){
       evt.preventDefault(); // we don't want an actual \n in the album name

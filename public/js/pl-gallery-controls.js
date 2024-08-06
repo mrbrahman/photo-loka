@@ -20,6 +20,16 @@ class PlGalleryControls extends HTMLElement {
 
     this.shadowRoot.getElementById("delete")
       .addEventListener('click', this.#handleDelete)
+    ;
+
+    document.addEventListener("keydown", this.#handleEscape);
+
+  }
+
+  #handleEscape = (evt)=>{
+    if (evt.key === "Escape"){
+      this.#handleClose();
+    }
   }
 
   #handleClose = (evt)=>{
@@ -48,6 +58,8 @@ class PlGalleryControls extends HTMLElement {
     this.shadowRoot.getElementById("rating")
       .removeEventListener('sl-change', this.#handleRatingChanged)
     ;
+
+    document.removeEventListener("keydown", this.#handleEscape);
   }
 
   attributeChangedCallback(name, oldVal, newVal) {
