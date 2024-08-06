@@ -5,12 +5,24 @@
 // e.g. TBD
 // <pl-gallery ></pl-gallery>
 
-import {debounce, throttle} from './utils.mjs';
+// The basic design is:
+//
+// 1. Gallery is responsibile for creating albums
+// 2. When any item is selected/de-selected, gallery is also responsible for 
+//    the creation and removal of gallery controls
+// 3. Gallery controls is a dummy component which is mainly used for user interaction only
+// 4. Since item selection can happen from multiple albums, gallery will own all backend changes
+//    related to selected items
+// 5. Album will only be responsible for paiting of UI
+// 6. The only exception is 'album name' component, which can also update the backend. But
+//    that is fine, since the album name update does not span multiple albums
+
+import {debounce, throttle, notify} from './utils.mjs';
 
 class PlGallery extends HTMLElement {
 
   // internal variables
-  #albums = []; #albumsInBuffer = {}; #itemsSelectedCnt = 0;
+  #albums = []; #albumsInBuffer = {}; #itemsSelected = [];
   // variables that can be get/set
   #data;
 
@@ -23,6 +35,8 @@ class PlGallery extends HTMLElement {
     this.shadowRoot.appendChild(
       document.getElementById(this.nodeName).content.cloneNode(true)
     );
+    console.log("logging data... ")
+    console.log(this.data);
 
     this.#albums = this.data.map(d=>{
 
@@ -53,30 +67,50 @@ class PlGallery extends HTMLElement {
   }
 
   #handleItemsSelected = (evt)=>{
-    this.#itemsSelectedCnt += evt.detail.cnt;
+    let {selected, selectedItems} = evt.detail;
 
-    if(this.#itemsSelectedCnt > 0){
+    // update the list with the ones selected/de-selected
+    if(selected){
+      this.#itemsSelected.push(...selectedItems);
+    } else {
+      // remove selectedItems from this.#itemsSelected
+      // https://stackoverflow.com/a/47017949/8098748
+      this.#itemsSelected = this.#itemsSelected.filter(function(a) {
+        return !selectedItems.find(function(b) {
+          return a.data.id === b.data.id
+        })
+      })
+    }
+
+    if(this.#itemsSelected.length > 0){
+      
       if(!document.body.querySelector('pl-gallery-controls')){
         let c = document.createElement('pl-gallery-controls');
         document.body.append(c);
-        c.ctr = this.#itemsSelectedCnt;
-        
+
         c.addEventListener('pl-gallery-controls-closed', this.#handleGalleryControlsClosed);
         c.addEventListener('pl-gallery-controls-rating-changed', this.#handleGalleryControlsRatingChanged);
-        c.addEventListener('pl-gallery-events-delete-pressed', this.#handleGalleryControlsDeletePressed);
-        
-        // TODO: Transition while entering and exiting DOM
-        // other option is to keep the element in the DOM and change display
+        c.addEventListener('pl-gallery-controls-delete-pressed', this.#handleGalleryControlsDeletePressed);
+      }
 
+      let c = document.body.querySelector('pl-gallery-controls');
+      c.ctr = this.#itemsSelected.length;
+
+      let distinctRatings = [... new Set(this.#itemsSelected.map(x=>x.data.rating))]
+
+      // if all selected items have the same rating, then set the value to that rating.
+      // otherwise don't set the rating
+      if (distinctRatings.length == 1){
+        c.rating = distinctRatings[0]
       } else {
-        document.body.querySelector('pl-gallery-controls').ctr = this.#itemsSelectedCnt;
-      }  
+        c.rating = 0
+      }
+
       
-    } else if(this.#itemsSelectedCnt == 0){
+    } else if(this.#itemsSelected.length == 0){
 
       let c = document.body.querySelector('pl-gallery-controls');
       c.ctr = 0;
-      // c.style.top = '0%';
       c.remove();
     }
 
@@ -87,20 +121,74 @@ class PlGallery extends HTMLElement {
       album.unselectSelectedItems();
     });
     
-    this.#itemsSelectedCnt = 0;
+    this.#removeGalleryControls();
+  }
+  
+  #removeGalleryControls = ()=>{
+    this.#itemsSelected = [];
     let c = document.body.querySelector('pl-gallery-controls');
     c.ctr = 0;
     c.remove();
+    
   }
 
   #handleGalleryControlsRatingChanged = (evt)=>{
-    this.#albums.forEach(album=>{
-      album.changeRatingSelectedItems(evt.detail.newRating);
+    // update db here
+    fetch('/updateRating', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        uuid_arr: this.#itemsSelected.map(x=>x.data.id),
+        newRating: evt.detail.newRating
+      })
+    })
+    .then(res=>{
+      if(!res.ok){
+        throw `${res.status} ${res.statusText}`
+      }
+    })
+    .then(()=>{
+      // and then, just update UI
+      this.#albums.forEach(album=>{
+        album.changeRatingSelectedItems(evt.detail.newRating);
+      });
+
+      notify(`Updated rating for ${this.#itemsSelected.length} item${this.#itemsSelected.length > 1 ? 's' : ''}`, 'success');
+    })
+    .catch(err=>{
+      notify(`<strong>Error</strong>:</br>${err}`, 'error', -1);
     });
+
   }
 
   #handleGalleryControlsDeletePressed = (evt)=>{
-    this.#albums.forEach(album=>album.deleteSelectedItems());
+    // update db here
+    fetch(`/deleteFromCollection`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        uuid_arr: this.#itemsSelected.map(x=>x.data.id)
+      })
+    })
+    .then(res=>{
+      if(!res.ok){
+        throw `${res.status} ${res.statusText}`
+      }
+    })
+    .then(()=>{
+      this.#albums.forEach(album=>album.deleteSelectedItems());
+      let trashedCnt = this.#itemsSelected.length;
+      // all items selected are deleted. No need to keep gallery controls anymore
+      this.#removeGalleryControls();
+      notify(`${trashedCnt} item${trashedCnt > 1 ? 's' : ''} moved to trash`, 'success');
+    })
+    .catch(err=>{
+      notify(`<strong>Error</strong>:</br>${err}`, 'error', -1);
+    });
   }
 
   #reAssignAlbumPositions(){

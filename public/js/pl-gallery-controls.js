@@ -1,5 +1,5 @@
 class PlGalleryControls extends HTMLElement {
-  #ctr; 
+  #ctr; #rating;
 
   constructor() {
     super().attachShadow({mode: 'open'}); // sets "this" and "this.shadowRoot"
@@ -35,13 +35,8 @@ class PlGalleryControls extends HTMLElement {
     this.dispatchEvent(ratingChanged);
   }
 
-  #handleClearRating = (evt)=>{
-    this.shadowRoot.getElementById('rating').value = 0;
-    // this will trigger the listener on rating
-  }
-
   #handleDelete = (evt)=>{
-    let deleted = new Event('pl-gallery-events-delete-pressed');
+    let deleted = new Event('pl-gallery-controls-delete-pressed');
     this.dispatchEvent(deleted);
   }
 
@@ -67,6 +62,10 @@ class PlGalleryControls extends HTMLElement {
     this.shadowRoot.getElementById("ctr").innerHTML = this.ctr;
   }
 
+  #paintRating(){
+    this.shadowRoot.querySelector('sl-rating').value = this.rating;
+  }
+
   get ctr(){
     return this.#ctr;
   }
@@ -74,6 +73,16 @@ class PlGalleryControls extends HTMLElement {
     this.#ctr = +_;
     if(this.isConnected){
       this.#paintCtr();
+    }
+  }
+
+  get rating(){
+    return this.#rating;
+  }
+  set rating(_){
+    this.#rating = _;
+    if(this.isConnected){
+      this.#paintRating();
     }
   }
 

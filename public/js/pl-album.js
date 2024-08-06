@@ -36,10 +36,6 @@ class PlAlbum extends HTMLElement {
     this.shadowRoot.querySelector('pl-album-name')
       .addEventListener('r3-select-all-clicked', this.#handleSelectAll, true)
     ;
-    
-    this.shadowRoot.getElementById('container')
-      .addEventListener('r3-item-deleted', this.#handleItemDeleted, true)
-    ;
 
     this.shadowRoot.getElementById('container')
       .addEventListener('r3-item-selected', this.#handleItemSelected, true);
@@ -66,36 +62,36 @@ class PlAlbum extends HTMLElement {
   }
 
   disconnectedCallback() {
-    this.shadowRoot.getElementById('container')
-    .removeEventListener('r3-item-deleted', this.#handleItemDeleted)
-    ;
+    // nothing to do
   }
 
   #handleSelectAll = (evt)=>{
-    let cntChanged = 0;
+    let selectedItems = [], selected = evt.detail.select;
 
     // # First select all items in the album
-    let selected = evt.detail.select;
     this.data.forEach(item=>{
       if(item.elem){
         if(item.elem.selected == selected){
           // item is already in the target state, nothing to do
         } else {
           item.elem.selected = selected;
-          cntChanged++;
+          selectedItems.push(item);
         }
       } else {
         // the item is not in DOM yet, save the state in layout
-        // no need to check like above, since if the item in not in DOM, it could
-        // not have been manually selected/unselected before
-        item.layout.selected = selected;
-        cntChanged++;
+        if(item.layout.selected == selected){
+          // item is already in the target state, nothing to do
+        } else {
+          item.layout.selected = selected;
+          selectedItems.push(item);
+        }
       }
     });
 
     this.dispatchEvent( new CustomEvent('pl-album-item-selected', {
       detail: {
-        cnt: cntChanged * (selected ? 1 : -1)
+        selected,
+        selectedItems
       }
     }) );
 
@@ -125,21 +121,13 @@ class PlAlbum extends HTMLElement {
     // #2 create an event and pass it to gallery, which will be used in pl-gallery-controls
     this.dispatchEvent( new CustomEvent('pl-album-item-selected', {
       detail: {
-        cnt: evt.target.selected ? 1 : -1
+        selected: evt.target.selected,
+        selectedItems: this.data.filter(x=>x.data.id==evt.target.id)
       }
     }) );
   }
-
-  #handleItemDeleted = (evt)=>{
-    let deletedElem = evt.target,
-      deletedItemIdx = this.data.findIndex((x)=>x.layout.id == deletedElem.id);
-    
-    this.#deleteItem(deletedItemIdx, true);
-
-    this.#updateAlbumSelect();
-  }
   
-  #deleteItem(itemIdx, doLayoutChanges=false){
+  #deleteItem(itemIdx){
     // if an item from this album is deleted, 
     // 1. remove references to the item,
     // 2. recompute album layout, 
@@ -155,10 +143,6 @@ class PlAlbum extends HTMLElement {
 
     // remove element from the list
     this.data.splice(itemIdx, 1);
-    
-    if(doLayoutChanges){
-      this.#performLayoutChangesIfNeeded();
-    }
   }
 
   #performLayoutChangesIfNeeded(){
@@ -192,28 +176,17 @@ class PlAlbum extends HTMLElement {
   }
 
   unselectSelectedItems(){
-    let unselectedCnt = 0;
-
     this.data.forEach(item=>{
       if(item.elem && item.elem.selected){
         item.elem.selected = false;
-        unselectedCnt++;
       } else if (item.layout.selected){
         item.layout.selected = false;
-        unselectedCnt++;
       }
     });
 
     // save a few CPU cycles by directly setting to 'none',
     // rather than calling #updateAlbumSelect
     this.shadowRoot.querySelector('pl-album-name').albumSelectedValue = 'none';
-
-    // since the selected items are unselected, send an unselected message to gallery
-    // this.dispatchEvent( new CustomEvent('pl-album-item-selected', {
-    //   detail: {
-    //     cnt: -unselectedCnt
-    //   }
-    // }) );
   }
 
   changeRatingSelectedItems(newRating) {
@@ -222,35 +195,16 @@ class PlAlbum extends HTMLElement {
         return;
       }
 
-      // update in db
-      // updateRating(item.data.id, newRating)
-      fetch(`updateRating?uuid=${item.data.id}&newRating=${newRating}`, {method: "PUT"})
-      .then(async (res)=>{
-        let isJson = res.headers.get('content-type')?.includes('application/json');
-        let output = isJson ? await res.json() : null;
+      // update data
+      item.data.rating = newRating;
 
-        if(!res.ok){
-          return Promise.reject(output.error || res.status+':'+res.statusText)
-        }
-        console.log('updated rating in backend');
-      })
-      // Update in backend successful, now update the UI
-      .then(()=>{
-        // update data
-        item.data.rating = newRating;
-
-        // update element if one was created
-        if(item.elem){
-          // there is no listener on the rating element, so we can 
-          // safely update here
-          item.elem.rating = newRating;
-        }
-      })
-      .catch(err=>{
-        notify(`<strong>Error</strong>:</br>${err}`, 'error', -1);
-      });
-
-    }) 
+      // update element if one was created
+      if(item.elem){
+        // there is no listener on the rating element, so we can 
+        // safely update here
+        item.elem.rating = newRating;
+      }
+    })
   }
 
   deleteSelectedItems(){
@@ -263,26 +217,13 @@ class PlAlbum extends HTMLElement {
     let i = this.data.length;
     while(i--){
       if((this.data[i].elem && this.data[i].elem.selected) || this.data[i].layout.selected){
-        
-        // delete from backend
-        fetch(`/deleteFromCollection/${this.data[i].layout.id}`, {
-          method: 'DELETE',
-        });
-
         // remove from album
-        this.#deleteItem(i, false);
+        this.#deleteItem(i);
         deletedCnt++;
       }
     };
 
     if(deletedCnt > 0){
-      // since the selected items are deleted, send an unselected message to gallery
-      this.dispatchEvent( new CustomEvent('pl-album-item-selected', {
-        detail: {
-          cnt: -deletedCnt
-        }
-      }) );
-
       this.#updateAlbumSelect();
     }
 

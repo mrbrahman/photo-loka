@@ -149,12 +149,12 @@ app.put('/updateIndexerConcurrency/:concurrency', function(req,res,next){
   res.sendStatus(200);
 });
 
-app.put('/updateRating', async function(req,res,next){
-  let {uuid, newRating} = req.query;
+app.put('/updateRating', function(req,res){
+  let {uuid_arr, newRating} = req.body;
   try{
-    await s.indexer.updateRating(uuid, newRating);
+    s.indexer.updateRating(uuid_arr, newRating);
   } catch(err){
-    res.status(500).json({error: err});
+    res.status(500).json({error: err.message});
     return;
   }
   res.sendStatus(200);
@@ -175,9 +175,10 @@ app.post('/updateAlbumName', async function(req,res){
 
 });
 
-app.delete('/deleteFromCollection/:uuid', function(req,res){
-  let uuid = req.params.uuid;
-  s.indexer.deleteFromCollection(uuid);
+app.delete('/deleteFromCollection', function(req,res){
+  let uuid_arr = req.body.uuid_arr;
+  // TODO: Implement trash
+  // s.indexer.deleteFromCollection(uuid_arr);
   res.sendStatus(200);
 });
 

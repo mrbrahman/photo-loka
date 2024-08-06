@@ -70,4 +70,11 @@ function dbSetup() {
   `);
   var info = stmt.run();
 
+  var stmt = db.prepare(`
+    create table exif_updates (
+      uuid, new_exif_json, 
+      update_tm date DEFAULT (datetime('now','localtime')), update_status DEFAULT 'P'
+    );
+  `);
+  var info = stmt.run();
 }

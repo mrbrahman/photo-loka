@@ -242,26 +242,27 @@ export async function updateAlbum(collection_id, fromAlbum, toAlbum){
 export let ignoreWatcherList = {};
 
 // TODO: need to think of a generic function for other metadata as well
-export async function updateRating(uuid, newRating){
-  let fileName = db.getFileName(uuid);
+export function updateRating(uuid_arr, newRating){
+  // let fileName = db.getFileName(uuid);
 
-  // make an entry to the ignore watcher list so that chokidar can ignore
-  // the 'change' it sees on this file.
-  ignoreWatcherList[fileName] = true;
+  // // make an entry to the ignore watcher list so that chokidar can ignore
+  // // the 'change' it sees on this file.
+  // ignoreWatcherList[fileName] = true;
 
   // we also update the file modify date so that next time server starts up, it doesn't
   // see this as a new file and re-indexes it
   let fileModifyDate = dateFormat(new Date(), 'isoDateTime');
 
-  try{
-    await m.updateMetadata(fileName, {Rating: newRating, FileModifyDate: fileModifyDate});
-  } catch(err){
-    // updates to metadata wasn't successful
-    // remove file from ignore list and throw error
-    delete(ignoreWatcherList[fileName]);
-    throw err.message;
-  }
+  // try{
+  //   await m.updateMetadata(fileName, {Rating: newRating, FileModifyDate: fileModifyDate});
+  // } catch(err){
+  //   // updates to metadata wasn't successful
+  //   // remove file from ignore list and throw error
+  //   delete(ignoreWatcherList[fileName]);
+  //   throw err.message;
+  // }
 
-  db.updateRating(uuid, newRating, fileModifyDate);
+  db.updateRating(uuid_arr, newRating, fileModifyDate);
+  db.scheduleExif(uuid_arr, {Rating: newRating, FileModifyDate: fileModifyDate});
 
 }

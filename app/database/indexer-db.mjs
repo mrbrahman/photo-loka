@@ -60,10 +60,27 @@ values
   @region_area_unit
 )
 `;
+
+const insertIntoExifUpdatesStatement = `
+  insert into exif_updates
+  (uuid, new_exif_json)
+  values
+  (@uuid, @new_exif_json)
+`;
+
+const updateRatingStatement = `
+  update metadata
+  set rating = @newRating,
+    file_modify_date = @fileModifyDate
+  where uuid = @uuid
+`;
+
 const deleteMetadata = db.prepare(deleteFromMetadataStatement);
 const insertMetadata = db.prepare(insertIntoMetadataStatement);
 const deleteObjectDetails = db.prepare(deleteFromObjectDetailsStatement);
 const insertObjectDetails = db.prepare(insertIntoObjectDetailsStatement);
+const insertIntoExifUpdates = db.prepare(insertIntoExifUpdatesStatement);
+const updateRatingInDb = db.prepare(updateRatingStatement);
 
 function transformDataToMetadataRow(row){
   ['faces','objects','keywords'].forEach(c=>{
@@ -164,14 +181,29 @@ export function getFileName(uuid){
   return stmt.get({uuid}).filename;
 }
 
-export function updateRating(uuid, newRating, fileModifyDate){
-  let stmt = db.prepare(`
-    update metadata
-    set rating = @newRating,
-      file_modify_date = @fileModifyDate
-    where uuid = @uuid
-  `);
+export function updateRating(uuid_arr, newRating, fileModifyDate){
 
-  let cnt = stmt.run({uuid, newRating, fileModifyDate});
-  return cnt;
+  let trans = db.transaction(
+    function(uuid_arr, newRating, fileModifyDate){
+      for (let uuid of uuid_arr){
+        console.log(`${uuid} ${newRating} ${fileModifyDate}`);
+        updateRatingInDb.run({uuid, newRating, fileModifyDate});
+      }
+    }
+  )
+
+  trans(uuid_arr, newRating, fileModifyDate);
+}
+
+export function scheduleExif(uuid_arr, new_exif_json){
+  let insertMany = db.transaction(
+    function(uuid_arr, new_exif_json){
+      for(let uuid of uuid_arr){
+        insertIntoExifUpdates.run({uuid, new_exif_json: JSON.stringify(new_exif_json)})
+      }
+    }
+  );
+
+  insertMany(uuid_arr, new_exif_json);
+  return uuid_arr.length;
 }

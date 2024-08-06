@@ -62,37 +62,46 @@ class PlSlide extends HTMLElement {
     let item = this.item, newRating = evt.target.value;
     console.log(item);
 
-    // copied below from pl-album (#changeRatingSelectedItems)
-    // TODO: need to handle in one place and avoid duplication of code
+    if(item.data.rating == newRating){
+      return;
+    }
 
-    fetch(`updateRating?uuid=${item.data.id}&newRating=${newRating}`, {method: "PUT"})
-      .then(async (res)=>{
-        let isJson = res.headers.get('content-type')?.includes('application/json');
-        let output = isJson ? await res.json() : null;
-
-        if(!res.ok){
-          return Promise.reject(output.error || res.status+':'+res.statusText)
-        }
-        console.log('updated rating in backend');
+    fetch('/updateRating', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        uuid_arr: [item.data.id],
+        newRating: evt.detail.newRating
       })
-      // Update in backend successful, now update the UI
-      .then(()=>{
-        // update data
-        item.data.rating = newRating;
+    })
+    .then(res=>{
+      if(!res.ok){
+        throw `${res.status} ${res.statusText}`
+      }
+    })
+    // Update in backend successful, now update the UI
+    .then(()=>{
+      // update data
+      item.data.rating = newRating;
 
-        // update element if one was created
-        if(item.elem){
-          // there is no listener on the rating element, so we can 
-          // safely update here
-          item.elem.rating = newRating;
-        }
-      })
-      .catch(err=>{
-        notify(`<strong>Error</strong>:</br>${err}`, 'error', -1);
+      // update element if one was created
+      if(item.elem){
+        // there is no listener on the rating element, so we can 
+        // safely update here
+        item.elem.rating = newRating;
+      }
 
-        // revert rating on screen (extra for this flow)
-        this.shadowRoot.getElementById('rating').value = item.data.rating;
-      });
+      notify(`Updated rating for this item`, 'success');
+    })
+    .catch(err=>{
+      notify(`<strong>Error</strong>:</br>${err}`, 'error', -1);
+
+      // revert rating on screen (extra for this flow)
+      this.shadowRoot.getElementById('rating').value = item.data.rating;
+    });
+
   }
 
   #playPauseMedia(){

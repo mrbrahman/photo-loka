@@ -75,7 +75,6 @@ class PlThumb extends HTMLElement {
       <label for="chk"></label>
 
       <sl-rating label="Rating" readonly></sl-rating>
-      <sl-icon-button name="trash"></sl-icon-button>
     `
     
     // now paint them
@@ -99,8 +98,6 @@ class PlThumb extends HTMLElement {
       this.dispatchEvent(clickEvent);
     })
 
-    // event listeners for rating ang trash will be added during paintSelect
-    
   }
 
   #handleSelection = (evt)=>{
@@ -108,59 +105,6 @@ class PlThumb extends HTMLElement {
     let checkEvent = new CustomEvent('r3-item-selected', {composed: true, bubbles: true});
     this.dispatchEvent(checkEvent);
   }
-/*
-  #slRatingChanged = (evt)=>{
-    let oldRating = this.#rating;
-    let newRating = evt.target.value;
-
-    // https://jasonwatmore.com/post/2021/10/09/fetch-error-handling-for-failed-http-responses-and-network-errors
-    fetch(`updateRating?uuid=${this.id}&newRating=${newRating}`, {method: "PUT"})
-      .then(async (res)=>{
-        let isJson = res.headers.get('content-type')?.includes('application/json');
-        let output = isJson ? await res.json() : null;
-
-        if(!res.ok){
-          return Promise.reject(output.error || res.status+':'+res.statusText)
-        }
-        // no need to use setter; we don't want to paint
-        this.#rating = newRating;
-        console.log('updated rating in backend');
-      })
-      .catch(err=>{
-        // using the setter here, since we need to paint the rating back to original value
-        // but we don't want that change to fire an event, hence disable event listener first
-        // and re-enable after the change is made
-        this.#removeRatingListener();
-        this.rating = oldRating;
-        // for some reason, if event listener is added without a delay, it is firing again on Chrome
-        // due to the rating change to oldRating
-        setTimeout(() => {
-          this.#addRatingListener();
-        }, 1000);
-        
-        notify(`<strong>Error</strong>:</br>${err}`, 'error', -1);
-        
-      })
-  }
-*/
-  // #addRatingListener = ()=> this.shadowRoot.querySelector('sl-rating')
-  //   .addEventListener('sl-change', this.#slRatingChanged)
-  // ;
-
-  // #removeRatingListener = ()=> this.shadowRoot.querySelector('sl-rating')
-  //   .removeEventListener('sl-change', this.#slRatingChanged)
-  // ;  
-  
-  #itemDeleted = (evt)=>{
-    fetch(`/deleteFromCollection/${this.id}`, {
-      method: 'DELETE',
-    });
-    
-    const deleteEvent = new CustomEvent('r3-item-deleted');
-    this.dispatchEvent(deleteEvent);
-  }
-
-
   
   // individual paint functions
   // checking for this.isConnected (i.e in DOM) in each, as these also get triggered for static elements
@@ -213,26 +157,6 @@ class PlThumb extends HTMLElement {
 
     this.shadowRoot.querySelector('input[type="checkbox"]').checked = this.selected;
 
-    // enable/disable rating and delete button
-    this.shadowRoot.querySelector('sl-rating').disabled = this.selected;
-    this.shadowRoot.querySelector('sl-icon-button[name="trash"]').disabled = this.selected;
-    
-    // enable/disable listeners to update individually
-    if(this.selected){
-      // disable
-      // this.#removeRatingListener();
-    
-      this.shadowRoot.querySelector('sl-icon-button[name="trash"]')
-        .removeEventListener('click', this.#itemDeleted)
-      ;
-    } else {
-      // enable
-      // this.#addRatingListener();
-    
-      this.shadowRoot.querySelector('sl-icon-button[name="trash"]')
-        .addEventListener('click', this.#itemDeleted)
-      ;
-    }
   }
   
   // boilerplate stuff
