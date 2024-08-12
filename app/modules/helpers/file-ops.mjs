@@ -147,15 +147,24 @@ export async function placeFileInCollection(collection, filename, file_date, inP
   }
 }
 
-export function renameFolder(collection, currAlbum, newAlbum){
-  let currFolderName=path.join(collection.collection_path,currAlbum),
-    newFolderName=path.join(collection.collection_path,newAlbum)
-  ;
+export function renameFolder(currAlbum, newAlbum){
   try {
-    fs.renameSync(currFolderName, newFolderName);
+    fs.renameSync(currAlbum, newAlbum);
   } catch (error) {
     console.log(error)
     throw `Error while renaming folder: ${error.message}`;
+  }
+}
+
+export async function moveItem(currPath, newFolder){
+  try {
+    if(!fs.existsSync(newFolder)){
+      fs.mkdirSync(newFolder, {recursive: true})
+    }
+    
+    await fsPromises.rename(currPath, path.join(newFolder, path.basename(currPath)))
+  } catch (error) {
+    throw `Errow while move: ${error.code} ${error.message}`;
   }
 }
 

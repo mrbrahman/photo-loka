@@ -182,6 +182,12 @@ app.delete('/deleteFromCollection', function(req,res){
   res.sendStatus(200);
 });
 
+app.put('/moveItems', function(req,res){
+  let {collection_id, uuid_arr, new_album_name} = req.body;
+  s.indexer.moveItemsToAlbum(collection_id, uuid_arr, new_album_name);
+  res.send(200);
+});
+
 // TODO
 // app.delete('/deleteAlbum/:albumName', function(req,res){
 //   let albumName = req.params.albumName;

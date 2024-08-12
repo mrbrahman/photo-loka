@@ -2,6 +2,7 @@ import * as fs from 'fs';
 const fsPromises = fs.promises;
 import {EOL} from 'os';
 import {EventEmitter} from 'events';
+import * as path from 'path';
 
 import {v4 as uuidv4} from 'uuid';
 import dateFormat from 'dateformat';
@@ -219,9 +220,11 @@ export async function indexCollection(collection_id, firstTime=false){
 
 export async function updateAlbum(collection_id, fromAlbum, toAlbum){
   let c = collections.getCollection(collection_id);
+  let currFolderName=path.join(c.collection_path,currAlbum),
+  newFolderName=path.join(c.collection_path,newAlbum)
   
   if(c.album_type=="FOLDER_ALBUM"){
-    fileOps.renameFolder(c, fromAlbum, toAlbum);
+    fileOps.renameFolder(currFolderName, newFolderName);
   
     // write out the changes to file
     // this may help in renaming any backups (for e.g. rsync backups) without having to delete and copy all files
@@ -235,6 +238,19 @@ export async function updateAlbum(collection_id, fromAlbum, toAlbum){
   
   return db.updateAlbum(
     collection_id, fromAlbum, toAlbum, 
+    c.album_type=="FOLDER_ALBUM" ? true : false  // whether to update file name
+  );
+}
+
+export function moveItemsToAlbum(collection_id, uuid_arr, newAlbumName){
+  let c = collections.getCollection(collection_id),
+    newPath = path.join(c.collection_path, newAlbumName);
+  
+  for(let uuid of uuid_arr){
+    fileOps.moveItem(db.getFileName(uuid), newPath);
+  }
+  return db.updateAlbumForItems(
+    uuid_arr, newAlbumName,
     c.album_type=="FOLDER_ALBUM" ? true : false  // whether to update file name
   );
 }

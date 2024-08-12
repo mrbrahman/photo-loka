@@ -380,7 +380,7 @@
         <sl-rating id="rating"></sl-rating>
         <sl-icon-button name="tags-fill">Keywords</sl-icon-button>
         <sl-icon-button id="delete" name="trash-fill">Delete</sl-icon-button>
-        <sl-icon-button name="folder-plus">Organize</sl-icon-button>
+        <sl-icon-button id="organize" name="folder-plus">Organize</sl-icon-button>
         
         <!-- rest actions from the dropdown -->
         <sl-dropdown>
@@ -398,6 +398,12 @@
         </sl-dropdown>
       </div>
     </div>
+
+    <sl-dialog label="Create/Move-to New Album">
+      <sl-input></sl-input>
+      <sl-button id="save" slot="footer" variant="primary">Save</sl-button>
+      <sl-button id="cancel" slot="footer" variant="primary">Cancel</sl-button>
+    </sl-dialog>
   </template>
 
   <template id="PL-SLIDESHOW">

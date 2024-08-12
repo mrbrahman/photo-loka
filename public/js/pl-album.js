@@ -33,6 +33,8 @@ class PlAlbum extends HTMLElement {
       // painting of layout will selectively happen from the wrapper, so not doing anything here
     }
 
+    this.#updateAlbumSelect();
+
     this.shadowRoot.querySelector('pl-album-name')
       .addEventListener('r3-select-all-clicked', this.#handleSelectAll, true)
     ;
@@ -90,6 +92,7 @@ class PlAlbum extends HTMLElement {
 
     this.dispatchEvent( new CustomEvent('pl-album-item-selected', {
       detail: {
+        selectAlbum: this.shadowRoot.querySelector('pl-album-name').albumName,
         selected,
         selectedItems
       }
@@ -121,6 +124,7 @@ class PlAlbum extends HTMLElement {
     // #2 create an event and pass it to gallery, which will be used in pl-gallery-controls
     this.dispatchEvent( new CustomEvent('pl-album-item-selected', {
       detail: {
+        selectAlbum: this.shadowRoot.querySelector('pl-album-name').albumName,
         selected: evt.target.selected,
         selectedItems: this.data.filter(x=>x.data.id==evt.target.id)
       }
@@ -295,7 +299,7 @@ class PlAlbum extends HTMLElement {
     this.shadowRoot.getElementById('container').style.height = this.album_height+'px';
   }
 
-  redoLayout = this.#doLayout;
+  #redoLayout = this.#doLayout;
   
   selectivelyPaintLayout(bufferTop, bufferBottom, albumTop){
 
@@ -401,7 +405,18 @@ class PlAlbum extends HTMLElement {
     // create a placeholder for the element
     // this will be further updated with the layout and actual element reference
     this.#data = _;
+  }
 
+  // this method is exposed
+  addNewItems = (items)=>{
+    // TODO: sort the items (need ts from db)
+    this.data.push(...items);
+
+    this.#redoLayout();
+    if(this.#paint_layout){
+      this.#paintLayout()
+    }
+    this.#updateAlbumSelect();
   }
 
   get album_name_height(){

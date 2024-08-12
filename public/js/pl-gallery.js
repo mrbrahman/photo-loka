@@ -22,7 +22,7 @@ import {debounce, throttle, notify} from './utils.mjs';
 class PlGallery extends HTMLElement {
 
   // internal variables
-  #albums = []; #albumsInBuffer = {}; #itemsSelected = [];
+  #albums = []; #albumsInBuffer = {}; #albumsSelectedCnt = {}; #itemsSelected = [];
   // variables that can be get/set
   #data;
 
@@ -47,9 +47,8 @@ class PlGallery extends HTMLElement {
         width: this.shadowRoot.getElementById('gallery').clientWidth
       });
 
-      album.addEventListener('pl-album-height-changed', this.#handleAlbumHeightChange);
-      album.addEventListener('pl-album-empty', this.#removeAlbum);
-      album.addEventListener('pl-album-item-selected', this.#handleItemsSelected);
+      // TODO: Can we have gallery listen to these events rather than individual albums?
+      this.#addAlbumEventListeners(album);
     
       return album;
     });
@@ -66,13 +65,24 @@ class PlGallery extends HTMLElement {
     ;
   }
 
+  #addAlbumEventListeners = (album)=>{
+    album.addEventListener('pl-album-height-changed', this.#handleAlbumHeightChange);
+    album.addEventListener('pl-album-empty', this.#removeAlbum);
+    album.addEventListener('pl-album-item-selected', this.#handleItemsSelected);
+  }
+
   #handleItemsSelected = (evt)=>{
-    let {selected, selectedItems} = evt.detail;
+    let {selectAlbum, selected, selectedItems} = evt.detail;
 
     // update the list with the ones selected/de-selected
     if(selected){
+      // TODO: edge case - if the album is first selected, then the album name is changed, that changed 
+      // album name is not going to be reflected in here. Need to think of a different design
+      
+      this.#albumsSelectedCnt[selectAlbum] =  this.#albumsSelectedCnt[selectAlbum] || 0 + selectedItems.length;
       this.#itemsSelected.push(...selectedItems);
     } else {
+      this.#albumsSelectedCnt[selectAlbum] -= selectedItems.length;
       // remove selectedItems from this.#itemsSelected
       // https://stackoverflow.com/a/47017949/8098748
       this.#itemsSelected = this.#itemsSelected.filter(function(a) {
@@ -91,10 +101,12 @@ class PlGallery extends HTMLElement {
         c.addEventListener('pl-gallery-controls-closed', this.#handleGalleryControlsClosed);
         c.addEventListener('pl-gallery-controls-rating-changed', this.#handleGalleryControlsRatingChanged);
         c.addEventListener('pl-gallery-controls-delete-pressed', this.#handleGalleryControlsDeletePressed);
+        c.addEventListener('pl-gallery-controls-dialog-save', this.#createOrMoveSelectedItems);
       }
 
       let c = document.body.querySelector('pl-gallery-controls');
       c.ctr = this.#itemsSelected.length;
+      c.selectedAlbums = this.#albumsSelectedCnt;
 
       let distinctRatings = [... new Set(this.#itemsSelected.map(x=>x.data.rating))]
 
@@ -108,10 +120,89 @@ class PlGallery extends HTMLElement {
 
       
     } else if(this.#itemsSelected.length == 0){
+      this.#removeGalleryControls();
+    }
+  }
 
-      let c = document.body.querySelector('pl-gallery-controls');
-      c.ctr = 0;
-      c.remove();
+  #createOrMoveSelectedItems = async (evt)=>{
+
+    let targetAlbumName = evt.detail.trim(),
+      allAlbumNames = this.#albums.map(x=>x.album_name);
+  
+    try {
+      // first save in backend
+      await fetch('/moveItems', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          collection_id: 1,   // TODO: remove hardcoding
+          uuid_arr: this.#itemsSelected.map(x=>x.data.id),
+          new_album_name: targetAlbumName
+        })
+      })
+      .then(res=>{
+        if(!res.ok){
+          throw `${res.status} ${res.statusText}`
+        }
+      });
+
+      // now update UI
+      // TODO: Find if the item is already in the targetAlbum, and if yes, ignore
+
+      // first delete selected items from current album(s)
+      // this only deletes the references to the selected items from the source albums
+      // the selected items are also in the selectedItems list
+      this.#albums.forEach(album=>album.deleteSelectedItems());
+
+      // now add them to the target album
+      if(allAlbumNames.includes(targetAlbumName)){
+        // album exists, just move the items there
+        let targetAlbum = this.#albums.find(x=>x.album_name == targetAlbumName);
+        targetAlbum.addNewItems(this.#itemsSelected);
+
+      } else {
+        // create new album
+        let newAlbum = Object.assign(document.createElement('pl-album'), {
+          id: targetAlbumName.replaceAll(/[\s/]/gi, '_'),
+          album_name: targetAlbumName,
+          data: this.#itemsSelected,
+          width: this.shadowRoot.getElementById('gallery').clientWidth
+        });
+
+        this.#addAlbumEventListeners(newAlbum);
+
+        // find where to insert the new album element
+        allAlbumNames.push(targetAlbumName);
+        allAlbumNames.sort().reverse();
+        // before ['a', 'b', 'c', 'd']   now insert in position 2
+        // after ['a', 'b', 'b-new', 'c', 'd']
+        let i = allAlbumNames.indexOf(targetAlbumName);
+        if(i==this.#albums.length){
+          // insert at the end of the current album list, and make DOM changes
+          this.#albums.push(newAlbum);
+          this.shadowRoot.getElementById('gallery').appendChild(newAlbum);
+        } else {
+          // need to insert in the middle
+          this.#albums.splice(i, 0, newAlbum);
+          let el = this.shadowRoot.getElementById('gallery').querySelector(`:nth-child(${i+1})`); // css index starts with 1
+          el.insertAdjacentElement('beforebegin', newAlbum);
+
+        }
+      }
+
+      this.#reAssignAlbumPositions();
+      this.#selectivelyPaintAlbums();
+
+      this.#albumsSelectedCnt = {};
+      this.#albumsSelectedCnt[targetAlbumName] = this.#itemsSelected.length;
+      document.body.querySelector('pl-gallery-controls').selectedAlbums = this.#albumsSelectedCnt;
+
+      notify(`${this.#itemsSelected.length} item${this.#itemsSelected.length > 1 ? 's' : ''} moved`, 'success');
+
+    } catch (err) {
+      notify(`<strong>Error</strong>:</br>${err}`, 'error', -1);
     }
 
   }
@@ -125,11 +216,10 @@ class PlGallery extends HTMLElement {
   }
   
   #removeGalleryControls = ()=>{
-    this.#itemsSelected = [];
+    this.#itemsSelected = []; this.#albumsSelectedCnt = {};
+
     let c = document.body.querySelector('pl-gallery-controls');
-    c.ctr = 0;
     c.remove();
-    
   }
 
   #handleGalleryControlsRatingChanged = (evt)=>{

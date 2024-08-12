@@ -171,6 +171,26 @@ export function updateAlbum(collection_id, fromAlbum, toAlbum, updateFileName){
   return cnt;
 }
 
+export function updateAlbumForItems(uuid_arr, toAlbum, updateFileName){
+  let stmt = db.prepare(`
+    update metadata
+    set album = @toAlbum
+      ${updateFileName ? ", filename = replace(filename, album, @toAlbum)" : ''} 
+    where uuid = @uuid
+  `);
+
+  let trans = db.transaction(
+    function(uuid_arr, toAlbum, updateFileName){
+      for (let uuid of uuid_arr){
+        stmt.run({uuid, toAlbum, updateFileName});
+      }
+    }
+  )
+
+  trans(uuid_arr, toAlbum, updateFileName);
+}
+
+
 export function getFileName(uuid){
   let stmt = db.prepare(`
     select filename 

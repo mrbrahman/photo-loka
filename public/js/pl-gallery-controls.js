@@ -1,5 +1,5 @@
 class PlGalleryControls extends HTMLElement {
-  #ctr; #rating;
+  #ctr; #rating; #selectedAlbums = {};
 
   constructor() {
     super().attachShadow({mode: 'open'}); // sets "this" and "this.shadowRoot"
@@ -24,6 +24,21 @@ class PlGalleryControls extends HTMLElement {
 
     document.addEventListener("keydown", this.#handleEscape);
 
+    let dialog = this.shadowRoot.querySelector('sl-dialog')
+      , cancelButton = dialog.querySelector('#cancel')
+      , saveButton = dialog.querySelector('#save')
+      , inp = dialog.querySelector('sl-input');
+
+    cancelButton.addEventListener('click', ()=>{
+      dialog.hide();
+    });
+    saveButton.addEventListener('click', (evt)=>{
+      this.dispatchEvent(new CustomEvent('pl-gallery-controls-dialog-save', {detail: inp.value}));
+      dialog.hide();
+    });
+
+    this.shadowRoot.getElementById("organize")
+    .addEventListener('click', ()=>dialog.show());
   }
 
   #handleEscape = (evt)=>{
@@ -96,6 +111,13 @@ class PlGalleryControls extends HTMLElement {
     if(this.isConnected){
       this.#paintRating();
     }
+  }
+
+  get selectedAlbums(){
+    return this.#selectedAlbums;
+  }
+  set selectedAlbums(_){
+    this.#selectedAlbums = _
   }
 
 }
