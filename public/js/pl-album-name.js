@@ -53,9 +53,18 @@ class PlAlbumName extends HTMLElement {
         newAlbumName: this.shadowRoot.getElementById('album-name').innerText
       })
     })
-    .then(res=>{
-      if(!res.ok){
-        throw `${res.status} ${res.statusText}`
+    .then(res=>
+      res.json()
+      .then(data=>({
+        result: data,
+        ok: res.ok,
+        status: res.status,
+        statusText: res.statusText
+      }))
+    )
+    .then(out=>{
+      if(!out.ok){
+        throw out.result
       }
     })
     .then(()=>{
@@ -68,7 +77,7 @@ class PlAlbumName extends HTMLElement {
       
     })
     .catch(err=>{
-      notify(`<strong>Error</strong>:</br>${err}`, 'error', -1);
+      notify(`<strong>Error</strong>:</br>${err.code} ${err.message}`, 'error', -1);
 
     });
 

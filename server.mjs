@@ -170,7 +170,7 @@ app.post('/updateAlbumName', async function(req,res){
     let updates = await s.indexer.updateAlbum(collection_id, currAlbumName, newAlbumName);
     res.json(updates);
   } catch (err) {
-    res.status(500).json({error: err});
+    res.status(500).json(err);
   }
 
 });
