@@ -52,23 +52,22 @@ class PlAlbumName extends HTMLElement {
         currAlbumName: this.#albumName,
         newAlbumName: this.shadowRoot.getElementById('album-name').innerText
       })
-    }).then(async (res)=>{
-      // TODO: error message
+    })
+    .then(res=>{
       if(!res.ok){
-        let isJson = res.headers.get('content-type')?.includes('application/json');
-        let output = isJson ? await res.json() : null;
-
-        console.log(output.error);
-
-        return Promise.reject(output.error || res.status+':'+res.statusText)
+        throw `${res.status} ${res.statusText}`
       }
+    })
+    .then(()=>{
+      // update UI
       this.albumName = this.shadowRoot.getElementById('album-name').innerText;
       this.shadowRoot.getElementById('album-name').blur();
       this.shadowRoot.getElementById('edit-controls').style.visibility = 'hidden';
 
       notify('Album name updated successfully', 'success');
       
-    }).catch(err=>{
+    })
+    .catch(err=>{
       notify(`<strong>Error</strong>:</br>${err}`, 'error', -1);
 
     });
@@ -110,16 +109,14 @@ class PlAlbumName extends HTMLElement {
       // TODO: remove hardcoding, may be when there is at least one other person using this sytem :-)
       let searchStr = albumNameText.textContent.substring(0,15);
       fetch(`/searchForExistingAlbums?searchStr=${searchStr}&wantFullName=true`)
-      .then(async (res)=>{
-        let isJson = res.headers.get('content-type')?.includes('application/json');
-        let output = isJson ? await res.json() : null;
-
-        // TODO: error message
+      .then(res=>{
         if(!res.ok){
-          console.log(output.error);
-  
-          return Promise.reject(output.error || res.status+':'+res.statusText)
+          throw `${res.status} ${res.statusText}`
         }
+        return res.json();
+      })
+      .then((output)=>{
+
         let rows = output.map(d=>`${d.similar}: ${d.cnt}`)
 
         // ideally would want to do this in an auto-complete kind of feature
@@ -129,7 +126,8 @@ class PlAlbumName extends HTMLElement {
         if (rows.length > 0){
           notify(rows.join('<BR>'), 'info', 5000);
         }
-      }).catch(err=>{
+      })
+      .catch(err=>{
         notify(`<strong>Error</strong>:</br>${err}`, 'error', -1);
   
       });
@@ -157,29 +155,28 @@ class PlAlbumName extends HTMLElement {
 
   #suggestAlbumNames = (txt) => {
     fetch(`/searchForExistingAlbums?searchStr=${txt.substring(15).trim()}&wantFullName=false`)
-      .then(async (res)=>{
-        let isJson = res.headers.get('content-type')?.includes('application/json');
-        let output = isJson ? await res.json() : null;
+    .then(res=>{
+      if(!res.ok){
+        throw `${res.status} ${res.statusText}`
+      }
+      return res.json();
+    })
+    .then((output)=>{
 
-        // TODO: error message
-        if(!res.ok){
-          console.log(output.error);
-  
-          return Promise.reject(output.error || res.status+':'+res.statusText)
-        }
-        let rows = output.map(d=>`${d.similar}: ${d.cnt}`)
+      let rows = output.map(d=>`${d.similar}: ${d.cnt}`)
 
-        // ideally would want to do this in an auto-complete kind of feature
-        // but sl-combobox is still not planned. See https://github.com/shoelace-style/shoelace/discussions/2103
-        // TODO: Once it becomes available, will need to use that
-        // But for now, just use an alert
-        if (rows.length > 0){
-          notify(rows.join('<BR>'), 'info', 5000);
-        }
-      }).catch(err=>{
+      // ideally would want to do this in an auto-complete kind of feature
+      // but sl-combobox is still not planned. See https://github.com/shoelace-style/shoelace/discussions/2103
+      // TODO: Once it becomes available, will need to use that
+      // But for now, just use an alert
+      if (rows.length > 0){
+        notify(rows.join('<BR>'), 'info', 5000);
+      }
+    })
+    .catch(err=>{
         notify(`<strong>Error</strong>:</br>${err}`, 'error', -1);
   
-      });
+    });
   }
 
   #handleKey = (evt) => {
