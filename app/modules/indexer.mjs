@@ -220,8 +220,8 @@ export async function indexCollection(collection_id, firstTime=false){
 
 export async function updateAlbum(collection_id, fromAlbum, toAlbum){
   let c = collections.getCollection(collection_id);
-  let currFolderName=path.join(c.collection_path,currAlbum),
-  newFolderName=path.join(c.collection_path,newAlbum)
+  let currFolderName=path.join(c.collection_path,fromAlbum),
+  newFolderName=path.join(c.collection_path,toAlbum)
   
   if(c.album_type=="FOLDER_ALBUM"){
     fileOps.renameFolder(currFolderName, newFolderName);
