@@ -72,8 +72,9 @@ function showGallery(data){
   notify(`Found ${data.length.toLocaleString()} albums containing ${data.map(x=>x.items.length).reduce((a,c)=>a+c).toLocaleString()} items`);
 }
 
-document.getElementById('app').addEventListener('pl-gallery-item-clicked', (evt)=>{
-  router.navigate(`/slideshow/${evt.detail.id}`)
+document.getElementById('app').addEventListener('pl-slideshow-request', (evt)=>{
+  state.galleryData = evt.detail.data;
+  router.navigate(`/slideshow/${evt.detail.startFrom}`)
 });
 
 document.getElementById('app').addEventListener('pl-slideshow-closed', ()=>{

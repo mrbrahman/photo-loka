@@ -159,7 +159,7 @@ class PlSlide extends HTMLElement {
   }
 
   set play(_){
-    this.#play = Boolean(_);
+    this.#play = Boolean(_);  // TODO: fix this
     this.#playPauseMedia();
   }
   get play(){

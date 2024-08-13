@@ -57,6 +57,24 @@ class PlGallery extends HTMLElement {
     this.#reAssignAlbumPositions();
     this.#selectivelyPaintAlbums();
 
+    this.addEventListener('pl-gallery-item-clicked', (evt)=>{
+      evt.stopPropagation();
+
+      this.dispatchEvent(new CustomEvent('pl-slideshow-request', {
+        composed: true,
+        bubbles: true,
+        detail: {
+          data: this.#albums.map(x=>{
+            return {
+              album: x.album_name, 
+              items: x.data
+            }
+          }),
+          startFrom: evt.detail.id
+        }
+      }))
+    })
+
     this.shadowRoot.getElementById('gallery')
       .addEventListener('scroll', this.#throttleHandleScroll)
     ;
