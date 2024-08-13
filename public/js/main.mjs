@@ -96,12 +96,21 @@ router.on('/', function(){
   
   showProgressBar();
 
-  fetch('/getAll').then(response=>response.json())
-    .then(result=>{
-      showGallery(result);
-      hideProgressBar();
-    })
-  ;
+  fetch('/getAll')
+  .then(res=>{
+    if(!res.ok){
+      throw `${res.status} ${res.statusText}`
+    }
+    return res.json();
+  })
+  .then(result=>{
+    showGallery(result);
+    hideProgressBar();
+  })
+  .catch(err=>{
+    notify(`<strong>Error</strong>:</br>${err}`, 'error', -1);
+
+  });
 });
 
 router.on('/search/:searchText', function(p){
@@ -123,11 +132,20 @@ router.on('/search/:searchText', function(p){
     },
     body: JSON.stringify({collection_id: state.collection_id, searchText: p.data.searchText})
   })
-  .then(response=>response.json())
+  .then(res=>{
+    if(!res.ok){
+      throw `${res.status} ${res.statusText}`
+    }
+    return res.json();
+  })
   .then(result=>{
     showGallery(result);
     hideProgressBar();
   })
+  .catch(err=>{
+    notify(`<strong>Error</strong>:</br>${err}`, 'error', -1);
+
+  });
 });
 
 router.on('/slideshow/:startFrom', function(p){
