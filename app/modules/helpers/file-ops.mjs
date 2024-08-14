@@ -150,9 +150,9 @@ export async function placeFileInCollection(collection, filename, file_date, inP
 export function renameFolder(currAlbum, newAlbum){
   try {
     fs.renameSync(currAlbum, newAlbum);
-  } catch (error) {
-    console.log(error)
-    throw `Error while renaming folder: ${error.message}`;
+  } catch (err) {
+    console.log(err)
+    throw {code: err.code, message: err.message};
   }
 }
 
