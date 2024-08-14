@@ -83,10 +83,14 @@ class PlGallery extends HTMLElement {
     ;
   }
 
+  // TODO: can we add only one set of listeners to all albums?
   #addAlbumEventListeners = (album)=>{
     album.addEventListener('pl-album-height-changed', this.#handleAlbumHeightChange);
     album.addEventListener('pl-album-empty', this.#removeAlbum);
     album.addEventListener('pl-album-item-selected', this.#handleItemsSelected);
+    album.addEventListener('pl-album-move-selected-items', (evt)=>{
+      this.#createOrMoveSelectedItems(evt.detail.newAlbumName.trim())
+    });
   }
 
   #handleItemsSelected = (evt)=>{
@@ -119,7 +123,9 @@ class PlGallery extends HTMLElement {
         c.addEventListener('pl-gallery-controls-closed', this.#handleGalleryControlsClosed);
         c.addEventListener('pl-gallery-controls-rating-changed', this.#handleGalleryControlsRatingChanged);
         c.addEventListener('pl-gallery-controls-delete-pressed', this.#handleGalleryControlsDeletePressed);
-        c.addEventListener('pl-gallery-controls-dialog-save', this.#createOrMoveSelectedItems);
+        c.addEventListener('pl-gallery-controls-dialog-save', (evt)=>{
+          this.#createOrMoveSelectedItems(evt.detail.trim())
+        });
       }
 
       let c = document.body.querySelector('pl-gallery-controls');
@@ -142,10 +148,8 @@ class PlGallery extends HTMLElement {
     }
   }
 
-  #createOrMoveSelectedItems = async (evt)=>{
-
-    let targetAlbumName = evt.detail.trim(),
-      allAlbumNames = this.#albums.map(x=>x.album_name);
+  #createOrMoveSelectedItems = async (targetAlbumName)=>{
+    let allAlbumNames = this.#albums.map(x=>x.album_name);
   
     try {
       // first save in backend
@@ -213,11 +217,12 @@ class PlGallery extends HTMLElement {
       this.#reAssignAlbumPositions();
       this.#selectivelyPaintAlbums();
 
-      this.#albumsSelectedCnt = {};
-      this.#albumsSelectedCnt[targetAlbumName] = this.#itemsSelected.length;
-      document.body.querySelector('pl-gallery-controls').selectedAlbums = this.#albumsSelectedCnt;
-
       notify(`${this.#itemsSelected.length} item${this.#itemsSelected.length > 1 ? 's' : ''} moved`, 'success');
+
+      // We don't want to keep the items selected, hence force gallery controls close
+      this.#handleGalleryControlsClosed();
+
+
 
     } catch (err) {
       notify(`<strong>Error</strong>:</br>${err}`, 'error', -1);

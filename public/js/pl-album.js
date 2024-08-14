@@ -36,11 +36,12 @@ class PlAlbum extends HTMLElement {
     this.#updateAlbumSelect();
 
     this.shadowRoot.querySelector('pl-album-name')
-      .addEventListener('r3-select-all-clicked', this.#handleSelectAll, true)
+      .addEventListener('r3-select-all-clicked', (evt)=>this.#handleSelectAll(evt.detail.select), true)
     ;
 
     this.shadowRoot.getElementById('container')
       .addEventListener('r3-item-selected', this.#handleItemSelected, true);
+
   }
   
   attributeChangedCallback(name, oldValue, newValue) {
@@ -67,24 +68,24 @@ class PlAlbum extends HTMLElement {
     // nothing to do
   }
 
-  #handleSelectAll = (evt)=>{
-    let selectedItems = [], selected = evt.detail.select;
+  #handleSelectAll = (isSelected)=>{
+    let selectedItems = [];
 
     // # First select all items in the album
     this.data.forEach(item=>{
       if(item.elem){
-        if(item.elem.selected == selected){
+        if(item.elem.selected == isSelected){
           // item is already in the target state, nothing to do
         } else {
-          item.elem.selected = selected;
+          item.elem.selected = isSelected;
           selectedItems.push(item);
         }
       } else {
         // the item is not in DOM yet, save the state in layout
-        if(item.layout.selected == selected){
+        if(item.layout.selected == isSelected){
           // item is already in the target state, nothing to do
         } else {
-          item.layout.selected = selected;
+          item.layout.selected = isSelected;
           selectedItems.push(item);
         }
       }
@@ -93,7 +94,7 @@ class PlAlbum extends HTMLElement {
     this.dispatchEvent( new CustomEvent('pl-album-item-selected', {
       detail: {
         selectAlbum: this.shadowRoot.querySelector('pl-album-name').albumName,
-        selected,
+        selected: isSelected,
         selectedItems
       }
     }) );
@@ -365,8 +366,35 @@ class PlAlbum extends HTMLElement {
     let a = document.createElement('pl-album-name');
     a.albumName = this.album_name;
     a.style.height = this.album_name_height + 'px';
+    a.addEventListener('pl-rename-dir-not-empty', this.#handleDirNotEmptyDuringRename)
 
     this.shadowRoot.getElementById('container').appendChild(a);
+  }
+
+  #handleDirNotEmptyDuringRename = (evt)=>{ 
+    // show dialog
+    let dialog = this.shadowRoot.querySelector('sl-dialog');
+
+    // TODO: is there a better house for the listeners?
+    
+    // Ideally, I would add these event listeners during connectedCallBack
+    // But then need to find a way to pass the newAlbumName
+    // Hence, instead I add the listeners here, as the listeners are only used
+    // one time. Because after the move, the album will be deleted, and with
+    // it these listeners will also be gone
+
+    dialog.querySelector('#yes').addEventListener('click', ()=>{
+      // select all items of this album
+      this.#handleSelectAll(true);
+      
+      // send an event to gallery to request move to the new album
+      this.dispatchEvent(new CustomEvent('pl-album-move-selected-items', {detail: {newAlbumName: evt.detail.newAlbumName}}));
+      dialog.hide();
+    });
+
+    dialog.querySelector('#no').addEventListener('click', ()=>dialog.hide());
+
+    dialog.show();
   }
 
   // boilerplate

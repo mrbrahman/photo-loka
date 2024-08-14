@@ -77,7 +77,16 @@ class PlAlbumName extends HTMLElement {
       
     })
     .catch(err=>{
-      notify(`<strong>Error</strong>:</br>${err.code} ${err.message}`, 'error', -1);
+      if(err.code === "ENOTEMPTY"){
+        // directory already exists
+        this.dispatchEvent(new CustomEvent('pl-rename-dir-not-empty', {
+          detail: {
+            newAlbumName: this.shadowRoot.getElementById('album-name').innerText
+          }
+        }))
+      } else {
+        notify(`<strong>Error</strong>:</br>${err.code}`, 'error', -1);
+      }
 
     });
 
