@@ -29,6 +29,7 @@ Currently this project is very much a work-in-progress.
   - Indexer has the ability to run and gather metadata for multiple photos at the same time. See `updateIndexerConcurrency` below
   - Indexer can also watch specific folders for new files, and as new files become available, bring them into the respective collection and index them
 - Rename albums (similar to renaming folders on a File Explorer program)
+- Move items from one album to another
 - Delete files
 
 ## Metadata management
