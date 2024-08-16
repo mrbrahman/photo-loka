@@ -24,16 +24,18 @@ Currently this project is very much a work-in-progress.
 4. **Indexing**: The process of reading media and cataloging metadata to help with search. Also thumbnail generation.
 
 # Current Features
-## Media Management
+
+## Metadata management
 - Index media photos, videos and audio
-  - Indexer has the ability to run and gather metadata for multiple photos at the same time. See `updateIndexerConcurrency` below
+  - Extract key exif data (metadata), and store in SQLite db
+  - Indexer has the ability to run and gather metadata for multiple files at the same time. See `updateIndexerConcurrency` below
   - Indexer can also watch specific folders for new files, and as new files become available, bring them into the respective collection and index them
+- Mark as favorite / stars (there is no favorite in exif, but there is a 'rating' field)
+
+## Media Management
 - Rename albums (similar to renaming folders on a File Explorer program)
 - Move items from one album to another
 - Delete files
-
-## Metadata management
-- Mark as favorite / stars (there is no favorite in exif, but there is a 'rating' field)
 
 ## UI features
 - Display photos and videos on a responsive, progressive, scrollable grid
