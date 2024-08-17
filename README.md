@@ -25,17 +25,19 @@ Currently this project is very much a work-in-progress.
 
 # Current Features
 
+## Media Management
+- Read existing folder structure (specificed during collection creation) and index the files found (if any) under respective collections
+- Watch one or more folders for new files, and as new files become available, bring them into the respective collection and index themß
+- Rename albums (similar to renaming folders on a File Explorer program)
+- Select files and move them to a different album
+- Select files and move them to trash
+
 ## Metadata management
 - Index media photos, videos and audio
   - Extract key exif data (metadata), and store in SQLite db
   - Indexer has the ability to run and gather metadata for multiple files at the same time. See `updateIndexerConcurrency` below
-  - Indexer can also watch specific folders for new files, and as new files become available, bring them into the respective collection and index them
 - Mark as favorite / stars (there is no favorite in exif, but there is a 'rating' field)
-
-## Media Management
-- Rename albums (similar to renaming folders on a File Explorer program)
-- Move items from one album to another
-- Delete files
+- Optimize write of metadata to files by delaying the write. This enables grouping all the changes together and writing to file at one go
 
 ## UI features
 - Display photos and videos on a responsive, progressive, scrollable grid
@@ -64,9 +66,8 @@ Currently this project is very much a work-in-progress.
 # Features TODO
 **Near future**
 - Add/change "tags" (keywords)
-- Select files and move them to a different album (and eventually collection)
-- Ability to rename files (mainly videos) similar to folders
-- Optional staging area (?)
+- Display more info (filename, description, camera, date/time, people, location) on the file being viewed
+- Ability to rename files
 
 **After near future**
 - Clustering photos on map
