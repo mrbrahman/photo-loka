@@ -11,14 +11,13 @@ const dbFile = config.dbFile;
 
 if(!fs.existsSync(path.dirname(dbFile))){
   fs.mkdirSync(path.dirname(dbFile), {recursive: true});
-
-  // PRAGMA statements to make sqlite run faster
-  // found at https://stackoverflow.com/a/27290180/8098748
-  db.pragma("journal_mode = WAL");
-  db.pragma("synchronous = NORMAL");
 }
 
 export const db = new Database(dbFile, {  }); // verbose: console.log
+// PRAGMA statements to make sqlite run faster
+// found at https://stackoverflow.com/a/27290180/8098748
+db.pragma("journal_mode = WAL");
+db.pragma("synchronous = NORMAL");
 
 // install schema as needed (based on 'user_version')
 
