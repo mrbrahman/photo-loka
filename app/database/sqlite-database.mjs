@@ -50,12 +50,12 @@ function initialDbSetup() {
   // this is an FTS file table, which enables "search" feature
   var stmt = db.prepare(`
     create virtual table metadata using fts5(
-      collection_id, uuid, album, filename,
-      description, filesize, ext, mimetype, mediatype,
-      keywords, faces, objects, rating, imagesize, aspectratio,
-      make, model, orientation, gpsposition, duration,
-      region_applied_to_dimension_w, region_applied_to_dimension_h, region_applied_to_dimension_unit,
-      datetime_original, create_date, file_modify_date, file_date
+      collection_id UNINDEXED, uuid UNINDEXED, album, filename,
+      description, filesize UNINDEXED, ext UNINDEXED, mimetype, mediatype,
+      keywords, faces, objects, rating UNINDEXED, imagesize UNINDEXED, aspectratio UNINDEXED,
+      make, model, orientation UNINDEXED, gpsposition UNINDEXED, duration UNINDEXED,
+      region_applied_to_dimension_w UNINDEXED, region_applied_to_dimension_h UNINDEXED, region_applied_to_dimension_unit UNINDEXED,
+      datetime_original UNINDEXED, create_date UNINDEXED, file_modify_date UNINDEXED, file_date UNINDEXED
     );
   `);
   var info = stmt.run();
