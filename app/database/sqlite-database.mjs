@@ -4,33 +4,35 @@ import Database from 'better-sqlite3';
 
 import {config} from '../config.mjs';
 
-// TODO: configure this to run on worker threads
+// TODO: configure this to run on worker threads (is it needed after PRAGMA statements below?)
 // https://github.com/JoshuaWise/better-sqlite3/blob/master/docs/threads.md
 
 const dbFile = config.dbFile;
 
 if(!fs.existsSync(path.dirname(dbFile))){
-  fs.mkdirSync(path.dirname(dbFile), {recursive: true})
+  fs.mkdirSync(path.dirname(dbFile), {recursive: true});
+
+  // PRAGMA statements to make sqlite run faster
+  // found at https://stackoverflow.com/a/27290180/8098748
+  db.pragma("journal_mode = WAL");
+  db.pragma("synchronous = NORMAL");
 }
 
 export const db = new Database(dbFile, {  }); // verbose: console.log
 
-// PRAGMA statements to make sqlite run faster
-// found at https://stackoverflow.com/a/27290180/8098748
-db.pragma("journal_mode = WAL");
-db.pragma("synchronous = NORMAL");
+// install schema as needed (based on 'user_version')
 
-// for first time run setup db
-if(fs.statSync(dbFile).size == 0){
-  dbSetup()
+if(db.pragma("user_version", {simple: true}) < 1){
+  initialDbSetup();
+  db.pragma("user_version = 1");
 }
 
-function dbSetup() {
+function initialDbSetup() {
   console.log("creating database ... ");
 
   // collections table
   var stmt = db.prepare(`
-    create table if not exists collections (
+    create table collections (
       collection_id integer PRIMARY KEY AUTOINCREMENT,
       collection_name text,
       collection_path text NOT NULL UNIQUE,
@@ -47,7 +49,7 @@ function dbSetup() {
   // metadata table (single record per file)
   // this is an FTS file table, which enables "search" feature
   var stmt = db.prepare(`
-    create virtual table if not exists metadata using fts5(
+    create virtual table metadata using fts5(
       collection_id, uuid, album, filename,
       description, filesize, ext, mimetype, mediatype,
       keywords, faces, objects, rating, imagesize, aspectratio,
