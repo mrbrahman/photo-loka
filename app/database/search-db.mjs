@@ -1,6 +1,6 @@
 import { db } from './sqlite-database.mjs';
 
-export const restrictSearchCols = ['album', 'keywords', 'faces', 'objects', 'mediatype', 'rating', 'make', 'model'];
+export const restrictSearchCols = ['album', 'keywords', 'faces', 'objects', 'mediatype', 'make', 'model'];
 
 // aliases: the right side (realCol) can also be known by the left side (alias)
 export const aliases = {
@@ -65,13 +65,16 @@ function converToFilterStr(searchStr){
     else if(col == 'logical'){
       logical = filterStr.toUpperCase();
     }
+    else if(col == 'rating'){
+      otherFilters.push(`rating = ${f[1]}`)
+    }
     else if (col == "raw"){
       otherFilters.push(filterStr);
     }
     else if(restrictSearchCols.includes(col)){
       // TODO: handle , (and) | (or) & (only)
-      
       // "only" is appliable only for array data
+      
       ftsFilters.push(`{${col}} : ( "${filterStr}"* )`)
     }
     else {
