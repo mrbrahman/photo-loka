@@ -27,7 +27,7 @@ Currently this project is very much a work-in-progress.
 
 ## Media Management
 - Read existing folder structure (specificed during collection creation) and index the files found (if any) under respective collections
-- Watch one or more folders for new files, and as new files become available, bring them into the respective collection and index themß
+- Watch one or more folders for new files, and as new files become available, bring them into the respective collection and index them
 - Rename albums (similar to renaming folders on a File Explorer program)
 - Select files and move them to a different album
 - Select files and move them to trash
