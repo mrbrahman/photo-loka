@@ -1,4 +1,8 @@
-import {exiftool} from 'exiftool-vendored';
+import {ExifTool} from 'exiftool-vendored';
+
+const exiftool = new ExifTool({
+  numericTags: ['FileSize']
+});
 
 export async function getMetadata(file){
   // exiftool needs a file, and not buffer
