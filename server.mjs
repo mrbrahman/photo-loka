@@ -176,9 +176,8 @@ app.post('/updateAlbumName', async function(req,res){
 });
 
 app.delete('/deleteFromCollection', function(req,res){
-  let uuid_arr = req.body.uuid_arr;
-  // TODO: Implement trash
-  // s.indexer.deleteFromCollection(uuid_arr);
+  let {collection_id, uuid_arr} = req.body;
+  s.indexer.moveFileToTrash(collection_id, uuid_arr)
   res.sendStatus(200);
 });
 

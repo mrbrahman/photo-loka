@@ -255,6 +255,17 @@ export function moveItemsToAlbum(collection_id, uuid_arr, newAlbumName){
   );
 }
 
+export function moveFileToTrash(collection_id, uuid_arr){
+  let c = collections.getCollection(collection_id),
+    trashPath = c.trash_path;
+  
+  for(let uuid of uuid_arr){
+    fileOps.moveItem(db.getFileName(uuid), trashPath);
+  }
+
+  return db.trashItems(uuid_arr);
+}
+
 export let ignoreWatcherList = {};
 
 // TODO: need to think of a generic function for other metadata as well

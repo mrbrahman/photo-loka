@@ -75,12 +75,19 @@ const updateRatingStatement = `
   where uuid = @uuid
 `;
 
+const updateToTrashStatement = `
+  update metadata
+  set trashed = 1, trashed_dt = datetime('now','localtime')
+  where uuid = @uuid
+`;
+
 const deleteMetadata = db.prepare(deleteFromMetadataStatement);
 const insertMetadata = db.prepare(insertIntoMetadataStatement);
 const deleteObjectDetails = db.prepare(deleteFromObjectDetailsStatement);
 const insertObjectDetails = db.prepare(insertIntoObjectDetailsStatement);
 const insertIntoExifUpdates = db.prepare(insertIntoExifUpdatesStatement);
 const updateRatingInDb = db.prepare(updateRatingStatement);
+const updateToTrashInDb = db.prepare(updateToTrashStatement);
 
 function transformDataToMetadataRow(row){
   ['faces','objects','keywords'].forEach(c=>{
@@ -213,6 +220,19 @@ export function updateRating(uuid_arr, newRating, fileModifyDate){
   )
 
   trans(uuid_arr, newRating, fileModifyDate);
+}
+
+export function trashItems(uuid_arr){
+  let trans = db.transaction(
+    function(uuid_arr){
+      for (let uuid of uuid_arr){
+        console.log(`Moving to trash ${uuid}`);
+        updateToTrashInDb.run({uuid});
+      }
+    }
+  )
+
+  trans(uuid_arr);
 }
 
 export function scheduleExif(uuid_arr, new_exif_json){

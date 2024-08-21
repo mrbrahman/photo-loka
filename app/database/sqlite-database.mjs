@@ -38,6 +38,7 @@ function initialDbSetup() {
       album_type text,
       listen_paths text,        -- stored as an array (JSON)
       apply_folder_pattern,     -- need to be 'dateformat' package compatible format
+      trash_path text,
       default_collection integer,
 
       check (album_type in ('FOLDER_ALBUM', 'VIRTUAL_ALBUM'))
@@ -54,7 +55,8 @@ function initialDbSetup() {
       keywords, faces, objects, rating UNINDEXED, imagesize UNINDEXED, aspectratio UNINDEXED,
       make, model, orientation UNINDEXED, gpsposition UNINDEXED, duration UNINDEXED,
       region_applied_to_dimension_w UNINDEXED, region_applied_to_dimension_h UNINDEXED, region_applied_to_dimension_unit UNINDEXED,
-      datetime_original UNINDEXED, create_date UNINDEXED, file_modify_date UNINDEXED, file_date UNINDEXED
+      datetime_original UNINDEXED, create_date UNINDEXED, file_modify_date UNINDEXED, file_date UNINDEXED,
+      trashed, trashed_dt
     );
   `);
   var info = stmt.run();

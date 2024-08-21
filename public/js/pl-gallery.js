@@ -284,6 +284,7 @@ class PlGallery extends HTMLElement {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
+        collection_id: 1,
         uuid_arr: this.#itemsSelected.map(x=>x.data.id)
       })
     })
