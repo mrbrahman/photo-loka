@@ -26,15 +26,16 @@ Currently this project is very much a work-in-progress.
 # Current Features
 
 ## Media Management
-- Read existing folder structure (specificed during collection creation) and index the files found (if any) under respective collections
-- Watch one or more folders for new files, and as new files become available, bring them into the respective collection and index them
+- Support for existing folders and files: Read existing folder structure (specificed during collection creation) and index the files found (if any) under respective collections
+- Support for new files: Watch one or more folders for new files, and as new files become available, bring them into the respective collection and index them
 - Rename albums (similar to renaming folders on a File Explorer program)
 - Select files and move them to a different album
-- Select files and move them to trash
+- Select files and trash them
 
 ## Metadata management
 - Index media photos, videos and audio
   - Extract key exif data (metadata), and store in SQLite db
+  - Thumbnail generation
   - Indexer has the ability to run and gather metadata for multiple files at the same time. See `updateIndexerConcurrency` below
 - Mark as favorite / stars (there is no favorite in exif, but there is a 'rating' field)
 - Optimize write of metadata to files by delaying the write. This enables grouping all the changes together and writing to file at one go
