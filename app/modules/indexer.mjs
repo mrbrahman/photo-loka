@@ -256,12 +256,16 @@ export function moveItemsToAlbum(collection_id, uuid_arr, newAlbumName){
 }
 
 export function moveFileToTrash(collection_id, uuid_arr){
-  let c = collections.getCollection(collection_id),
-    trashPath = c.trash_path;
+  // let c = collections.getCollection(collection_id),
+  //   trashPath = c.trash_path;
   
-  for(let uuid of uuid_arr){
-    fileOps.moveItem(db.getFileName(uuid), trashPath);
-  }
+  // Cannot move to a different folder, as watcher will see this as 'deleted'
+  // and remove metadata. For now commenting out this piece.
+  // TODO: Should we rename the file rather than move?
+
+  // for(let uuid of uuid_arr){
+  //   fileOps.moveItem(db.getFileName(uuid), trashPath);
+  // }
 
   return db.trashItems(uuid_arr);
 }

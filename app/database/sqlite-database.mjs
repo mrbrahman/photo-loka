@@ -33,13 +33,13 @@ function initialDbSetup() {
   var stmt = db.prepare(`
     create table collections (
       collection_id integer PRIMARY KEY AUTOINCREMENT,
+      default_collection integer,
       collection_name text,
       collection_path text NOT NULL UNIQUE,
       album_type text,
       listen_paths text,        -- stored as an array (JSON)
       apply_folder_pattern,     -- need to be 'dateformat' package compatible format
-      trash_path text,
-      default_collection integer,
+      trash_days integer DEFAULT 30,
 
       check (album_type in ('FOLDER_ALBUM', 'VIRTUAL_ALBUM'))
     )

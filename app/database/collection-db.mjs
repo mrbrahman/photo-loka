@@ -43,7 +43,7 @@ export function getCollection(collection_id){
   // convert listen_paths back to JavaScript Array
   var stmt = db.prepare(`
     select collection_id, collection_name, collection_path, album_type,
-      listen_paths, apply_folder_pattern, default_collection, trash_path
+      listen_paths, apply_folder_pattern, default_collection, trash_days
     from collections where collection_id = ?
   `)
   let output = stmt.get(collection_id);
