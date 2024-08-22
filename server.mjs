@@ -175,16 +175,16 @@ app.post('/updateAlbumName', async function(req,res){
 
 });
 
-app.delete('/deleteFromCollection', function(req,res){
-  let {collection_id, uuid_arr} = req.body;
-  s.indexer.moveFileToTrash(collection_id, uuid_arr)
+app.delete('/trashItems', async function(req,res){
+  let {uuid_arr} = req.body;
+  await s.indexer.moveFileToTrash(uuid_arr);
   res.sendStatus(200);
 });
 
-app.put('/moveItems', function(req,res){
+app.put('/moveItems', async function(req,res){
   let {collection_id, uuid_arr, new_album_name} = req.body;
-  s.indexer.moveItemsToAlbum(collection_id, uuid_arr, new_album_name);
-  res.send(200);
+  await s.indexer.moveItemsToAlbum(collection_id, uuid_arr, new_album_name);
+  res.sendStatus(200);
 });
 
 // TODO

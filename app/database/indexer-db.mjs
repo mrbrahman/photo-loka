@@ -77,7 +77,8 @@ const updateRatingStatement = `
 
 const updateToTrashStatement = `
   update metadata
-  set trashed = 1, trashed_dt = datetime('now','localtime')
+  set filename = @trashFilename,
+    trashed = 1, trashed_dt = datetime('now','localtime')
   where uuid = @uuid
 `;
 
@@ -222,17 +223,9 @@ export function updateRating(uuid_arr, newRating, fileModifyDate){
   trans(uuid_arr, newRating, fileModifyDate);
 }
 
-export function trashItems(uuid_arr){
-  let trans = db.transaction(
-    function(uuid_arr){
-      for (let uuid of uuid_arr){
-        console.log(`Moving to trash ${uuid}`);
-        updateToTrashInDb.run({uuid});
-      }
-    }
-  )
-
-  trans(uuid_arr);
+export function trashItem(uuid, trashFilename){
+  console.log(`Updating to trash ${uuid} ${trashFilename}`);
+  updateToTrashInDb.run({uuid, trashFilename});
 }
 
 export function scheduleExif(uuid_arr, new_exif_json){

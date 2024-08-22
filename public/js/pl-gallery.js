@@ -278,13 +278,12 @@ class PlGallery extends HTMLElement {
 
   #handleGalleryControlsDeletePressed = (evt)=>{
     // update db here
-    fetch(`/deleteFromCollection`, {
+    fetch(`/trashItems`, {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        collection_id: 1,
         uuid_arr: this.#itemsSelected.map(x=>x.data.id)
       })
     })

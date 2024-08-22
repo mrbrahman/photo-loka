@@ -156,13 +156,13 @@ export function renameFolder(currAlbum, newAlbum){
   }
 }
 
-export async function moveItem(currPath, newFolder){
+export async function moveItem(currPath, newPath){
   try {
-    if(!fs.existsSync(newFolder)){
-      fs.mkdirSync(newFolder, {recursive: true})
+    if(!fs.existsSync(path.dirname(newPath))){
+      fs.mkdirSync(path.dirname(newPath), {recursive: true})
     }
     
-    await fsPromises.rename(currPath, path.join(newFolder, path.basename(currPath)))
+    await fsPromises.rename(currPath, newPath)
   } catch (error) {
     throw `Errow while move: ${error.code} ${error.message}`;
   }

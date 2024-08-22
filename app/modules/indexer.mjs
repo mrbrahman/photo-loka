@@ -242,12 +242,13 @@ export async function updateAlbum(collection_id, fromAlbum, toAlbum){
   );
 }
 
-export function moveItemsToAlbum(collection_id, uuid_arr, newAlbumName){
+export async function moveItemsToAlbum(collection_id, uuid_arr, newAlbumName){
   let c = collections.getCollection(collection_id),
     newPath = path.join(c.collection_path, newAlbumName);
   
   for(let uuid of uuid_arr){
-    fileOps.moveItem(db.getFileName(uuid), newPath);
+    let f = db.getFileName(uuid);
+    await fileOps.moveItem(f, path.join(newPath, path.basename(f)));
   }
   return db.updateAlbumForItems(
     uuid_arr, newAlbumName,
@@ -255,19 +256,17 @@ export function moveItemsToAlbum(collection_id, uuid_arr, newAlbumName){
   );
 }
 
-export function moveFileToTrash(collection_id, uuid_arr){
-  // let c = collections.getCollection(collection_id),
-  //   trashPath = c.trash_path;
-  
-  // Cannot move to a different folder, as watcher will see this as 'deleted'
-  // and remove metadata. For now commenting out this piece.
-  // TODO: Should we rename the file rather than move?
+export async function moveFileToTrash(uuid_arr){
+  // Rename file to start with '.Trash_' and update trashed flag in db
+  for(let uuid of uuid_arr){
+    let f = db.getFileName(uuid),
+      filename = path.basename(f),
+      trashFilename = path.join(path.dirname(f), `.Trash_${filename}`);
+    
+    await fileOps.moveItem(f, trashFilename);
+    db.trashItem(uuid, trashFilename);
+  }
 
-  // for(let uuid of uuid_arr){
-  //   fileOps.moveItem(db.getFileName(uuid), trashPath);
-  // }
-
-  return db.trashItems(uuid_arr);
 }
 
 export let ignoreWatcherList = {};
