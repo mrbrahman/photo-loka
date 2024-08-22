@@ -92,9 +92,11 @@ function converToFilterStr(searchStr){
 
 }
 
-export function runSearch(collection_id, searchStr){
+export function runSearch(collection_id, searchStr, trashed = false){
   let filters = [], limit = false;
   
+  filters.push(`coalesce(trashed, false) = ${trashed}`);
+
   if(collection_id)
     filters.push(`collection_id = ${collection_id}`);
 
