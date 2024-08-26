@@ -1,7 +1,7 @@
 import {ExifTool} from 'exiftool-vendored';
 
 const exiftool = new ExifTool({
-  numericTags: ['FileSize']
+  numericTags: ['FileSize', 'Orientation']
 });
 
 export async function getMetadata(file){
