@@ -206,11 +206,16 @@ export async function indexCollection(collection_id, firstTime=false){
     }
     
     if(files['deleted'].length > 0){
-      indexerQueue.enqueueMany(
-        files['deleted'].map(f=>{
-          return ()=>deleteFromCollection(f.uuid);
-        })
-      );
+      if(files['deleted'].length > config.filesDeletedThreshold){
+        reject(`Found ${files['deleted'].length} files deleted. Something wrong?`)
+      } else {
+        indexerQueue.enqueueMany(
+          files['deleted'].map(f=>{
+            return ()=>deleteFromCollection(f.uuid);
+          })
+        );
+      }
+
     }
 
     resolve()

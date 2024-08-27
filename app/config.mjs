@@ -7,6 +7,7 @@ const config = {};
 // monitor files
 config.startFileWatcherAtStartup = true;
 config.scanFilesForChangesAndIndexAtStartup = true;
+config.filesDeletedThreshold = 5;
 
 // indexer
 config.indexerDbUpdateTimeout = 3000;
