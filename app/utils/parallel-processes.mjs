@@ -63,7 +63,7 @@ export function ParallelProcesses(){
         
       item()
         .then(returnValue=>{
-          console.log('in then '+returnValue);
+          // console.log('in then '+returnValue);
           processingCnt--; completedCnt++;
           if(emitter){
             emitter.emit('end', item.toString(), returnValue) // TODO: can we log anything better?
