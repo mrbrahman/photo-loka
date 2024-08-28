@@ -73,6 +73,31 @@ export function addToIndexQueue(collection, filename, uuid, inPlace){
   indexerQueue.enqueue(()=>indexFile(collection, filename, uuid, inPlace))
 }
 
+export async function refreshMetadata(uuid){
+  let filename = db.getFileName(uuid);
+
+  // get metadata from exiftool
+  let metadata = await m.getMetadata(filename);
+
+  // TODO: update db
+}
+
+// TODO: see if this can be used in the main indexFile function as well?
+export async function refreshThumbs(uuid){
+  let meta = db.retriveMetadata(uuid),
+    imageFileName = meta.filename, playImageOverlay = false;
+  
+  if (meta.mediatype == 'video'){
+    imageFileName = await thumbs.generateVideoThumbnail(uuid, meta.filename);
+    playImageOverlay=true;
+  }
+
+  let buf = fs.readFileSync(imageFileName);
+  await thumbs.createImageThumbnails(uuid, buf, playImageOverlay);
+  // not extracting face regions here
+  // TODO: Should I?
+}
+
 async function indexFile(collection, sourceFileName, uuid, inPlace){
   // indexing is a series of steps, where the latter steps
   // are dependent on former steps

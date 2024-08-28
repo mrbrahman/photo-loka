@@ -82,6 +82,18 @@ const updateToTrashStatement = `
   where uuid = @uuid
 `;
 
+const getFileNameStatement = `
+  select filename 
+  from metadata
+  where uuid = @uuid
+`;
+
+const retriveMetadataStatement = `
+  select filename, mediatype -- let's add others as necessary
+  from metadata
+  where uuid = @uuid
+`;
+
 const deleteMetadata = db.prepare(deleteFromMetadataStatement);
 const insertMetadata = db.prepare(insertIntoMetadataStatement);
 const deleteObjectDetails = db.prepare(deleteFromObjectDetailsStatement);
@@ -89,6 +101,8 @@ const insertObjectDetails = db.prepare(insertIntoObjectDetailsStatement);
 const insertIntoExifUpdates = db.prepare(insertIntoExifUpdatesStatement);
 const updateRatingInDb = db.prepare(updateRatingStatement);
 const updateToTrashInDb = db.prepare(updateToTrashStatement);
+const getFileNameFromDb = db.prepare(getFileNameStatement);
+const retriveMetadataFromDb = db.prepare(retriveMetadataStatement);
 
 function transformDataToMetadataRow(row){
   ['faces','objects','keywords'].forEach(c=>{
@@ -200,13 +214,11 @@ export function updateAlbumForItems(uuid_arr, toAlbum, updateFileName){
 
 
 export function getFileName(uuid){
-  let stmt = db.prepare(`
-    select filename 
-    from metadata
-    where uuid = @uuid
-  `);
+  return getFileNameFromDb.get({uuid}).filename;
+}
 
-  return stmt.get({uuid}).filename;
+export function retriveMetadata(uuid){
+  return retriveMetadataFromDb.get({uuid});
 }
 
 export function updateRating(uuid_arr, newRating, fileModifyDate){

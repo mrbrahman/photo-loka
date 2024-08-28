@@ -69,6 +69,7 @@ app.get('/getImage', function(req,res){
   // });
 
   s.search.getImage(uuid, width, height).pipe(res);
+  // s.search.getImage(uuid, 1920, 1080).pipe(res);
 });
 
 
@@ -157,6 +158,11 @@ app.put('/updateRating', function(req,res){
     res.status(500).json({error: err.message});
     return;
   }
+  res.sendStatus(200);
+});
+
+app.put('/refreshThumbs/:uuid', async function(req,res){
+  await s.indexer.refreshThumbs(req.params.uuid);
   res.sendStatus(200);
 })
 
