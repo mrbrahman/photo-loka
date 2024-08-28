@@ -552,8 +552,8 @@
       <div id="albumname"></div>
       <div id="actions">
         <sl-rating id="rating"></sl-rating>
-        <sl-icon-button id="info" name="info-circle">Info</sl-icon-button>
-        <sl-icon-button id="delete" name="trash-fill">Delete</sl-icon-button>
+        <sl-icon-button id="info" name="info-circle" disabled>Info</sl-icon-button>
+        <sl-icon-button id="delete" name="trash-fill" disabled>Delete</sl-icon-button>
         <!-- <sl-icon-button name="download">Download</sl-icon-button> -->
         <sl-dropdown>
           <sl-icon-button slot="trigger" name="three-dots-vertical">More Options</sl-icon-button>
@@ -563,7 +563,7 @@
               <sl-icon slot="suffix" src="assets/slideshow-2-svgrepo-com.svg"></sl-icon>
             </sl-menu-item>
 
-            <sl-menu-item>
+            <sl-menu-item disabled>
               Download
               <sl-icon slot="suffix" name="download"></sl-icon>
             </sl-menu-item>
