@@ -68,14 +68,14 @@ export async function listDeltaFilesForCollection(collection) {
     if (!(f in databaseEntries)) {
       added.push(f);
     } else if (physicalFiles[f].mtime > databaseEntries[f].mtime) {
-      // console.log(`${f} is changed`)
+      console.log(`${f} is changed`)
       changed.push({ uuid: databaseEntries[f].uuid, filename: f });
     }
   });
 
   Object.keys(databaseEntries).forEach(f => {
     if (!(f in physicalFiles)) {
-      // console.log(`${f} is deleted`)
+      console.log(`${f} is deleted`)
       deleted.push({ uuid: databaseEntries[f].uuid, filename: f });
     }
   });

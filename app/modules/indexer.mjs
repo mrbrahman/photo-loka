@@ -190,9 +190,8 @@ export async function deleteFromCollection(uuid){
   // remove from db
   db.indexerDbWriteInChunks.add( {action: 'delete', data: {uuid: uuid}} );
 
-  // finally remove file
-  // TODO: trash folder
-  fileOps.deleteFile(filename);
+  // the file is already gone, so no need to try to remove it
+  //fileOps.deleteFile(filename);
   
   console.log(`Completed DELETE for ${uuid} in ${performance.now()-start} ms`);
 }
@@ -211,6 +210,22 @@ export async function indexCollection(collection_id, firstTime=false){
       // painstakingly find out which files are added/updated/removed
       files = await fileOps.listDeltaFilesForCollection(c);
     }
+
+    if(files['deleted'].length > 0){
+      if(files['deleted'].length > config.filesDeletedThreshold){
+	    let deletedFileNames = files['deleted'].map(x=>`${x.uuid} ${x.filename}`).join("\n");
+        throw(`Found ${files['deleted'].length} files deleted. Something wrong?
+	      ${deletedFileNames}
+	    `)
+      } else {
+        indexerQueue.enqueueMany(
+          files['deleted'].map(f=>{
+            return ()=>deleteFromCollection(f.uuid);
+          })
+        );
+      }
+
+    }
   
     // add files to the indexer queue
 
@@ -228,19 +243,6 @@ export async function indexCollection(collection_id, firstTime=false){
           return ()=>indexFile(c, f.filename, f.uuid, true);
         })
       );
-    }
-    
-    if(files['deleted'].length > 0){
-      if(files['deleted'].length > config.filesDeletedThreshold){
-        reject(`Found ${files['deleted'].length} files deleted. Something wrong?`)
-      } else {
-        indexerQueue.enqueueMany(
-          files['deleted'].map(f=>{
-            return ()=>deleteFromCollection(f.uuid);
-          })
-        );
-      }
-
     }
 
     resolve()
