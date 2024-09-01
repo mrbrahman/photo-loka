@@ -116,7 +116,7 @@ export function runSearch(collection_id, searchStr, trashed = false){
     from metadata
     where ${filters.join(' and ')}
     and mediatype in ('image', 'video')  -- TODO: add audio
-    order by album desc, file_date
+    order by album desc, datetime(file_date)
   )
   select album, 
     json_group_array(
@@ -168,3 +168,4 @@ export function searchForExistingAlbums(searchStr, wantFullName){
   var stmt = db.prepare(sql);
   return stmt.all();
 }
+
