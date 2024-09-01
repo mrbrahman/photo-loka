@@ -211,21 +211,21 @@ export async function indexCollection(collection_id, firstTime=false){
       files = await fileOps.listDeltaFilesForCollection(c);
     }
 
-    if(files['deleted'].length > 0){
-      if(files['deleted'].length > config.filesDeletedThreshold){
-	    let deletedFileNames = files['deleted'].map(x=>`${x.uuid} ${x.filename}`).join("\n");
-        throw(`Found ${files['deleted'].length} files deleted. Something wrong?
-	      ${deletedFileNames}
-	    `)
-      } else {
-        indexerQueue.enqueueMany(
-          files['deleted'].map(f=>{
-            return ()=>deleteFromCollection(f.uuid);
-          })
-        );
-      }
-
-    }
+//    if(files['deleted'].length > 0){
+//      if(files['deleted'].length > config.filesDeletedThreshold){
+//	    let deletedFileNames = files['deleted'].map(x=>`${x.uuid} ${x.filename}`).join("\n");
+//        throw(`Found ${files['deleted'].length} files deleted. Something wrong?
+//	      ${deletedFileNames}
+//	    `)
+//      } else {
+//        indexerQueue.enqueueMany(
+//          files['deleted'].map(f=>{
+//            return ()=>deleteFromCollection(f.uuid);
+//          })
+//        );
+//      }
+//
+//    }
   
     // add files to the indexer queue
 

@@ -6,7 +6,7 @@ const config = {};
 
 // monitor files
 config.startFileWatcherAtStartup = true;
-config.scanFilesForChangesAndIndexAtStartup = true;
+config.scanFilesForChangesAndIndexAtStartup = false;
 config.filesDeletedThreshold = 5;
 
 // indexer
