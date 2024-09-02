@@ -120,10 +120,10 @@ async function indexerDbTask(entries){
         if(task.action == 'delete'){
           deleteObjectDetails.run(task.data);
           deleteMetadata.run(task.data);
-        } else if (task.action == 'del-insert'){
+        } else if (task.action == 'insert'){
           // first clean-up any old entries
-          deleteObjectDetails.run(task.data);
-          deleteMetadata.run(task.data);
+          // deleteObjectDetails.run(task.data);
+          // deleteMetadata.run(task.data);
           
           insertMetadata.run( transformDataToMetadataRow(task.data) );
 
