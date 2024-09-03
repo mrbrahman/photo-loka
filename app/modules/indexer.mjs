@@ -78,8 +78,11 @@ export async function refreshMetadata(uuid){
 
   // get metadata from exiftool
   let metadata = await m.getMetadata(filename);
+  metadata['uuid'] = uuid;
 
-  // TODO: update db
+  // TODO: implement 'update'
+  // db.indexerDbWriteInChunks.add( {action: 'update', data: metadata} );
+
 }
 
 // TODO: see if this can be used in the main indexFile function as well?
@@ -170,7 +173,7 @@ async function indexFile(collection, sourceFileName, uuid, inPlace){
   }
   
   // Step 6: Make an entry in db
-  db.indexerDbWriteInChunks.add( {action: 'del-insert', data: p} );
+  db.indexerDbWriteInChunks.add( {action: 'insert', data: p} );
 
   console.log(`${sourceFileName} finished in ${performance.now()-fileStart} ms`);
 }
