@@ -18,8 +18,8 @@ Currently this project is very much a work-in-progress.
 (*) For those who are not aware, a photo/video taken by a modern camera/phone not only stores the image/video content, but also metadata about the photo/video. For e.g. GPS coordinates, dimensions, orientation, duration for videos etc. There are also provisions to update metadata when they are discovered. For e.g. recognized faces, address based on reverse geo-coding etc.
 
 # Key Terms
-1. **Photo / Video**: The individual photo / video (duh!)
-2. **Album**: A group of related photos (and videos). For e.g. "2021-10-01 Trip to SVBF"
+1. **Item**: The individual media item (photo / video / audio)
+2. **Album**: A group of related media items. For e.g. "2021-10-01 Trip to SVBF"
 3. **Collection**: A set of related albums. For e.g. "My family pics", "My small-business pics" etc.
 4. **Indexing**: The process of reading media and cataloging metadata to help with search. Also thumbnail generation.
 
@@ -96,7 +96,6 @@ Currently this project is very much a work-in-progress.
     ```
 
 - **Install code (just clone this repo)**
-  See https://github.com/lovell/sharp/issues/4164 for more details
   ```bash
   git clone https://github.com/mrbrahman/rewind-replay.git
   ```
@@ -110,7 +109,7 @@ Currently this project is very much a work-in-progress.
 
 - **Special instructions for HEIC support (TBD for Linux)**
 
-  For heic support, need to do some extra stuff at the moment.
+  For heic support, need to do some extra stuff at the moment. See https://github.com/lovell/sharp/issues/4164 for more details
   
   ```bash
   # https://sharp.pixelplumbing.com/api-output#heif
@@ -129,8 +128,8 @@ Currently this project is very much a work-in-progress.
 
   Until the UI is available to create collections and auto-start indexing, use REST API. For e.g.
 
+  Create collection
   ```bash
-  # Create collection
   cat > c.json <<EOF
   {
     "collection_name":"Test",
@@ -141,18 +140,22 @@ Currently this project is very much a work-in-progress.
     "default_collection":1
   }
   EOF
-  
+  ```
+
+  ```bash
   curl -X POST -H 'Content-Type: application/json' -d @c.json "http://localhost:9000/createNewCollection"
   
   # Verify
   curl -X GET 'http://localhost:9000/getAllCollections' | jq '.'
   ```
 
+  Start indexing (this will kick off indexer process in the background and return immediately)
   ```bash
-  # Start indexing (this will kick off indexer process in the background and return immediately)
   curl -X POST 'http://localhost:9000/startIndexingFirstTime?collection_id=1'
-
-  # Monitor progress
+  ```
+  
+  Monitor progress
+  ```bash
   curl -X GET 'http://localhost:9000/getIndexerStatus' | jq '.'
   ```
 
