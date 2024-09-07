@@ -145,7 +145,12 @@ async function indexFile(collection, sourceFileName, uuid, inPlace){
     }
 
     // read image once
-    let buf = fs.readFileSync(imageFileName);
+    let buf;
+    try{
+      buf = fs.readFileSync(imageFileName);
+    } catch(error){
+      throw `ERROR during readFileSync before thumbnail ${sourceFileName} ${error}`
+    }
 
     // thumbnails generation
     try{
@@ -214,6 +219,8 @@ export async function indexCollection(collection_id, firstTime=false){
       files = await fileOps.listDeltaFilesForCollection(c);
     }
 
+    console.log(`added: ${files.added.length} changed ${files.changed.length} deleted ${files.deleted.length}`);
+
 //    if(files['deleted'].length > 0){
 //      if(files['deleted'].length > config.filesDeletedThreshold){
 //	    let deletedFileNames = files['deleted'].map(x=>`${x.uuid} ${x.filename}`).join("\n");
@@ -259,16 +266,7 @@ export async function updateAlbum(collection_id, fromAlbum, toAlbum){
   newFolderName=path.join(c.collection_path,toAlbum)
   
   if(c.album_type=="FOLDER_ALBUM"){
-    fileOps.renameFolder(currFolderName, newFolderName);
-  
-    // write out the changes to file
-    // this may help in renaming any backups (for e.g. rsync backups) without having to delete and copy all files
-    if(config.albumNameChangesFile){
-      let f = await fsPromises.open(config.albumNameChangesFile, 'a');
-      await fsPromises.appendFile(f, `${fromAlbum}\t${toAlbum}${EOL}`);
-      f.close();
-    }
-
+    fileOps.renameFolder(currFolderName, newFolderName);  
   }
   
   return db.updateAlbum(

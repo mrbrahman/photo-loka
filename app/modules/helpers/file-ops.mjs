@@ -1,10 +1,12 @@
 import * as fs from 'fs';
 const fsPromises = fs.promises;
 import * as path from 'path';
+import {EOL} from 'os';
 
 import dateformat from 'dateformat';
 
 import * as db from '../../database/indexer-db.mjs';
+import { config } from '../../config.mjs';
 
 function lsRecursive(dir) {
   let ls = fs.readdirSync(dir, { withFileTypes: true });
@@ -100,6 +102,7 @@ export async function placeFileInCollection(collection, filename, file_date, inP
       dateformat(file_date, 'yyyy-mm-dd');  // TODO: timezone?
   
     albumFilename = filename;
+    logChange('in-place', filename);
   } else {
     // i.e. file needs to be moved from listen_path to collection_path
 
@@ -116,22 +119,7 @@ export async function placeFileInCollection(collection, filename, file_date, inP
     let newFolder = path.join(collection.collection_path, subFolder);
     let newFileName = path.join(newFolder, path.basename(filename));
 
-    if(!fs.existsSync(newFolder)){
-      fs.mkdirSync(newFolder, {recursive: true})
-    }
-
-    try {
-      // try to fist rename the file. in case the file is in the same mountpoint
-      // this will be faster than copying
-      fs.renameSync(filename, newFileName);
-    } catch (error) {
-      // fs.renameSync does not work across mountpoints
-      // first copy the file and then remove the original file
-      // workaround found at https://stackoverflow.com/questions/43206198/what-does-the-exdev-cross-device-link-not-permitted-error-mean
-      
-      await fsPromises.cp(filename, newFileName, {preserveTimestamps: true});
-      fs.unlinkSync(filename);
-    }
+    await moveItem(filename, newFileName);
 
     album = collection.album_type=='FOLDER_ALBUM' ? 
       // newly created sub folder becomes the album
@@ -150,24 +138,53 @@ export async function placeFileInCollection(collection, filename, file_date, inP
 export function renameFolder(currAlbum, newAlbum){
   try {
     fs.renameSync(currAlbum, newAlbum);
+    logChange('rename', currAlbum, newAlbum);
   } catch (err) {
     console.log(err)
     throw {code: err.code, message: err.message};
   }
 }
 
-export async function moveItem(currPath, newPath){
+export async function moveItem(src, dest){
   try {
-    if(!fs.existsSync(path.dirname(newPath))){
-      fs.mkdirSync(path.dirname(newPath), {recursive: true})
+    let targetDir = path.dirname(dest);
+    if(!fs.existsSync(targetDir)){
+      await fsPromises.mkdir(targetDir, {recursive: true});
+      logChange('create-dir', targetDir);
     }
+    // try to fist rename the file. in case the file is in the same mountpoint
+    // this will be faster than copying
+
+    await fsPromises.rename(src, dest);
+  } catch (err) {
+    // fs.renameSync does not work across mountpoints
+    // first copy the file and then remove the original file
+    // workaround found at https://stackoverflow.com/questions/43206198/what-does-the-exdev-cross-device-link-not-permitted-error-mean
     
-    await fsPromises.rename(currPath, newPath)
-  } catch (error) {
-    throw `Errow while move: ${error.code} ${error.message}`;
+    if(err.code !== 'EXDEV'){
+      throw `Errow while move: ${err.code} ${err.message}`;
+    }
+    await fsPromises.cp(src, dest, {preserveTimestamps: true, errorOnExist: true});
+    fs.unlinkSync(src);
   }
+
+  // if we've reached till here, the move has been successful
+  logChange('move', src, dest)
 }
 
 export function deleteFile(fileName){
   fs.unlinkSync(fileName);
+  logChange('delete', fileName)
+}
+
+async function logChange(action, item1, item2){
+  if(!config.albumNameChangesFile){
+    return
+  }
+  await fsPromises.appendFile(
+    config.albumNameChangesFile, 
+    JSON.stringify({
+      action, item1, item2
+    }) + EOL
+  );
 }
