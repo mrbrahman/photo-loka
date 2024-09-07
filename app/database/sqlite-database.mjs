@@ -80,4 +80,15 @@ function initialDbSetup() {
     );
   `);
   var info = stmt.run();
+
+  var stmt = db.prepare(`
+    create table file_audit_log (
+      id integer PRIMARY KEY AUTOINCREMENT,
+      action string,
+      path1 string,
+      path2 string,
+      action_tm date DEFAULT (datetime('now','localtime','subsecond'))
+    );
+  `)
+  var info = stmt.run();
 }

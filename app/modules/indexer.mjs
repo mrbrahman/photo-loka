@@ -279,6 +279,7 @@ export async function moveItemsToAlbum(collection_id, uuid_arr, newAlbumName){
   let c = collections.getCollection(collection_id),
     newPath = path.join(c.collection_path, newAlbumName);
   
+  // TODO: convert this to array of promises?
   for(let uuid of uuid_arr){
     let f = db.getFileName(uuid);
     await fileOps.moveItem(f, path.join(newPath, path.basename(f)));

@@ -94,6 +94,13 @@ const retriveMetadataStatement = `
   where uuid = @uuid
 `;
 
+const fileAuditStatement = `
+  insert into file_audit_log
+  (action, path1, path2)
+  values
+  (@action, @path1, @path2)
+`
+
 const deleteMetadata = db.prepare(deleteFromMetadataStatement);
 const insertMetadata = db.prepare(insertIntoMetadataStatement);
 const deleteObjectDetails = db.prepare(deleteFromObjectDetailsStatement);
@@ -103,6 +110,7 @@ const updateRatingInDb = db.prepare(updateRatingStatement);
 const updateToTrashInDb = db.prepare(updateToTrashStatement);
 const getFileNameFromDb = db.prepare(getFileNameStatement);
 const retriveMetadataFromDb = db.prepare(retriveMetadataStatement);
+const fileAuditInDb = db.prepare(fileAuditStatement);
 
 function transformDataToMetadataRow(row){
   ['faces','objects','keywords'].forEach(c=>{
@@ -251,4 +259,8 @@ export function scheduleExif(uuid_arr, new_exif_json){
 
   insertMany(uuid_arr, new_exif_json);
   return uuid_arr.length;
+}
+
+export function fileAudit(action, path1, path2=null){
+  fileAuditInDb.run({action, path1, path2});
 }

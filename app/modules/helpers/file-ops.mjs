@@ -177,14 +177,19 @@ export function deleteFile(fileName){
   logChange('delete', fileName)
 }
 
-async function logChange(action, item1, item2){
-  if(!config.albumNameChangesFile){
+async function logChange(action, path1, path2){
+  if(!config.auditFiles){
     return
   }
-  await fsPromises.appendFile(
-    config.albumNameChangesFile, 
-    JSON.stringify({
-      action, item1, item2
-    }) + EOL
-  );
+  // await fsPromises.appendFile(
+  //   config.albumNameChangesFile, 
+  //   JSON.stringify({
+  //     action, path2, path2
+  //   }) + EOL
+  // );
+
+  // make an entry into db rather than updating a file
+  // this will help with select when needs to be used (for e.g. select after a specific timestamp etc)
+  // also one less file to maintain
+  db.fileAudit(action, path1, path2)
 }
