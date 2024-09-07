@@ -4,6 +4,7 @@ import { getAllCollections } from '../database/collection-db.mjs';
 import {indexCollection, indexerDbFlush} from './indexer.mjs';
 import {exiftool} from 'exiftool-vendored';
 import {startWatchersForAllCollections, stopAllWatchers} from './watcher.mjs';
+import {db} from '../database/sqlite-database.mjs';
 
 export function startUpActivities(){
   // setup watch during start-up
@@ -23,7 +24,8 @@ export function startUpActivities(){
 }
 
 export async function shutdownCleanup(){
+  stopAllWatchers();
   await indexerDbFlush();  // commit any pending indexing changes
   exiftool.end();
-  stopAllWatchers();
+  db.close();
 }
