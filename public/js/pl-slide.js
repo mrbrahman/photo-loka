@@ -25,6 +25,7 @@ class PlSlide extends HTMLElement {
       let img = Object.assign(document.createElement('img'), {
         src: `/getImage?uuid=${this.item.data.id}&width=${this.#screenWidth}&height=${this.#screenHeight}`
       });
+      img.classList.add(this.item.data.ar < this.#screenWidth/this.#screenHeight ? 'full-height' : 'full-width');
 
       // let img = document.createElement('img')
       // img.src = `/getImage?uuid=${this.item.data.id}&width=${this.#screenWidth}&height=${this.#screenHeight}`

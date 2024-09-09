@@ -85,8 +85,8 @@ app.get('/getImage', function(req,res){
   //   "Content-Disposition": `inline;filename="${filename.split(/\//).pop()}"`
   // });
 
-  s.search.getImage(uuid, width, height).pipe(res);
-  // s.search.getImage(uuid, 1920, 1080).pipe(res);
+  // s.search.getImage(uuid, width, height).pipe(res);
+  s.search.getImage(uuid, 1920, 1080).pipe(res);
 });
 
 

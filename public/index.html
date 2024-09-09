@@ -514,11 +514,24 @@
       }
 
       #media {
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        color: white;
+        height: 100svh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+
+      #media img {
+        max-width: 100vw;
+        max-height: 100svh;
+      }
+
+      #media img.full-height {
+        width: auto;
+        height: 100svh;
+      }
+      #media img.full-width {
+        width: 100vw;
+        height: auto;
       }
 
       #actions {
