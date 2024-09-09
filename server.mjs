@@ -14,6 +14,13 @@ app.use(compression());
 app.use(express.json());
 app.use(express.static('public'));
 
+// const requestFilter = (req) => {
+//   // Customize your condition here, for example:
+//   // Log only POST requests or requests to a specific path
+//   // return req.method === 'POST' || req.url.startsWith('/api/specific-path');
+//   return !req.url.startsWith('/getThumbnail');
+// };
+
 const { format } = winston;
 const logger = winston.createLogger({
   format: format.combine(
@@ -23,7 +30,17 @@ const logger = winston.createLogger({
       return `${msg.timestamp} [${msg.level}] ${msg.message}`;
     })
   ),
-  transports: [new winston.transports.Console({level: 'http'})],
+  transports: [new winston.transports.Console({
+    // format: winston.format.combine(
+    //   winston.format((info) => {
+    //       // Apply the filter to check if the log should be recorded
+    //       // return requestFilter(info.req) ? info : null;
+    //       return info
+    //   })(),
+    //   winston.format.colorize()
+    // ),
+    level: 'http'
+  })],
 });
 
 const morganMiddleware = morgan(
@@ -192,6 +209,23 @@ app.put('/moveItems', async function(req,res){
   await s.indexer.moveItemsToAlbum(collection_id, uuid_arr, new_album_name);
   res.sendStatus(200);
 });
+
+// *****************************************
+// wathers
+// *****************************************
+
+// TODO Implement start and stop for individual collection
+
+app.post('/startAllWatchers', function(req,res){
+  s.watcher.startWatchersForAllCollections();
+  res.sendStatus(200);
+});
+
+app.post('/stopAllWatchers', function(req,res){
+  s.watcher.stopAllWatchers();
+  res.sendStatus(200);
+});
+
 
 // TODO
 // app.delete('/deleteAlbum/:albumName', function(req,res){
