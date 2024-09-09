@@ -300,7 +300,7 @@ class PlAlbum extends HTMLElement {
     this.shadowRoot.getElementById('container').style.height = this.album_height+'px';
   }
 
-  #redoLayout = this.#doLayout;
+  redoLayout = ()=>this.#doLayout();
   
   selectivelyPaintLayout(bufferTop, bufferBottom, albumTop){
 
@@ -440,7 +440,7 @@ class PlAlbum extends HTMLElement {
     // TODO: sort the items (need ts from db)
     this.data.push(...items);
 
-    this.#redoLayout();
+    this.#doLayout();
     if(this.#paint_layout){
       this.#paintLayout()
     }
