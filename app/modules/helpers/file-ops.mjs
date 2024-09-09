@@ -138,7 +138,7 @@ export async function placeFileInCollection(collection, filename, file_date, inP
 export function renameFolder(currAlbum, newAlbum){
   try {
     fs.renameSync(currAlbum, newAlbum);
-    logChange('rename', currAlbum, newAlbum);
+    logChange('move', currAlbum, newAlbum);
   } catch (err) {
     console.log(err)
     throw {code: err.code, message: err.message};
