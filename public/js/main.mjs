@@ -157,7 +157,7 @@ router.on('/slideshow/:startFrom', function(p){
   let s = Object.assign(document.createElement('pl-slideshow'), {
     data: state.galleryData,
     startFrom: p.data.startFrom,
-    buffer: 3
+    buffer: 1
   });
 
   // attaching this under app (not under main-content)
