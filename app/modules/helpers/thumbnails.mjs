@@ -192,7 +192,7 @@ export function deleteFaceThumbnails(uuid){
 
 export function resizeImage(filename, width, height){
   const readStream = fs.createReadStream(filename);
-  let transform = sharp() //readStream, { failOnError: false })
+  let transform = sharp({failOnError: false})
     .rotate()
     .resize({
       width: width, 
@@ -221,3 +221,4 @@ export function streamVideo(uuid, filename){
 
   return readStream;
 }
+
