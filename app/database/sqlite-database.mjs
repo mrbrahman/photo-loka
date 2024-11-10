@@ -26,6 +26,16 @@ if(db.pragma("user_version", {simple: true}) < 1){
   db.pragma("user_version = 1");
 }
 
+// define a json_patch_agg SQL aggregate function, which is similar to the SQLite provided
+// json_patch function, however this is an aggregate function
+// this is used in merging all exif updates required to be done on a file in 'exif_updates' table
+db.aggregate('json_patch_agg', {
+  directOnly: true,
+  start: {},
+  step: (buf, inp)=>({...buf, ...JSON.parse(inp)}),
+  result: out=>JSON.stringify(out)
+});
+
 function initialDbSetup() {
   console.log("creating database ... ");
 

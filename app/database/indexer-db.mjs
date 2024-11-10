@@ -99,7 +99,14 @@ const fileAuditStatement = `
   (action, path1, path2)
   values
   (@action, @path1, @path2)
-`
+`;
+
+const getPendingExifUpdatesStatemet = `
+  select uuid, json_patch_agg(new_exif_json order by update_tm) as new_exif
+  from exif_updates
+  where update_status = 'P'
+  group by uuid
+`;
 
 const deleteMetadata = db.prepare(deleteFromMetadataStatement);
 const insertMetadata = db.prepare(insertIntoMetadataStatement);
@@ -111,6 +118,7 @@ const updateToTrashInDb = db.prepare(updateToTrashStatement);
 const getFileNameFromDb = db.prepare(getFileNameStatement);
 const retriveMetadataFromDb = db.prepare(retriveMetadataStatement);
 const fileAuditInDb = db.prepare(fileAuditStatement);
+const getPendingExifUpdatesFromDb = db.prepare(getPendingExifUpdatesStatemet);
 
 function transformDataToMetadataRow(row){
   ['faces','objects','keywords'].forEach(c=>{
@@ -263,4 +271,8 @@ export function scheduleExif(uuid_arr, new_exif_json){
 
 export function fileAudit(action, path1, path2=null){
   fileAuditInDb.run({action, path1, path2});
+}
+
+export function getPendingExifUpdates(){
+  return getPendingExifUpdatesFromDb.get()
 }
