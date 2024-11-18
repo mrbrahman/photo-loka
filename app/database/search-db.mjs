@@ -112,7 +112,7 @@ export function runSearch(collection_id, searchStr, trashed = false){
 
   let sql = `
   with t as (
-    select album, aspectratio, uuid, mimetype, coalesce(rating,0) as rating, file_date
+    select album, aspectratio, uuid, mediatype, coalesce(rating,0) as rating, file_date
     from metadata
     where ${filters.join(' and ')}
     and mediatype in ('image', 'video')  -- TODO: add audio
@@ -125,7 +125,7 @@ export function runSearch(collection_id, searchStr, trashed = false){
         json_object(
           'ar', round(aspectratio, 3), 
           'id', uuid, 
-          'type', mimetype,
+          'type', mediatype,
           'rating', rating
         )
       )
