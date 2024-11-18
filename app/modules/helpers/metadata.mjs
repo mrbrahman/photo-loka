@@ -1,7 +1,7 @@
 import {ExifTool} from 'exiftool-vendored';
 
 const exiftool = new ExifTool({
-  numericTags: ['FileSize', 'Orientation']
+  numericTags: ['FileSize', 'Orientation', 'Duration', 'GPSPosition']
 });
 
 export async function getMetadata(file){
@@ -55,7 +55,7 @@ export async function getMetadata(file){
         tags.Orientation : 
         fileType=='video' && typeof(tags.Rotation!=='undefined') ? tags.Rotation : null, 
     gpsposition: tags.GPSPosition||null,
-    duration: tags.MediaDuration||null,
+    duration: tags.Duration||null,
     region_applied_to_dimension_w: tags.RegionInfo ? 
       tags.RegionInfo.AppliedToDimensions.W : null,
     region_applied_to_dimension_h: tags.RegionInfo ? 
