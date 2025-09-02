@@ -167,6 +167,13 @@ app.put('/updateIndexerConcurrency/:concurrency', function(req,res,next){
   res.sendStatus(200);
 });
 
+app.post('/refreshMetadataForCollection/:collection_id', function(req,res){
+  let collection_id = +req.params.collection_id;
+  s.indexer.refreshMetadataForCollection(collection_id);
+  res.sendStatus(200);
+});
+
+
 app.put('/updateRating', function(req,res){
   let {uuid_arr, newRating} = req.body;
   try{

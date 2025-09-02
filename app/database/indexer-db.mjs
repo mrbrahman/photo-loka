@@ -196,15 +196,7 @@ export async function getIndexedFilesModifyTime(collection_id){
   `);
 
   let result = stmt.all(collection_id);
-
-  // convert output into hash map
-  return result.reduce(function(acc,curr){
-    acc[curr.filename]={
-      uuid: curr.uuid, 
-      mtime: Math.floor( (new Date(curr.file_modify_date).getTime()) / 1000)  // Unix Epoch
-    }; 
-    return acc;
-  }, {})
+  return result
 }
 
 export function updateAlbum(collection_id, fromAlbum, toAlbum, updateFileName){

@@ -73,17 +73,6 @@ export function addToIndexQueue(collection, filename, uuid, inPlace){
   indexerQueue.enqueue(()=>indexFile(collection, filename, uuid, inPlace))
 }
 
-export async function refreshMetadata(uuid){
-  let filename = db.getFileName(uuid);
-
-  // get metadata from exiftool
-  let metadata = await m.getMetadata(filename);
-  metadata['uuid'] = uuid;
-
-  // TODO: implement 'update'
-  // db.indexerDbWriteInChunks.add( {action: 'update', data: metadata} );
-
-}
 
 // TODO: see if this can be used in the main indexFile function as well?
 export async function refreshThumbs(uuid){
@@ -183,7 +172,7 @@ async function indexFile(collection, sourceFileName, uuid, inPlace){
   console.log(`${sourceFileName} finished in ${performance.now()-fileStart} ms`);
 }
 
-export async function deleteFromCollection(uuid){
+async function deleteFromCollection(uuid){
   let start = performance.now();
   console.log(`DELETE: start to delete for uuid: ${uuid}`);
 
@@ -216,7 +205,7 @@ export async function indexCollection(collection_id, firstTime=false){
       files = {added: fileOps.listAllFilesForCollection(c), changed:[], deleted: []};
     } else {
       // painstakingly find out which files are added/updated/removed
-      files = await fileOps.listDeltaFilesForCollection(c);
+      files = await listDeltaFilesForCollection(c);
     }
 
     console.log(`added: ${files.added.length} changed ${files.changed.length} deleted ${files.deleted.length}`);
@@ -304,6 +293,73 @@ export async function moveFileToTrash(uuid_arr){
 }
 
 export let ignoreWatcherList = {};
+
+async function listDeltaFilesForCollection(collection) {
+  let start = performance.now();
+  // Step 1: list all files and their modify times for collection
+  let p1 = fileOps.getFilesMtime(collection.collection_path);
+
+  // Step 2: Get files and modify times from db
+  let p2 = db.getIndexedFilesModifyTime(collection.collection_id);
+
+  // Step 3: Wait for promises to complete
+  let [physicalFiles, databaseEntriesArr] = await Promise.all([p1, p2]);
+  
+  // convert db output into hash map
+  let databaseEntries = databaseEntriesArr.reduce(function(acc,curr){
+      acc[curr.filename]={
+        uuid: curr.uuid, 
+        mtime: Math.floor( (new Date(curr.file_modify_date).getTime()) / 1000)  // Unix Epoch
+      }; 
+      return acc;
+    }, {})
+
+  console.log(`physicalFiles ${Object.keys(physicalFiles).length} databaseEntries: ${Object.keys(databaseEntries).length}`);
+  console.log(`Time taken to figure out files ${(performance.now()-start)/1000/60} mins`)
+
+  // Step 4: compare the two and determine which have been added/removed/modified
+  let added = [], changed = [], deleted = [];
+
+  Object.keys(physicalFiles).forEach(f => {
+    if (!(f in databaseEntries)) {
+      added.push(f);
+    } else if (physicalFiles[f].mtime > databaseEntries[f].mtime) {
+      console.log(`${f} is changed`)
+      changed.push({ uuid: databaseEntries[f].uuid, filename: f });
+    }
+  });
+
+  Object.keys(databaseEntries).forEach(f => {
+    if (!(f in physicalFiles)) {
+      console.log(`${f} is deleted`)
+      deleted.push({ uuid: databaseEntries[f].uuid, filename: f });
+    }
+  });
+
+  return { added, changed, deleted };
+}
+
+export async function refreshMetadataForCollection(collection_id){
+  let allFiles = await db.getIndexedFilesModifyTime(collection_id);
+  
+  console.log(`Re-extracting metadata for ${allFiles.length} files`);
+  
+  indexerQueue.enqueueMany(
+    allFiles.map(file=>{
+      return ()=>refreshMetadata(file.uuid, file.filename);
+    })
+  );
+  
+}
+
+export async function refreshMetadata(uuid, filename){
+  // get metadata from exiftool
+  let metadata = await m.getMetadata(filename);
+  metadata['uuid'] = uuid;
+
+  db.indexerDbWriteInChunks.add( {action: 'update', data: metadata} );
+
+}
 
 // TODO: need to think of a generic function for other metadata as well
 export function updateRating(uuid_arr, newRating){

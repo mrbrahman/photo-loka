@@ -31,7 +31,7 @@ export function listAllFilesForCollection(collection) {
   return files;
 }
 
-async function getFilesMtime(dir) {
+export async function getFilesMtime(dir) {
   let files = lsRecursive(dir);
 
   let result = files.map(f => {
@@ -47,42 +47,6 @@ async function getFilesMtime(dir) {
     acc[curr.filename] = { mtime: curr.file_modify_date };
     return acc;
   }, {});
-}
-
-export async function listDeltaFilesForCollection(collection) {
-  let start = performance.now();
-  // Step 1: list all files and their modify times for collection
-  let p1 = getFilesMtime(collection.collection_path);
-
-  // Step 2: Get files and modify times from db
-  let p2 = db.getIndexedFilesModifyTime(collection.collection_id);
-
-  // Step 3: Wait for promises to complete
-  let [physicalFiles, databaseEntries] = await Promise.all([p1, p2]);
-
-  console.log(`physicalFiles ${Object.keys(physicalFiles).length} databaseEntries: ${Object.keys(databaseEntries).length}`);
-  console.log(`Time taken to figure out files ${(performance.now()-start)/1000/60} mins`)
-
-  // Step 4: compare the two and determine which have been added/removed/modified
-  let added = [], changed = [], deleted = [];
-
-  Object.keys(physicalFiles).forEach(f => {
-    if (!(f in databaseEntries)) {
-      added.push(f);
-    } else if (physicalFiles[f].mtime > databaseEntries[f].mtime) {
-      console.log(`${f} is changed`)
-      changed.push({ uuid: databaseEntries[f].uuid, filename: f });
-    }
-  });
-
-  Object.keys(databaseEntries).forEach(f => {
-    if (!(f in physicalFiles)) {
-      console.log(`${f} is deleted`)
-      deleted.push({ uuid: databaseEntries[f].uuid, filename: f });
-    }
-  });
-
-  return { added, changed, deleted };
 }
 
 export async function placeFileInCollection(collection, filename, file_date, inPlace=false){
