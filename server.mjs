@@ -173,6 +173,11 @@ app.post('/refreshMetadataForCollection/:collection_id', function(req,res){
   res.sendStatus(200);
 });
 
+app.post('/refreshMetadataForItem/:uuid', async function(req,res){
+  await s.indexer.refreshMetadata(req.params.uuid);
+  res.sendStatus(200);
+});
+
 
 app.put('/updateRating', function(req,res){
   let {uuid_arr, newRating} = req.body;

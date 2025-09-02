@@ -353,6 +353,11 @@ export async function refreshMetadataForCollection(collection_id){
 }
 
 export async function refreshMetadata(uuid, filename){
+  if(!filename){
+    filename = db.getFileName(uuid);
+  }
+  console.log(`Re-extracting metadata for ${filename}`);
+
   // get metadata from exiftool
   let metadata = await m.getMetadata(filename);
   metadata['uuid'] = uuid;

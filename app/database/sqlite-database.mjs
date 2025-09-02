@@ -63,7 +63,7 @@ function initialDbSetup() {
       collection_id UNINDEXED, uuid UNINDEXED, album, filename,
       description, filesize UNINDEXED, ext UNINDEXED, mimetype, mediatype,
       keywords, xmpregion, faces, objects, rating UNINDEXED, imagesize UNINDEXED, aspectratio UNINDEXED,
-      make, model, orientation UNINDEXED, gpsposition UNINDEXED, duration UNINDEXED,
+      make, model, orientation UNINDEXED, gps_lat UNINDEXED, gps_long UNINDEXED, gps_alt UNINDEXED, duration UNINDEXED,
       datetime_original UNINDEXED, create_date UNINDEXED, file_modify_date UNINDEXED, file_date UNINDEXED,
       trashed, trashed_dt
     );

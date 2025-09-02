@@ -22,7 +22,7 @@ insert into metadata
   collection_id, uuid, album, filename,
   description, filesize, ext, mimetype, mediatype,
   keywords, xmpregion, faces, objects, rating, imagesize, aspectratio,
-  make, model, orientation, gpsposition, duration,
+  make, model, orientation, gps_lat, gps_long, gps_alt, duration,
   datetime_original, create_date, file_modify_date, file_date
 )
 values
@@ -30,7 +30,7 @@ values
   @collection_id, @uuid, @album, @filename,
   @description, @filesize, @ext, @mimetype, @mediatype,
   @keywords, @xmpregion, @faces, @objects, @rating, @imagesize, @aspectratio,
-  @make, @model, @orientation, @gpsposition, @duration,
+  @make, @model, @orientation, @gps_lat, @gps_long, @gps_alt, @duration,
   @datetime_original, @create_date, @file_modify_date, @file_date
 )
 `;
@@ -56,7 +56,9 @@ const updateMetadataStatement = `
     make = @make,
     model = @model,
     orientation = @orientation,
-    gpsposition = @gpsposition,
+    gps_lat = @gps_lat,
+    gps_long = @gps_long,
+    gps_alt = @gps_alt,
     duration = @duration,
     datetime_original = @datetime_original,
     create_date = @create_date,
