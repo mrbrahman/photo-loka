@@ -39,9 +39,9 @@ export async function getMetadata(file){
     mimetype: tags.MIMEType||null,
     mediatype: fileType,
     keywords: tags.Keywords ? ((typeof(tags.Keywords) == "string") ?  [tags.Keywords] : tags.Keywords) : null,
+    xmpregion: tags.RegionInfo,
     faces: tags.RegionInfo ? tags.RegionInfo.RegionList.filter(d=>d.Type='Face').map(d=>d.Name) : null,
     objects: tags.RegionInfo ? tags.RegionInfo.RegionList.filter(d=>d.Type!='Face').map(d=>d.Name) : null,
-    xmpregion: tags.RegionInfo,
     rating: tags.Rating||0,
     imagesize: tags.ImageSize||null,
     ImageWidth: tags.ImageWidth||null,   // not sent to db
@@ -56,12 +56,6 @@ export async function getMetadata(file){
         fileType=='video' && typeof(tags.Rotation!=='undefined') ? tags.Rotation : null, 
     gpsposition: tags.GPSPosition||null,
     duration: tags.Duration||null,
-    region_applied_to_dimension_w: tags.RegionInfo ? 
-      tags.RegionInfo.AppliedToDimensions.W : null,
-    region_applied_to_dimension_h: tags.RegionInfo ? 
-      tags.RegionInfo.AppliedToDimensions.H : null,
-    region_applied_to_dimension_unit: tags.RegionInfo ? 
-      tags.RegionInfo.AppliedToDimensions.Unit : null,
     datetime_original: tags.DateTimeOriginal ? tags.DateTimeOriginal.toString() : null,
     create_date: tags.CreateDate ? tags.CreateDate.toString() : null,
     file_modify_date: tags.FileModifyDate ? tags.FileModifyDate.toString() : null,

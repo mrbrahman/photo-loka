@@ -21,45 +21,73 @@ insert into metadata
 (
   collection_id, uuid, album, filename,
   description, filesize, ext, mimetype, mediatype,
-  keywords, faces, objects, rating, imagesize, aspectratio,
+  keywords, xmpregion, faces, objects, rating, imagesize, aspectratio,
   make, model, orientation, gpsposition, duration,
-  region_applied_to_dimension_w, region_applied_to_dimension_h, region_applied_to_dimension_unit,
   datetime_original, create_date, file_modify_date, file_date
 )
 values
 (
   @collection_id, @uuid, @album, @filename,
   @description, @filesize, @ext, @mimetype, @mediatype,
-  @keywords, @faces, @objects, @rating, @imagesize, @aspectratio,
+  @keywords, @xmpregion, @faces, @objects, @rating, @imagesize, @aspectratio,
   @make, @model, @orientation, @gpsposition, @duration,
-  @region_applied_to_dimension_w, @region_applied_to_dimension_h, @region_applied_to_dimension_unit,
   @datetime_original, @create_date, @file_modify_date, @file_date
 )
 `;
 
-const deleteFromObjectDetailsStatement = `
-delete from object_details
-where uuid = @uuid
+const updateMetadataStatement = `
+  update metadata
+  set
+    -- collection_id = @collection_id,
+    -- album = @album,
+    -- filename = @filename,
+    description = @description,
+    filesize = @filesize,
+    ext = @ext,
+    mimetype = @mimetype,
+    mediatype = @mediatype,
+    keywords = @keywords,
+    xmpregion = @xmpregion,
+    faces = @faces,
+    objects = @objects,
+    rating = @rating,
+    imagesize = @imagesize,
+    aspectratio = @aspectratio,
+    make = @make,
+    model = @model,
+    orientation = @orientation,
+    gpsposition = @gpsposition,
+    duration = @duration,
+    datetime_original = @datetime_original,
+    create_date = @create_date,
+    file_modify_date = @file_modify_date,
+    file_date = @file_date
+  where uuid = @uuid
 `;
 
-const insertIntoObjectDetailsStatement = `
-insert into object_details
-(
-  uuid, frame, how_found,
-  region_name, region_type,
-  region_area_x, region_area_y,
-  region_area_w, region_area_h,
-  region_area_unit
-)
-values
-(
-  @uuid, @frame, @how_found,
-  @region_name, @region_type,
-  @region_area_x, @region_area_y,
-  @region_area_w, @region_area_h,
-  @region_area_unit
-)
-`;
+// const deleteFromObjectDetailsStatement = `
+// delete from object_details
+// where uuid = @uuid
+// `;
+
+// const insertIntoObjectDetailsStatement = `
+// insert into object_details
+// (
+//   uuid, frame, how_found,
+//   region_name, region_type,
+//   region_area_x, region_area_y,
+//   region_area_w, region_area_h,
+//   region_area_unit
+// )
+// values
+// (
+//   @uuid, @frame, @how_found,
+//   @region_name, @region_type,
+//   @region_area_x, @region_area_y,
+//   @region_area_w, @region_area_h,
+//   @region_area_unit
+// )
+// `;
 
 const insertIntoExifUpdatesStatement = `
   insert into exif_updates
@@ -110,8 +138,9 @@ const getPendingExifUpdatesStatemet = `
 
 const deleteMetadata = db.prepare(deleteFromMetadataStatement);
 const insertMetadata = db.prepare(insertIntoMetadataStatement);
-const deleteObjectDetails = db.prepare(deleteFromObjectDetailsStatement);
-const insertObjectDetails = db.prepare(insertIntoObjectDetailsStatement);
+const updateMetadata = db.prepare(updateMetadataStatement);
+// const deleteObjectDetails = db.prepare(deleteFromObjectDetailsStatement);
+// const insertObjectDetails = db.prepare(insertIntoObjectDetailsStatement);
 const insertIntoExifUpdates = db.prepare(insertIntoExifUpdatesStatement);
 const updateRatingInDb = db.prepare(updateRatingStatement);
 const updateToTrashInDb = db.prepare(updateToTrashStatement);
@@ -121,7 +150,7 @@ const fileAuditInDb = db.prepare(fileAuditStatement);
 const getPendingExifUpdatesFromDb = db.prepare(getPendingExifUpdatesStatemet);
 
 function transformDataToMetadataRow(row){
-  ['faces','objects','keywords'].forEach(c=>{
+  ['faces','objects','keywords','xmpregion'].forEach(c=>{
     row[c] = JSON.stringify(row[c])
   });
   return row;
@@ -134,30 +163,12 @@ async function indexerDbTask(entries){
     function(tasks){
       for (let task of tasks) {
         if(task.action == 'delete'){
-          deleteObjectDetails.run(task.data);
+          deleteObjectDetails.run(task.data);  // TODO: revisit this. probably not needed
           deleteMetadata.run(task.data);
         } else if (task.action == 'insert'){
-          // first clean-up any old entries
-          // deleteObjectDetails.run(task.data);
-          // deleteMetadata.run(task.data);
-          
           insertMetadata.run( transformDataToMetadataRow(task.data) );
-
-          if(task.data.parsedFaces){
-            // TODO: create transformObjectDetailsToDb? what about uuid?
-            task.data.parsedFaces.forEach(o=>insertObjectDetails.run({
-              uuid: task.data.uuid,
-              frame: '',                    // TODO: future use. may be this will help for video files?
-              how_found: task.data.software,    // software that found this
-              region_name: o.Name,
-              region_type: o.Type,
-              region_area_x: o.Area.X,
-              region_area_y: o.Area.Y,
-              region_area_w: o.Area.W,
-              region_area_h: o.Area.H,
-              region_area_unit: o.Area.Unit
-            }));
-          } // parsedFaces
+        } else if (task.action == 'update'){
+          updateMetadata.run( transformDataToMetadataRow(task.data) );
         }
       } // for loop
     } // end of function
