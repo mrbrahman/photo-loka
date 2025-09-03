@@ -70,7 +70,7 @@ indexerEvents.on('error', (item, error)=>{
 })
 
 export function addToIndexQueue(collection, filename, uuid, inPlace){
-  indexerQueue.enqueue(()=>indexFile(collection, filename, uuid, inPlace))
+  indexerQueue.enqueue(indexFile, [collection, filename, uuid, inPlace])
 }
 
 
@@ -231,7 +231,7 @@ export async function indexCollection(collection_id, firstTime=false){
     if(files['added'].length > 0){
       indexerQueue.enqueueMany(
         files['added'].map(f=>{
-          return ()=>indexFile(c, f, null, true)
+          return [indexFile, [c, f, null, true]];
         })
       );
     }
@@ -239,7 +239,7 @@ export async function indexCollection(collection_id, firstTime=false){
     if(files['changed'].length > 0){
       indexerQueue.enqueueMany(
         files['changed'].map(f=>{
-          return ()=>indexFile(c, f.filename, f.uuid, true);
+          return [indexFile, [c, f.filename, f.uuid, true]];
         })
       );
     }
@@ -346,7 +346,7 @@ export async function refreshMetadataForCollection(collection_id){
   
   indexerQueue.enqueueMany(
     allFiles.map(file=>{
-      return ()=>refreshMetadata(file.uuid, file.filename);
+      return [refreshMetadata, [file.uuid, file.filename]];
     })
   );
   

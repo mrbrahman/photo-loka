@@ -18,15 +18,34 @@ import {EventEmitter} from 'events';
 export function ParallelProcesses(){
   var maxConcurrency=1, processInInsertOrder=false, autoStart=true, emitter;
   let queue=[], processingCnt=0, pendingCnt=0, completedCnt=0, failedCnt=0, paused=false;
+  let maxDailyExecutions=null, dailyExecutionCount=0, currentDate=null;
   
   function my(){
     // nothing much to do here
   }
 
-  // need to call this as: p.enqueue(()=>fun(arg))
-  // otherwise, function will get executed immediately, and promise will get resolved!
-  my.enqueue = function(promiseGenerator){
-    queue.push(promiseGenerator); // assume it is a promise
+  function getTodayString(){
+    return new Date().toISOString().split('T')[0];
+  }
+
+  function checkDailyLimit(){
+    const today = getTodayString();
+    if(currentDate !== today){
+      currentDate = today;
+      dailyExecutionCount = 0;
+    }
+    return maxDailyExecutions === null || dailyExecutionCount < maxDailyExecutions;
+  }
+
+  // need to call this as: p.enqueue(fun, [arg1, arg2])
+  my.enqueue = function(func, args = []){
+    const task = {
+      func,
+      args,
+      name: func.name || 'anonymous',
+      execute: () => func.apply(null, args)
+    };
+    queue.push(task);
     pendingCnt++;
     if(autoStart)
       dequeue();
@@ -34,11 +53,15 @@ export function ParallelProcesses(){
     return my;
   }
 
-  my.enqueueMany = function(promiseGenerators){
-    let noOfEntries = promiseGenerators.length;
-    queue.push(...promiseGenerators);
-    // TODO: check/read-up performance of spread above vs. 
-    //    Array.prototype.push.apply(queue, promiseGenerators);
+  my.enqueueMany = function(tasks){
+    let noOfEntries = tasks.length;
+    const taskObjects = tasks.map(([func, args = []]) => ({
+      func,
+      args,
+      name: func.name || 'anonymous',
+      execute: () => func.apply(null, args)
+    }));
+    queue.push(...taskObjects);
     pendingCnt+=noOfEntries;
     if(autoStart)
       dequeue();
@@ -48,7 +71,7 @@ export function ParallelProcesses(){
 
   // this one is not exposed
   let dequeue = function(){
-    if (!paused && processingCnt<maxConcurrency && queue.length>0){
+    if (!paused && processingCnt<maxConcurrency && queue.length>0 && checkDailyLimit()){
       if(processingCnt == 0){
         if(emitter){
           emitter.emit('start_batch');
@@ -57,27 +80,29 @@ export function ParallelProcesses(){
 
       processingCnt++; pendingCnt--;
       let item = processInInsertOrder ? queue.shift() : queue.pop();
+      const taskInfo = `${item.name}(${item.args.map(arg => JSON.stringify(arg)).join(', ')})`;
       if(emitter){
-        emitter.emit('start', item.toString()) // TODO: can we emit anything better?
+        emitter.emit('start', taskInfo)
       }
         
-      item()
+      item.execute()
         .then(returnValue=>{
           // console.log('in then '+returnValue);
           processingCnt--; completedCnt++;
+          dailyExecutionCount++;
           if(emitter){
-            emitter.emit('end', item.toString(), returnValue) // TODO: can we log anything better?
+            emitter.emit('end', taskInfo, returnValue)
           }
         })
         .catch(error=>{
-          console.log('caught error in parallel-processes');
+          console.error('caught error in parallel-processes:', error);
           processingCnt--; failedCnt++;
           if(emitter){
-            emitter.emit('error', item.toString(), error); // TODO: can we log anything better?
+            emitter.emit('error', taskInfo, error);
           }
         })
         .finally(()=>{
-          if(pendingCnt==0 && emitter){
+          if(pendingCnt==0 && processingCnt==0 && emitter){
             emitter.emit('all_done')
           }
           dequeue()
@@ -128,6 +153,10 @@ export function ParallelProcesses(){
     return arguments.length ? (autoStart = _, my): autoStart;
   }
 
+  my.maxDailyExecutions = function(_){
+    return arguments.length ? (maxDailyExecutions = _, my): maxDailyExecutions;
+  }
+
   my.emitter = function(_){
     if(arguments.length){
       if(!_ instanceof EventEmitter){
@@ -143,7 +172,8 @@ export function ParallelProcesses(){
 
   my.status = function(){
     return {
-      processingCnt, pendingCnt, completedCnt, failedCnt, paused, maxConcurrency
+      processingCnt, pendingCnt, completedCnt, failedCnt, paused, maxConcurrency,
+      dailyExecutionCount, maxDailyExecutions, currentDate
     }
   }
 
