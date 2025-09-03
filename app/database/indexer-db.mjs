@@ -22,7 +22,8 @@ insert into metadata
   collection_id, uuid, album, filename,
   description, filesize, ext, mimetype, mediatype,
   keywords, xmpregion, faces, objects, rating, imagesize, aspectratio,
-  make, model, orientation, gps_lat, gps_long, gps_alt, duration,
+  make, model, orientation, duration, 
+  gps_lat, gps_long, gps_alt, geolocation_api_json, geo_address,
   datetime_original, create_date, file_modify_date, file_date
 )
 values
@@ -30,7 +31,8 @@ values
   @collection_id, @uuid, @album, @filename,
   @description, @filesize, @ext, @mimetype, @mediatype,
   @keywords, @xmpregion, @faces, @objects, @rating, @imagesize, @aspectratio,
-  @make, @model, @orientation, @gps_lat, @gps_long, @gps_alt, @duration,
+  @make, @model, @orientation, @duration, 
+  @gps_lat, @gps_long, @gps_alt, @geolocation_api_json, @geo_address,
   @datetime_original, @create_date, @file_modify_date, @file_date
 )
 `;
@@ -56,10 +58,12 @@ const updateMetadataStatement = `
     make = @make,
     model = @model,
     orientation = @orientation,
+    duration = @duration,
     gps_lat = @gps_lat,
     gps_long = @gps_long,
     gps_alt = @gps_alt,
-    duration = @duration,
+    geolocation_api_json = @geolocation_api_json,
+    geo_address = @geo_address,
     datetime_original = @datetime_original,
     create_date = @create_date,
     file_modify_date = @file_modify_date,
@@ -152,9 +156,20 @@ const fileAuditInDb = db.prepare(fileAuditStatement);
 const getPendingExifUpdatesFromDb = db.prepare(getPendingExifUpdatesStatemet);
 
 function transformDataToMetadataRow(row){
-  ['faces','objects','keywords','xmpregion'].forEach(c=>{
+  let g = row['geolocation_api_json'];
+  
+  row['geo_address'] = [
+    g['GeolocationCity'], 
+    g['GeolocationSubregion'], 
+    g['GeolocationRegion'], 
+    g['GeolocationCountryCode'], 
+    g['GeolocationCountry']
+  ].filter(d=>d).join(', ');
+  
+  ['faces','objects','keywords','xmpregion','geolocation_api_json'].forEach(c=>{
     row[c] = JSON.stringify(row[c])
   });
+
   return row;
 }
 

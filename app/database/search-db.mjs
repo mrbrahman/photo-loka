@@ -1,6 +1,6 @@
 import { db } from './sqlite-database.mjs';
 
-export const restrictSearchCols = ['album', 'keywords', 'faces', 'objects', 'mediatype', 'make', 'model'];
+export const restrictSearchCols = ['album', 'keywords', 'faces', 'objects', 'mediatype', 'make', 'model', 'geo_address'];
 
 // aliases: the right side (realCol) can also be known by the left side (alias)
 export const aliases = {

@@ -2,6 +2,7 @@ import {ExifTool} from 'exiftool-vendored';
 
 const exiftool = new ExifTool({
   numericTags: ['FileSize', 'Orientation', 'Duration', 'GPSLatitude', 'GPSLongitude', 'GPSAltitude', 'Rating', 'ImageWidth', 'ImageHeight'],
+  geolocation: true
 });
 
 export async function getMetadata(file){
@@ -32,6 +33,8 @@ export async function getMetadata(file){
     }
   }
 
+  // console.log(tags);
+
   return {
     description: (tags.ImageDescription || ' ').trim(),
     filesize: tags.FileSize||null,
@@ -58,12 +61,27 @@ export async function getMetadata(file){
     gps_long: tags.GPSLongitude||null,
     gps_alt: tags.GPSAltitude||null,
     gpsposition: tags.GPSPosition||null,
+    geolocation_api_json: {
+      GeolocationCity: tags.GeolocationCity || null,
+      GeolocationRegion: tags.GeolocationRegion || null,
+      GeolocationSubregion: tags.GeolocationSubregion || null,
+      GeolocationCountryCode: tags.GeolocationCountryCode || null,
+      GeolocationCountry: tags.GeolocationCountry || null,
+      GeolocationTimeZone: tags.GeolocationTimeZone || null,
+      GeolocationFeatureCode: tags.GeolocationFeatureCode || null,
+      GeolocationFeatureType: tags.GeolocationFeatureType || null,
+      GeolocationPopulation: tags.GeolocationPopulation || null,
+      GeolocationPosition: tags.GeolocationPosition || null,
+      GeolocationDistance: tags.GeolocationDistance || null,
+      GeolocationBearin: tags.GeolocationBearing || null
+    },
     duration: tags.Duration||null,
     datetime_original: tags.DateTimeOriginal ? tags.DateTimeOriginal.toString() : null,
     create_date: tags.CreateDate ? tags.CreateDate.toString() : null,
     file_modify_date: tags.FileModifyDate ? tags.FileModifyDate.toString() : null,
     file_date: tags.DateTimeOriginal ? tags.DateTimeOriginal.toString() : (tags.CreateDate ? tags.CreateDate.toString() : (tags.FileModifyDate.toString() ))
   }
+
 }
 
 export async function updateMetadata(file, updates){
