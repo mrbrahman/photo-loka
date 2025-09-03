@@ -46,9 +46,8 @@ export async function getMetadata(file){
     faces: tags.RegionInfo ? tags.RegionInfo.RegionList.filter(d=>d.Type='Face').map(d=>d.Name) : null,
     objects: tags.RegionInfo ? tags.RegionInfo.RegionList.filter(d=>d.Type!='Face').map(d=>d.Name) : null,
     rating: tags.Rating||0,
-    imagesize: tags.ImageSize||null,
-    ImageWidth: tags.ImageWidth||null,   // not sent to db
-    ImageHeight: tags.ImageHeight||null, // not sent to db
+    image_width: tags.ImageWidth||null,
+    image_height: tags.ImageHeight||null,
     software: tags.Software||null,       // TODO: new column in db metadata table
     aspectratio: aspectRatio,
     make: tags.Make||null,
