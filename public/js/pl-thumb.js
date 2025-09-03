@@ -135,7 +135,7 @@ class PlThumb extends HTMLElement {
       };
       // console.log(`need ${this.height * this.#dppx} px`)
       // img.src = `https://picsum.photos/id/${this.id}/${Math.round(this.width)}/${Math.round(this.height)}`;
-      img.src = `/getThumbnail?uuid=${this.id}&height=${Math.round(this.height)}`
+      img.src = `/api/getThumbnail?uuid=${this.id}&height=${Math.round(this.height)}`
     } 
   }
   #paintRating(){

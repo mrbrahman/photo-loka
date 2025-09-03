@@ -153,7 +153,7 @@ class PlGallery extends HTMLElement {
   
     try {
       // first save in backend
-      await fetch('/moveItems', {
+      await fetch('/api/moveItems', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
@@ -247,7 +247,7 @@ class PlGallery extends HTMLElement {
 
   #handleGalleryControlsRatingChanged = (evt)=>{
     // update db here
-    fetch('/updateRating', {
+    fetch('/api/updateRating', {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json'
@@ -278,7 +278,7 @@ class PlGallery extends HTMLElement {
 
   #handleGalleryControlsDeletePressed = (evt)=>{
     // update db here
-    fetch(`/trashItems`, {
+    fetch(`/api/trashItems`, {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json'

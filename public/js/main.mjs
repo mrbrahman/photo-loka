@@ -96,7 +96,7 @@ router.on('/', function(){
   
   showProgressBar();
 
-  fetch('/getAll')
+  fetch('/api/getAll')
   .then(res=>{
     if(!res.ok){
       throw `${res.status} ${res.statusText}`
@@ -125,7 +125,7 @@ router.on('/search/:searchText', function(p){
 
   showProgressBar();
 
-  fetch('/search', {
+  fetch('/api/search', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'

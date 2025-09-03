@@ -42,7 +42,7 @@ class PlAlbumName extends HTMLElement {
     }
 
     // album name is changed, update in backend
-    fetch('/updateAlbumName', {
+    fetch('/api/updateAlbumName', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -126,7 +126,7 @@ class PlAlbumName extends HTMLElement {
 
       // TODO: remove hardcoding, may be when there is at least one other person using this sytem :-)
       let searchStr = albumNameText.textContent.substring(0,15);
-      fetch(`/searchForExistingAlbums?searchStr=${searchStr}&wantFullName=true`)
+      fetch(`/api/searchForExistingAlbums?searchStr=${searchStr}&wantFullName=true`)
       .then(res=>{
         if(!res.ok){
           throw `${res.status} ${res.statusText}`
@@ -172,7 +172,7 @@ class PlAlbumName extends HTMLElement {
   }, 1000)
 
   #suggestAlbumNames = (txt) => {
-    fetch(`/searchForExistingAlbums?searchStr=${txt.substring(15).trim()}&wantFullName=false`)
+    fetch(`/api/searchForExistingAlbums?searchStr=${txt.substring(15).trim()}&wantFullName=false`)
     .then(res=>{
       if(!res.ok){
         throw `${res.status} ${res.statusText}`

@@ -54,6 +54,11 @@ const morganMiddleware = morgan(
 
 app.use(morganMiddleware);
 
+// *****************************************
+// API router with /api prefix
+// *****************************************
+const apiRouter = express.Router();
+
 // TODO: validate request parameters in all relevant functions?
 
 // *****************************************
@@ -61,11 +66,11 @@ app.use(morganMiddleware);
 // *****************************************
 
 // TODO: rename this
-app.get('/getAll', function(req,res){
+apiRouter.get('/getAll', function(req,res){
   res.json(s.search.getAllFromDefaultCollection());
 });
 
-app.get('/getThumbnail', function(req,res){
+apiRouter.get('/getThumbnail', function(req,res){
   let uuid = req.query.uuid, height = +req.query.height;
 
   // TODO: get the list of sizes from indexer / thumbnail generator
@@ -77,7 +82,7 @@ app.get('/getThumbnail', function(req,res){
   res.sendFile(fileName, {root: '.'});
 });
 
-app.get('/getImage', function(req,res){
+apiRouter.get('/getImage', function(req,res){
   let uuid = req.query.uuid, height = +req.query.height, width = +req.query.width;
   
   res.type('image/jpg');
@@ -90,26 +95,26 @@ app.get('/getImage', function(req,res){
 });
 
 
-app.get('/getVideo', function(req,res){
+apiRouter.get('/getVideo', function(req,res){
   let uuid = req.query.uuid, height = +req.query.height, width = +req.query.width;
 
   s.search.getVideo(uuid).pipe(res);
 
 });
 
-app.post('/search', function(req,res){
+apiRouter.post('/search', function(req,res){
   let {collection_id, searchText} = req.body;
   res.json(s.search.search(collection_id, searchText));
 });
 
-app.get('/searchForExistingAlbums', function(req,res){
+apiRouter.get('/searchForExistingAlbums', function(req,res){
   res.json(s.search.searchForExistingAlbums(req.query.searchStr, req.query.wantFullName))
 })
 
 // *****************************************
 // collection functions
 // *****************************************
-app.post('/createNewCollection', function(req,res,next){
+apiRouter.post('/createNewCollection', function(req,res,next){
   let c = req.body;
   try {
     let id = s.collections.createNewCollection(c)
@@ -119,7 +124,7 @@ app.post('/createNewCollection', function(req,res,next){
   }
 });
 
-app.get('/getAllCollections', function(req,res){
+apiRouter.get('/getAllCollections', function(req,res){
   res.json( s.collections.getAllCollections() )
 });
 
@@ -128,37 +133,37 @@ app.get('/getAllCollections', function(req,res){
 // indexer functions
 // *****************************************
 
-app.post('/startIndexingFirstTime', async function(req,res){
+apiRouter.post('/startIndexingFirstTime', async function(req,res){
   let {collection_id} = req.query;
   s.indexer.indexCollection(collection_id, true);
   res.sendStatus(200);
 });
 
-app.post('/indexCollection/:collection_id', function(req,res){
+apiRouter.post('/indexCollection/:collection_id', function(req,res){
   let collection_id = req.params.collection_id;
   s.indexer.indexCollection(collection_id);
   res.sendStatus(200);
 });
 
-app.get('/getIndexerStatus', function(req,res){
+apiRouter.get('/getIndexerStatus', function(req,res){
   res.json(s.indexer.indexerStatus());
 });
 
-app.put('/pauseIndexer', function(req,res){
+apiRouter.put('/pauseIndexer', function(req,res){
   s.indexer.pauseIndexer();
   res.sendStatus(200);
 });
 
-app.put('/resumeIndexer', function(req,res){
+apiRouter.put('/resumeIndexer', function(req,res){
   s.indexer.resumeIndexer();
   res.sendStatus(200);
 });
 
-app.get('/getIndexerErrors', function(req,res){
+apiRouter.get('/getIndexerErrors', function(req,res){
   res.json( s.indexer.indexerErrors )
 });
 
-app.put('/updateIndexerConcurrency/:concurrency', function(req,res,next){
+apiRouter.put('/updateIndexerConcurrency/:concurrency', function(req,res,next){
   let concurrency = +req.params.concurrency;
 
   if(concurrency){
@@ -167,19 +172,19 @@ app.put('/updateIndexerConcurrency/:concurrency', function(req,res,next){
   res.sendStatus(200);
 });
 
-app.post('/refreshMetadataForCollection/:collection_id', function(req,res){
+apiRouter.post('/refreshMetadataForCollection/:collection_id', function(req,res){
   let collection_id = +req.params.collection_id;
   s.indexer.refreshMetadataForCollection(collection_id);
   res.sendStatus(200);
 });
 
-app.post('/refreshMetadataForItem/:uuid', async function(req,res){
+apiRouter.post('/refreshMetadataForItem/:uuid', async function(req,res){
   await s.indexer.refreshMetadata(req.params.uuid);
   res.sendStatus(200);
 });
 
 
-app.put('/updateRating', function(req,res){
+apiRouter.put('/updateRating', function(req,res){
   let {uuid_arr, newRating} = req.body;
   try{
     s.indexer.updateRating(uuid_arr, newRating);
@@ -190,7 +195,7 @@ app.put('/updateRating', function(req,res){
   res.sendStatus(200);
 });
 
-app.put('/refreshThumbs/:uuid', async function(req,res){
+apiRouter.put('/refreshThumbs/:uuid', async function(req,res){
   await s.indexer.refreshThumbs(req.params.uuid);
   res.sendStatus(200);
 })
@@ -198,7 +203,7 @@ app.put('/refreshThumbs/:uuid', async function(req,res){
 // *****************************************
 // album organization
 // *****************************************
-app.post('/updateAlbumName', async function(req,res){
+apiRouter.post('/updateAlbumName', async function(req,res){
   let {collection_id, currAlbumName, newAlbumName} = req.body;
 
   try {
@@ -210,13 +215,13 @@ app.post('/updateAlbumName', async function(req,res){
 
 });
 
-app.delete('/trashItems', async function(req,res){
+apiRouter.delete('/trashItems', async function(req,res){
   let {uuid_arr} = req.body;
   await s.indexer.moveFileToTrash(uuid_arr);
   res.sendStatus(200);
 });
 
-app.put('/moveItems', async function(req,res){
+apiRouter.put('/moveItems', async function(req,res){
   let {collection_id, uuid_arr, new_album_name} = req.body;
   await s.indexer.moveItemsToAlbum(collection_id, uuid_arr, new_album_name);
   res.sendStatus(200);
@@ -228,19 +233,19 @@ app.put('/moveItems', async function(req,res){
 
 // TODO Implement start and stop for individual collection
 
-app.post('/startAllWatchers', function(req,res){
+apiRouter.post('/startAllWatchers', function(req,res){
   s.watcher.startWatchersForAllCollections();
   res.sendStatus(200);
 });
 
-app.post('/stopAllWatchers', function(req,res){
+apiRouter.post('/stopAllWatchers', function(req,res){
   s.watcher.stopAllWatchers();
   res.sendStatus(200);
 });
 
 
 // TODO
-// app.delete('/deleteAlbum/:albumName', function(req,res){
+// apiRouter.delete('/deleteAlbum/:albumName', function(req,res){
 //   let albumName = req.params.albumName;
 //   if(){ // album name is valid
 //     s.indexer.deleteAlbum(albumName);
@@ -250,6 +255,9 @@ app.post('/stopAllWatchers', function(req,res){
 //   }
   
 // })
+
+// Mount the API router at /api
+app.use('/api', apiRouter);
 
 
 // *****************************************

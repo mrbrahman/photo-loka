@@ -67,7 +67,7 @@ class PlSlide extends HTMLElement {
       return;
     }
 
-    fetch('/updateRating', {
+    fetch('/api/updateRating', {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json'

@@ -431,7 +431,7 @@ class PlSlideshow extends HTMLElement {
 
   set src(_){
     this.#src = _;
-    fetch('/search/_')  // TODO call backend.js when ready
+    fetch('/api/search/_')  // TODO call backend.js when ready
       .then(res=>res.json())
       .then(res=>{this.data = res})
     ;
