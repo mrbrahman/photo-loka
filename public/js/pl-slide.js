@@ -23,7 +23,7 @@ class PlSlide extends HTMLElement {
 
     if(this.item.data.type.startsWith('image')){
       let img = Object.assign(document.createElement('img'), {
-        src: `/getImage?uuid=${this.item.data.id}&width=${this.#screenWidth}&height=${this.#screenHeight}`
+        src: `/api/getImage?uuid=${this.item.data.id}&width=${this.#screenWidth}&height=${this.#screenHeight}`
       });
       img.classList.add(this.item.data.ar < this.#screenWidth/this.#screenHeight ? 'full-height' : 'full-width');
 
@@ -42,7 +42,7 @@ class PlSlide extends HTMLElement {
       });
 
       let src = Object.assign(document.createElement('source'), {
-        src: `/getVideo?uuid=${this.item.data.id}`
+        src: `/api/getVideo?uuid=${this.item.data.id}`
         // type: this.item.data.type
       });
 
