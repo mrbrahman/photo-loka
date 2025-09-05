@@ -18,23 +18,9 @@ import {EventEmitter} from 'events';
 export function ParallelProcesses(){
   var maxConcurrency=1, processInInsertOrder=false, autoStart=true, emitter;
   let queue=[], processingCnt=0, pendingCnt=0, completedCnt=0, failedCnt=0, paused=false;
-  let maxDailyExecutions=null, dailyExecutionCount=0, currentDate=null;
   
   function my(){
     // nothing much to do here
-  }
-
-  function getTodayString(){
-    return new Date().toISOString().split('T')[0];
-  }
-
-  function checkDailyLimit(){
-    const today = getTodayString();
-    if(currentDate !== today){
-      currentDate = today;
-      dailyExecutionCount = 0;
-    }
-    return maxDailyExecutions === null || dailyExecutionCount < maxDailyExecutions;
   }
 
   // need to call this as: p.enqueue(fun, [arg1, arg2])
@@ -71,7 +57,7 @@ export function ParallelProcesses(){
 
   // this one is not exposed
   let dequeue = function(){
-    if (!paused && processingCnt<maxConcurrency && queue.length>0 && checkDailyLimit()){
+    if (!paused && processingCnt<maxConcurrency && queue.length>0){
       if(processingCnt == 0){
         if(emitter){
           emitter.emit('start_batch');
@@ -89,7 +75,6 @@ export function ParallelProcesses(){
         .then(returnValue=>{
           // console.log('in then '+returnValue);
           processingCnt--; completedCnt++;
-          dailyExecutionCount++;
           if(emitter){
             emitter.emit('end', taskInfo, returnValue)
           }
@@ -153,10 +138,6 @@ export function ParallelProcesses(){
     return arguments.length ? (autoStart = _, my): autoStart;
   }
 
-  my.maxDailyExecutions = function(_){
-    return arguments.length ? (maxDailyExecutions = _, my): maxDailyExecutions;
-  }
-
   my.emitter = function(_){
     if(arguments.length){
       if(!_ instanceof EventEmitter){
@@ -172,8 +153,7 @@ export function ParallelProcesses(){
 
   my.status = function(){
     return {
-      processingCnt, pendingCnt, completedCnt, failedCnt, paused, maxConcurrency,
-      dailyExecutionCount, maxDailyExecutions, currentDate
+      processingCnt, pendingCnt, completedCnt, failedCnt, paused, maxConcurrency
     }
   }
 
