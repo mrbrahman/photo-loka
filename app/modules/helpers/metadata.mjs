@@ -74,6 +74,13 @@ export async function getMetadata(file){
       GeolocationDistance: tags.GeolocationDistance || null,
       GeolocationBearin: tags.GeolocationBearing || null
     },
+    geo_address: [
+      tags.GeolocationCity || null,
+      tags.GeolocationSubregion || null,
+      tags.GeolocationRegion || null,
+      tags.GeolocationCountryCode || null,
+      tags.GeolocationCountry || null
+    ].filter(x=>x).join(", ") || null,
     duration: tags.Duration||null,
     datetime_original: tags.DateTimeOriginal ? tags.DateTimeOriginal.toString() : null,
     create_date: tags.CreateDate ? tags.CreateDate.toString() : null,

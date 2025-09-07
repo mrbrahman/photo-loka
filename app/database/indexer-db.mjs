@@ -159,21 +159,18 @@ const fileAuditInDb = db.prepare(fileAuditStatement);
 const getPendingExifUpdatesFromDb = db.prepare(getPendingExifUpdatesStatemet);
 
 function transformDataToMetadataRow(row){
-  let g = row['geolocation_api_json'];
-  
-  row['geo_address'] = [
-    g['GeolocationCity'], 
-    g['GeolocationSubregion'], 
-    g['GeolocationRegion'], 
-    g['GeolocationCountryCode'], 
-    g['GeolocationCountry']
-  ].filter(d=>d).join(', ');
-  
   ['faces','objects','keywords','xmpregion','geolocation_api_json'].forEach(c=>{
     row[c] = JSON.stringify(row[c])
   });
 
   return row;
+}
+
+export function insertMetadataRow(row){
+  return insertMetadata.run( transformDataToMetadataRow(row) );
+}
+export function updateMetadataRow(row){
+  return updateMetadata.run( transformDataToMetadataRow(row) );
 }
 
 async function indexerDbTask(entries){
