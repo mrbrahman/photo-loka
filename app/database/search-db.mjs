@@ -174,12 +174,16 @@ export function searchForExistingAlbums(searchStr, wantFullName){
 
 export function getGpsCoordinates(){
   let sql = `
-    select uuid, album, filename, gps_lat, gps_long, mediatype
+    select 
+      round(gps_lat, 4) as lat,
+      round(gps_long, 4) as lng,
+      count(*) as count
     from metadata
     where gps_lat is not null 
     and gps_long is not null
     and coalesce(trashed, false) = false
     and mediatype in ('image', 'video')
+    group by round(gps_lat, 4), round(gps_long, 4)
   `;
   
   var stmt = db.prepare(sql);

@@ -57,13 +57,23 @@ class PlMap extends HTMLElement {
 
     // Add tile layer
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '┬⌐ OpenStreetMap contributors'
+      attribution: '(c) OpenStreetMap contributors'
     }).addTo(this.map);
 
-    // Initialize marker cluster group
+    // Initialize marker cluster group with custom icon function
     this.markers = L.markerClusterGroup({
       chunkedLoading: true,
-      maxClusterRadius: 50
+      maxClusterRadius: 50,
+      iconCreateFunction: function(cluster) {
+        const markers = cluster.getAllChildMarkers();
+        const totalCount = markers.reduce((sum, marker) => sum + (marker.options.count || 1), 0);
+        
+        return new L.DivIcon({
+          html: `<div><span>${totalCount}</span></div>`,
+          className: 'marker-cluster marker-cluster-medium',
+          iconSize: new L.Point(40, 40)
+        });
+      }
     });
 
     // Fetch and display GPS coordinates
@@ -92,14 +102,15 @@ class PlMap extends HTMLElement {
     const bounds = [];
 
     items.forEach(item => {
-      const lat = parseFloat(item.gps_lat);
-      const lng = parseFloat(item.gps_long);
+      const lat = parseFloat(item.lat);
+      const lng = parseFloat(item.lng);
+      const count = parseInt(item.count);
       
       if (isNaN(lat) || isNaN(lng)) return;
 
       bounds.push([lat, lng]);
 
-      const marker = L.marker([lat, lng]);
+      const marker = L.marker([lat, lng], { count });
       
       // Create popup content
       const popupContent = this.createPopupContent(item);
@@ -110,11 +121,6 @@ class PlMap extends HTMLElement {
       marker.on('mouseout', function(e) {
         this.closePopup();
       });
-
-      // Add click handler to open slideshow
-      // marker.on('click', () => {
-      //   this.openItem(item.uuid);
-      // });
 
       this.markers.addLayer(marker);
     });
@@ -130,12 +136,9 @@ class PlMap extends HTMLElement {
   createPopupContent(item) {
     return `
       <div class="custom-popup">
-        <img src="/api/getThumbnail?uuid=${item.uuid}&height=120" 
-             alt="${item.filename}" 
-             onerror="this.style.display='none'">
         <div class="info">
-          <div class="album">${item.album}</div>
-          <!--<div>${item.filename}</div>-->
+          <div class="album">${item.count} photos at this location</div>
+          <div>Lat: ${item.lat}, Lng: ${item.lng}</div>
         </div>
       </div>
     `;
