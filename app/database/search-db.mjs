@@ -68,6 +68,9 @@ function converToFilterStr(searchStr){
     else if(col == 'rating'){
       otherFilters.push(`rating = ${f[1]}`)
     }
+    else if(col == 'uuid'){
+      otherFilters.push(`uuid = '${filterStr}'`)
+    }
     else if (col == "raw"){
       otherFilters.push(filterStr);
     }
@@ -165,6 +168,20 @@ export function searchForExistingAlbums(searchStr, wantFullName){
     limit 10
   `;
 
+  var stmt = db.prepare(sql);
+  return stmt.all();
+}
+
+export function getGpsCoordinates(){
+  let sql = `
+    select uuid, album, filename, gps_lat, gps_long, mediatype
+    from metadata
+    where gps_lat is not null 
+    and gps_long is not null
+    and coalesce(trashed, false) = false
+    and mediatype in ('image', 'video')
+  `;
+  
   var stmt = db.prepare(sql);
   return stmt.all();
 }

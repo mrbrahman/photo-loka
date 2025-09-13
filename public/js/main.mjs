@@ -21,6 +21,7 @@ import './pl-gallery.js';
 import './pl-gallery-controls.js';
 import './pl-slide.js';
 import './pl-slideshow.js';
+import './pl-map.js';
 
 const router = new Navigo('/', {hash: true});
 
@@ -79,6 +80,24 @@ document.getElementById('app').addEventListener('pl-slideshow-request', (evt)=>{
 
 document.getElementById('app').addEventListener('pl-slideshow-closed', ()=>{
   router.navigate(state.prevLink[0].url);
+});
+
+document.getElementById('app').addEventListener('pl-map-item-click', async (evt)=>{
+  // Fetch the item data and navigate to slideshow
+  try {
+    const response = await fetch('/api/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({collection_id: state.collection_id, searchText: `uuid:${evt.detail.uuid}`})
+    });
+    const result = await response.json();
+    if (result.length > 0 && result[0].items.length > 0) {
+      state.galleryData = result;
+      router.navigate(`/slideshow/0`);
+    }
+  } catch (error) {
+    console.error('Error loading item for slideshow:', error);
+  }
 });
 
 // 
@@ -146,6 +165,21 @@ router.on('/search/:searchText', function(p){
     notify(`<strong>Error</strong>:</br>${err}`, 'error', -1);
 
   });
+});
+
+router.on('/map', function(){
+  if(document.querySelector('pl-slideshow')){
+    document.querySelector('pl-slideshow').remove();
+    document.getElementById('nav-header').style.opacity = 1;
+    document.getElementById('main-content').style.opacity = 1;
+    return;
+  }
+  
+  let c = document.getElementById('main-content');
+  let mapComponent = document.createElement('pl-map');
+  
+  c.innerHTML = "";
+  c.appendChild(mapComponent);
 });
 
 router.on('/slideshow/:startFrom', function(p){

@@ -107,6 +107,10 @@ apiRouter.post('/search', function(req,res){
   res.json(s.search.search(collection_id, searchText));
 });
 
+apiRouter.get('/getGpsCoordinates', function(req,res){
+  res.json(s.search.getGpsCoordinates());
+});
+
 apiRouter.get('/searchForExistingAlbums', function(req,res){
   res.json(s.search.searchForExistingAlbums(req.query.searchStr, req.query.wantFullName))
 })

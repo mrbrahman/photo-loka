@@ -15,6 +15,12 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&family=Roboto:wght@400;700&display=swap" rel="stylesheet">
 
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- Leaflet MarkerCluster CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
+
   <style>
     body, h1, h2, h3, h4, h5, h6 {
       font-family: Lato,-apple-system,system-ui,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
@@ -608,6 +614,10 @@
         <sl-icon name="search" slot="prefix"></sl-icon>
       </sl-input> -->
 
+      <a class="nav-item" href="/map" data-navigo>
+        <sl-icon-button name="geo-alt-fill" label="Map View"></sl-icon-button>
+      </a>
+      
       <sl-icon-button class="nav-item" id="nav-settings" name="gear" label="Settings"></sl-icon-button>
     </nav>
     
@@ -615,6 +625,12 @@
     <main id="main-content"></main>
 
   </div>
+  
+  <!-- Leaflet JavaScript -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Leaflet MarkerCluster JavaScript -->
+  <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
+  
   <script src="js/main.mjs" type="module"></script>
 
 </body>

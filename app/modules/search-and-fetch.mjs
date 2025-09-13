@@ -30,3 +30,7 @@ export function getVideo(uuid){
 export function searchForExistingAlbums(searchStr, wantFullName){
   return db.searchForExistingAlbums(searchStr, wantFullName)
 }
+
+export function getGpsCoordinates(){
+  return db.getGpsCoordinates();
+}
