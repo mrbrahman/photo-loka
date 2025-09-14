@@ -6,7 +6,17 @@ class PlMap extends HTMLElement {
   }
 
   connectedCallback() {
-    this.innerHTML = `
+    // Create shadow root
+    if (!this.shadowRoot) {
+      this.attachShadow({ mode: 'open' });
+    }
+    this.shadowRoot.innerHTML = `
+      <!-- Leaflet CSS -->
+      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+      <!-- Leaflet MarkerCluster CSS -->
+      <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
+      <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
+      
       <style>
         #map-container {
           width: 100%;
@@ -50,7 +60,7 @@ class PlMap extends HTMLElement {
       return;
     }
 
-    const mapElement = this.querySelector('#map');
+    const mapElement = this.shadowRoot.querySelector('#map');
     
     // Initialize map
     this.map = L.map(mapElement).setView([40.7128, -74.0060], 2);
@@ -153,7 +163,7 @@ class PlMap extends HTMLElement {
   }
 
   showNoDataMessage() {
-    const mapElement = this.querySelector('#map');
+    const mapElement = this.shadowRoot.querySelector('#map');
     mapElement.innerHTML = `
       <div style="display: flex; align-items: center; justify-content: center; height: 100%; color: #666;">
         <div style="text-align: center;">
@@ -165,7 +175,7 @@ class PlMap extends HTMLElement {
   }
 
   showErrorMessage() {
-    const mapElement = this.querySelector('#map');
+    const mapElement = this.shadowRoot.querySelector('#map');
     mapElement.innerHTML = `
       <div style="display: flex; align-items: center; justify-content: center; height: 100%; color: #666;">
         <div style="text-align: center;">
