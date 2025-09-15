@@ -95,7 +95,7 @@ function converToFilterStr(searchStr){
 
 }
 
-export function runSearch(collection_id, searchStr, trashed = false){
+export function runSearch(collection_id, searchStr, trashed = false, groupByAlbum = true) {
   let filters = [], limit = false;
   
   filters.push(`coalesce(trashed, false) = ${trashed}`);
@@ -113,36 +113,48 @@ export function runSearch(collection_id, searchStr, trashed = false){
   }
   // console.log(filters)
 
-  let sql = `
-  with t as (
-    select album, aspectratio, uuid, mediatype, coalesce(rating,0) as rating, file_date
+  const baseQuery = `
+    select album,
+      --aspectratio, uuid, mediatype, coalesce(rating,0) as rating, file_date,
+      json_object(
+        'data', 
+          json_object(
+            'ar', aspectratio,
+            'id', uuid,
+            'type', mediatype,
+            'rating', coalesce(rating,0)
+          )
+      ) as item
     from metadata
     where ${filters.join(' and ')}
     and mediatype in ('image', 'video')  -- TODO: add audio
     order by album desc, datetime(file_date)
-  )
-  select album, 
-    json_group_array(
-      json_object(
-        'data', 
-        json_object(
-          'ar', round(aspectratio, 3), 
-          'id', uuid, 
-          'type', mediatype,
-          'rating', rating
-        )
-      )
-    ) as items 
-  from t
-  group by album
-  order by album desc
-  ${limit ? 'limit 300' : ''}
-  `
+  `;
+
+  let sql;
+  if (groupByAlbum) {
+    sql = `
+      with t as (${baseQuery})
+      select album, json_group_array(json(item)) as items 
+      from t
+      group by album
+      order by album desc
+      ${limit ? 'limit 300' : ''}
+    `;
+  } else {
+    sql = `
+      with t as (${baseQuery})
+      select item
+      from t
+      ${limit ? 'limit 300' : ''}
+    `;
+  }
+
   console.log(sql)
   var stmt = db.prepare(sql)
   
-  let output = transformSearchResultsFromDb( stmt.all() );
-  return output;
+  let results = stmt.all();
+  return groupByAlbum ? transformSearchResultsFromDb(results) : results.map(row => JSON.parse(row.item));
 }
 
 function transformSearchResultsFromDb(rows){
@@ -183,10 +195,19 @@ export function getGpsCoordinates(){
     and gps_long is not null
     and coalesce(trashed, false) = false
     and mediatype in ('image', 'video')
-    group by round(gps_lat, 4), round(gps_long, 4)
+    group by 1, 2
   `;
   
   var stmt = db.prepare(sql);
   return stmt.all();
+}
+
+export function searchByGpsCoordinates(collection_id, coordinates, trashed = false) {
+  let coordFilters = coordinates.map(coord => 
+    `(${coord.lat}, ${coord.lng})`
+  ).join(', ');
+  
+  let searchStr = `raw:"(round(gps_lat,4), round(gps_long, 4)) in (${coordFilters})"`;
+  return runSearch(collection_id, searchStr, trashed, false);
 }
 

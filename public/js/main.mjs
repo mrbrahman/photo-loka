@@ -22,6 +22,7 @@ import './pl-gallery-controls.js';
 import './pl-slide.js';
 import './pl-slideshow.js';
 import './pl-map.js';
+import './pl-carousel.js';
 
 const router = new Navigo('/', {hash: true});
 
@@ -168,12 +169,6 @@ router.on('/search/:searchText', function(p){
 });
 
 router.on('/map', function(){
-  if(document.querySelector('pl-slideshow')){
-    document.querySelector('pl-slideshow').remove();
-    document.getElementById('nav-header').style.opacity = 1;
-    document.getElementById('main-content').style.opacity = 1;
-    return;
-  }
   
   let c = document.getElementById('main-content');
   let mapComponent = document.createElement('pl-map');

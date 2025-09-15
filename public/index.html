@@ -592,6 +592,98 @@
     </div>
   </template>
 
+  <template id="PL-CAROUSEL">
+    <style>
+      :host {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: rgba(0, 0, 0, 0.8);
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #container {
+        position: relative;
+        width: 90vw;
+        max-width: 800px;
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+      }
+      #carousel-wrapper {
+        position: relative;
+        overflow: hidden;
+        width: 100%;
+        height: 200px;
+      }
+      #carousel-track {
+        display: flex;
+        transition: transform 0.3s ease;
+        height: 100%;
+      }
+      pl-thumb {
+        flex-shrink: 0;
+        margin-right: 10px;
+      }
+      .nav-button {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        background: rgba(0, 0, 0, 0.5);
+        color: white;
+        border: none;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        cursor: pointer;
+        font-size: 18px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10;
+      }
+      .nav-button:hover {
+        background: rgba(0, 0, 0, 0.7);
+      }
+      .nav-button:disabled {
+        opacity: 0.3;
+        cursor: not-allowed;
+      }
+      #prev-btn {
+        left: 10px;
+      }
+      #next-btn {
+        right: 10px;
+      }
+      #close-btn {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: none;
+        border: none;
+        font-size: 24px;
+        cursor: pointer;
+        color: #666;
+      }
+      #close-btn:hover {
+        color: #000;
+      }
+    </style>
+    <div id="container">
+      <button id="close-btn">&times;</button>
+      <div id="carousel-wrapper">
+        <div id="carousel-track"></div>
+        <button id="prev-btn" class="nav-button">&lt;</button>
+        <button id="next-btn" class="nav-button">&gt;</button>
+      </div>
+    </div>
+  </template>
+
 </head>
 <body>
   <div id="app">

@@ -31,6 +31,10 @@ export function searchForExistingAlbums(searchStr, wantFullName){
   return db.searchForExistingAlbums(searchStr, wantFullName)
 }
 
-export function getGpsCoordinates(){
+export function getGpsCoordinates() {
   return db.getGpsCoordinates();
+}
+
+export function searchByGpsCoordinates(collection_id, coordinates){
+  return db.searchByGpsCoordinates(collection_id, coordinates);
 }

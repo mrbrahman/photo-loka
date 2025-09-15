@@ -74,16 +74,26 @@ class PlMap extends HTMLElement {
     this.markers = L.markerClusterGroup({
       chunkedLoading: true,
       maxClusterRadius: 50,
+      zoomToBoundsOnClick: false,
+      spiderfyOnMaxZoom: false,
       iconCreateFunction: function(cluster) {
         const markers = cluster.getAllChildMarkers();
         const totalCount = markers.reduce((sum, marker) => sum + (marker.options.count || 1), 0);
         
         return new L.DivIcon({
           html: `<div><span>${totalCount}</span></div>`,
-          className: 'marker-cluster marker-cluster-medium',
+          className: `marker-cluster marker-cluster-${totalCount < 10 ? 'small' : totalCount < 100 ? 'medium' : 'large'}`,
           iconSize: new L.Point(40, 40)
         });
       }
+    });
+
+    // Add cluster click handler
+    this.markers.on('clusterclick', (e) => {
+      this.handleClusterClick('cluster', e.layer);
+    });
+    this.markers.on('click', (e) => {
+      this.handleClusterClick('marker', e.layer);
     });
 
     // Fetch and display GPS coordinates
@@ -152,6 +162,41 @@ class PlMap extends HTMLElement {
         </div>
       </div>
     `;
+  }
+
+  async handleClusterClick(clickedOn, cluster) {
+    
+    let coordinates = [];
+    if (clickedOn === 'cluster') {
+      const markers = cluster.getAllChildMarkers();
+      coordinates = markers.map(marker => ({
+        lat: marker.getLatLng().lat.toFixed(4),
+        lng: marker.getLatLng().lng.toFixed(4)
+      }));
+    } else { // single marker (i.e. just one gps point)
+      coordinates = [{
+        lat: cluster.getLatLng().lat.toFixed(4), 
+        lng: cluster.getLatLng().lng.toFixed(4)
+      }];
+    }
+
+    try {
+      const response = await fetch('/api/searchByGpsCoordinates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ collection_id: 1, coordinates })
+      });
+      const data = await response.json();
+      
+      let carousel = Object.assign(document.createElement('pl-carousel'), {
+        data: data
+      });
+      // Append to the app container to ensure proper positioning
+      const appContainer = document.getElementById('app') || document.body;
+      appContainer.appendChild(carousel);
+    } catch (error) {
+      console.error('Error loading GPS data for carousel:', error);
+    }
   }
 
   openItem(uuid) {
