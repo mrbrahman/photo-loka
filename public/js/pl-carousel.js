@@ -19,7 +19,7 @@ class PlCarousel extends HTMLElement {
 
   positionCarousel() {
     if (this.clickX !== undefined && this.clickY !== undefined) {
-      const container = this.shadowRoot.querySelector('#container');
+      const container = this.shadowRoot.getElementById('container');
       const viewportWidth = window.innerWidth;
       const viewportHeight = window.innerHeight;
       
@@ -42,20 +42,10 @@ class PlCarousel extends HTMLElement {
       if (top + carouselHeight > viewportHeight - 10) top = this.clickY - carouselHeight - 20;
       if (top < 10) top = 10;
       
-      this.style.position = 'fixed';
-      this.style.top = '0';
-      this.style.left = '0';
-      this.style.width = '100vw';
-      this.style.height = '100vh';
-      this.style.background = 'transparent';
-      this.style.pointerEvents = 'none';
-      
-      container.style.position = 'absolute';
       container.style.left = `${left}px`;
       container.style.top = `${top}px`;
       container.style.width = `${carouselWidth}px`;
       container.style.height = `${carouselHeight}px`;
-      container.style.pointerEvents = 'auto';
     }
   }
 
@@ -64,7 +54,7 @@ class PlCarousel extends HTMLElement {
     document.addEventListener('keydown', this.handleKeydown);
     
     // Close on outside click
-    this.addEventListener('click', this.handleOutsideClick);
+    document.addEventListener('click', this.handleOutsideClick);
     
     // Handle thumb clicks
     this.shadowRoot.addEventListener('click', this.handleThumbClick);
@@ -82,7 +72,7 @@ class PlCarousel extends HTMLElement {
   }
 
   handleOutsideClick = (e) => {
-    if (e.target === this) {
+    if (!this.shadowRoot.getElementById('container').contains(e.target)) {
       this.close();
     }
   }
@@ -118,13 +108,21 @@ class PlCarousel extends HTMLElement {
     const track = this.shadowRoot.getElementById('carousel-track');
     const containerWidth = this.shadowRoot.getElementById('carousel-wrapper').offsetWidth;
     const currentTransform = parseFloat(track.style.transform.replace('translateX(', '').replace('px)', '')) || 0;
-    const maxTransform = this.#layout.length > 0 ? -(this.#layout[this.#layout.length - 1].x + this.#layout[this.#layout.length - 1].width - containerWidth) : 0;
+    
+    if (this.#layout.length === 0) {
+      this.shadowRoot.getElementById('prev-btn').style.display = 'none';
+      this.shadowRoot.getElementById('next-btn').style.display = 'none';
+      return;
+    }
+    
+    const totalContentWidth = this.#layout[this.#layout.length - 1].x + this.#layout[this.#layout.length - 1].width;
+    const maxTransform = -(totalContentWidth - containerWidth);
     
     const prevBtn = this.shadowRoot.getElementById('prev-btn');
     const nextBtn = this.shadowRoot.getElementById('next-btn');
     
     prevBtn.style.display = currentTransform >= 0 ? 'none' : 'flex';
-    nextBtn.style.display = currentTransform <= maxTransform ? 'none' : 'flex';
+    nextBtn.style.display = (totalContentWidth <= containerWidth || currentTransform <= maxTransform) ? 'none' : 'flex';
   }
 
   doLayout() {
@@ -215,11 +213,13 @@ class PlCarousel extends HTMLElement {
 
   close() {
     document.removeEventListener('keydown', this.handleKeydown);
+    document.removeEventListener('click', this.handleOutsideClick);
     this.remove();
   }
 
   disconnectedCallback() {
     document.removeEventListener('keydown', this.handleKeydown);
+    document.removeEventListener('click', this.handleOutsideClick);
   }
 
   set data(value) {
