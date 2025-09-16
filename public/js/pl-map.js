@@ -188,10 +188,17 @@ class PlMap extends HTMLElement {
       });
       const data = await response.json();
       
+      // Get click position on the map
+      const mapContainer = this.shadowRoot.querySelector('#map');
+      const mapRect = mapContainer.getBoundingClientRect();
+      const markerPixel = this.map.latLngToContainerPoint(cluster.getLatLng());
+      
       let carousel = Object.assign(document.createElement('pl-carousel'), {
-        data: data
+        data: data,
+        clickX: mapRect.left + markerPixel.x,
+        clickY: mapRect.top + markerPixel.y
       });
-      // Append to the app container to ensure proper positioning
+      
       const appContainer = document.getElementById('app') || document.body;
       appContainer.appendChild(carousel);
     } catch (error) {
