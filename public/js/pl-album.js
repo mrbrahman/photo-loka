@@ -196,7 +196,7 @@ class PlAlbum extends HTMLElement {
 
   changeRatingSelectedItems(newRating) {
     this.data.forEach(item=>{
-      if(! ((item.elem && item.elem.selected)||item.data.selected)){
+      if(! ((item.elem && item.elem.selected)||item.layout.selected)){
         return;
       }
 
@@ -232,7 +232,7 @@ class PlAlbum extends HTMLElement {
       this.#updateAlbumSelect();
     }
 
-    setTimeout(()=>this.#performLayoutChangesIfNeeded(), 100);
+    this.#performLayoutChangesIfNeeded();
   }
 
   
@@ -321,6 +321,7 @@ class PlAlbum extends HTMLElement {
         if(x.elem !== undefined){
           // remove element in shadow dom
           x.elem.remove();
+          x.elem = undefined;
         }
       }
       
