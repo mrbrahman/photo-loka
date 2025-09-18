@@ -539,6 +539,33 @@
         height: auto;
       }
 
+      #zoom-controls {
+        position: absolute;
+        top: 20px;
+        left: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+      }
+
+      #zoom-controls sl-icon-button {
+        background: rgba(0, 0, 0, 0.5);
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+      }
+
+      #zoom-controls sl-icon-button::part(base) {
+        color: white;
+        border-radius: 50%;
+      }
+
+      @media (max-width: 768px) {
+        #zoom-controls {
+          display: none;
+        }
+      }
+
       #actions {
         position: absolute;
         top: 20px;
@@ -568,6 +595,12 @@
     <div id="container">
       <div id="media"></div>
       <div id="albumname"></div>
+      
+      <div id="zoom-controls">
+        <sl-icon-button id="zoom-in" name="plus-lg" label="Zoom In"></sl-icon-button>
+        <sl-icon-button id="zoom-out" name="dash-lg" label="Zoom Out"></sl-icon-button>
+      </div>
+      
       <div id="actions">
         <sl-rating id="rating"></sl-rating>
         <sl-icon-button id="info" name="info-circle" disabled>Info</sl-icon-button>
