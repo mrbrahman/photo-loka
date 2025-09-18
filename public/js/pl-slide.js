@@ -279,13 +279,19 @@ class PlSlide extends HTMLElement {
       this.#isDragging = false;
     });
     
-    // Double tap to reset zoom
+    // Double click for desktop
+    img.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      this.#handleDoubleTap();
+    });
+    
+    // Double tap to zoom in/reset
     let lastTap = 0;
     img.addEventListener('touchend', (e) => {
       const currentTime = new Date().getTime();
       const tapLength = currentTime - lastTap;
       if (tapLength < 500 && tapLength > 0) {
-        this.#resetZoom();
+        this.#handleDoubleTap();
       }
       lastTap = currentTime;
     });
@@ -355,6 +361,15 @@ class PlSlide extends HTMLElement {
     
     this.#translateX = Math.max(-maxTranslateX, Math.min(maxTranslateX, this.#translateX));
     this.#translateY = Math.max(-maxTranslateY, Math.min(maxTranslateY, this.#translateY));
+  }
+
+  #handleDoubleTap() {
+    if (this.#zoomLevel >= this.#maxZoom) {
+      this.#resetZoom();
+    } else {
+      const nextZoom = Math.min(this.#maxZoom, this.#zoomLevel * 2);
+      this.#setZoom(nextZoom);
+    }
   }
 
 }
