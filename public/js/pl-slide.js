@@ -205,10 +205,12 @@ class PlSlide extends HTMLElement {
     // Touch events for mobile
     let initialDistance = 0;
     let initialZoom = 1;
+    let isPinching = false;
     
     img.addEventListener('touchstart', (e) => {
       if (e.touches.length === 2) {
         e.preventDefault();
+        isPinching = true;
         initialDistance = this.#getDistance(e.touches[0], e.touches[1]);
         initialZoom = this.#zoomLevel;
       } else if (e.touches.length === 1 && this.#zoomLevel > 1) {
@@ -219,7 +221,7 @@ class PlSlide extends HTMLElement {
     });
     
     img.addEventListener('touchmove', (e) => {
-      if (e.touches.length === 2) {
+      if (e.touches.length === 2 && isPinching) {
         e.preventDefault();
         const currentDistance = this.#getDistance(e.touches[0], e.touches[1]);
         const scale = currentDistance / initialDistance;
@@ -233,8 +235,11 @@ class PlSlide extends HTMLElement {
       }
     });
     
-    img.addEventListener('touchend', () => {
-      this.#isDragging = false;
+    img.addEventListener('touchend', (e) => {
+      if (e.touches.length === 0) {
+        isPinching = false;
+        this.#isDragging = false;
+      }
     });
     
     // Mouse events for desktop
@@ -287,13 +292,23 @@ class PlSlide extends HTMLElement {
     
     // Double tap to zoom in/reset
     let lastTap = 0;
-    img.addEventListener('touchend', (e) => {
-      const currentTime = new Date().getTime();
-      const tapLength = currentTime - lastTap;
-      if (tapLength < 500 && tapLength > 0) {
-        this.#handleDoubleTap();
+    let tapCount = 0;
+    img.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) {
+        const currentTime = new Date().getTime();
+        const tapLength = currentTime - lastTap;
+        if (tapLength < 300 && tapLength > 0) {
+          tapCount++;
+          if (tapCount === 2) {
+            e.preventDefault();
+            this.#handleDoubleTap();
+            tapCount = 0;
+          }
+        } else {
+          tapCount = 1;
+        }
+        lastTap = currentTime;
       }
-      lastTap = currentTime;
     });
   }
 
