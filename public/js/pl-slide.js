@@ -2,7 +2,7 @@ import {notify} from './utils.mjs';
 
 class PlSlide extends HTMLElement {
   #albumname; #item; #screenWidth; #screenHeight; #play; #slideshowMode;
-  #zoomLevel = 1; #maxZoom = 1; #isDragging = false; #startX = 0; #startY = 0; #translateX = 0; #translateY = 0;
+  #zoomLevel = 1; #maxZoom = 1; #startX = 0; #startY = 0; #translateX = 0; #translateY = 0;
 
   constructor() {
     super().attachShadow({mode: 'open'}); // sets "this" and "this.shadowRoot"
@@ -206,6 +206,7 @@ class PlSlide extends HTMLElement {
     let initialDistance = 0;
     let initialZoom = 1;
     let isPinching = false;
+    let isDragging = false;
     
     img.addEventListener('touchstart', (e) => {
       if (e.touches.length === 2) {
@@ -214,7 +215,7 @@ class PlSlide extends HTMLElement {
         initialDistance = this.#getDistance(e.touches[0], e.touches[1]);
         initialZoom = this.#zoomLevel;
       } else if (e.touches.length === 1 && this.#zoomLevel > 1) {
-        this.#isDragging = true;
+        isDragging = true;
         this.#startX = e.touches[0].clientX - this.#translateX;
         this.#startY = e.touches[0].clientY - this.#translateY;
       }
@@ -226,7 +227,7 @@ class PlSlide extends HTMLElement {
         const currentDistance = this.#getDistance(e.touches[0], e.touches[1]);
         const scale = currentDistance / initialDistance;
         this.#setZoom(Math.min(this.#maxZoom, Math.max(1, initialZoom * scale)));
-      } else if (e.touches.length === 1 && this.#isDragging && this.#zoomLevel > 1) {
+      } else if (e.touches.length === 1 && isDragging && this.#zoomLevel > 1) {
         e.preventDefault();
         this.#translateX = e.touches[0].clientX - this.#startX;
         this.#translateY = e.touches[0].clientY - this.#startY;
@@ -238,7 +239,7 @@ class PlSlide extends HTMLElement {
     img.addEventListener('touchend', (e) => {
       if (e.touches.length === 0) {
         isPinching = false;
-        this.#isDragging = false;
+        isDragging = false;
       }
     });
     
@@ -251,7 +252,7 @@ class PlSlide extends HTMLElement {
     
     img.addEventListener('mousedown', (e) => {
       if (this.#zoomLevel > 1) {
-        this.#isDragging = true;
+        isDragging = true;
         this.#startX = e.clientX - this.#translateX;
         this.#startY = e.clientY - this.#translateY;
         img.style.cursor = 'grabbing';
@@ -260,7 +261,7 @@ class PlSlide extends HTMLElement {
     });
     
     img.addEventListener('mousemove', (e) => {
-      if (this.#isDragging && this.#zoomLevel > 1) {
+      if (isDragging && this.#zoomLevel > 1) {
         this.#translateX = e.clientX - this.#startX;
         this.#translateY = e.clientY - this.#startY;
         this.#constrainPan(img);
@@ -274,14 +275,14 @@ class PlSlide extends HTMLElement {
     });
     
     img.addEventListener('mouseup', () => {
-      this.#isDragging = false;
+      isDragging = false;
       if (this.#zoomLevel > 1) {
         img.style.cursor = 'grab';
       }
     });
     
     img.addEventListener('mouseleave', () => {
-      this.#isDragging = false;
+      isDragging = false;
     });
     
     // Double click for desktop
@@ -327,7 +328,7 @@ class PlSlide extends HTMLElement {
     this.#setZoom(Math.max(1, this.#zoomLevel - 0.25));
   }
 
-  #setZoom(newZoom) {
+  #setZoom(newZoom, smooth = false) {
     this.#zoomLevel = newZoom;
     const img = this.shadowRoot.querySelector('#media img');
     if (img) {
@@ -335,23 +336,27 @@ class PlSlide extends HTMLElement {
         this.#translateX = 0;
         this.#translateY = 0;
       }
-      this.#updateTransform(img);
+      this.#updateTransform(img, smooth);
       this.#updateZoomButtons();
     }
   }
 
-  #resetZoom() {
+  #resetZoom(smooth = false) {
     this.#zoomLevel = 1;
     this.#translateX = 0;
     this.#translateY = 0;
     const img = this.shadowRoot.querySelector('#media img');
     if (img) {
-      this.#updateTransform(img);
+      this.#updateTransform(img, smooth);
       this.#updateZoomButtons();
     }
   }
 
-  #updateTransform(img) {
+  #updateTransform(img, smooth = false) {
+    if (smooth) {
+      img.style.transition = 'transform 0.3s ease-out';
+      setTimeout(() => img.style.transition = '', 300);
+    }
     img.style.transform = `scale(${this.#zoomLevel}) translate(${this.#translateX / this.#zoomLevel}px, ${this.#translateY / this.#zoomLevel}px)`;
     img.style.transformOrigin = 'center center';
     img.style.cursor = this.#zoomLevel > 1 ? 'grab' : 'default';
@@ -380,10 +385,10 @@ class PlSlide extends HTMLElement {
 
   #handleDoubleTap() {
     if (this.#zoomLevel >= this.#maxZoom) {
-      this.#resetZoom();
+      this.#resetZoom(true);
     } else {
       const nextZoom = Math.min(this.#maxZoom, this.#zoomLevel * 2);
-      this.#setZoom(nextZoom);
+      this.#setZoom(nextZoom, true);
     }
   }
 
