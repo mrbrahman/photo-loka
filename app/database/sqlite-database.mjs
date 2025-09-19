@@ -66,7 +66,9 @@ function initialDbSetup() {
       image_width UNINDEXED, image_height UNINDEXED, aspectratio UNINDEXED,
       make, model, orientation UNINDEXED, duration UNINDEXED,
       gps_lat UNINDEXED, gps_long UNINDEXED, gps_alt UNINDEXED, 
-      geolocation_api_json UNINDEXED, geonames_rev_address_json UNINDEXED, geo_address,
+      geolocation_api_json UNINDEXED, 
+      geonames_rev_address_json UNINDEXED, geonames_encoding_status UNINDEXED, geonames_db_matched_uuid UNINDEXED,
+      geo_address, 
       datetime_original UNINDEXED, create_date UNINDEXED, file_modify_date UNINDEXED, file_date UNINDEXED,
       trashed, trashed_dt
     );

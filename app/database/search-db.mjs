@@ -8,6 +8,9 @@ export const aliases = {
   people: 'faces',
   name: 'faces',
   face: 'faces',
+  loc: 'geo_address',
+  location: 'geo_address',
+  address: 'geo_address',
   camera: 'model',
   type: 'mediatype',
   l: 'logical'

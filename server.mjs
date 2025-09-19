@@ -206,6 +206,27 @@ apiRouter.put('/refreshThumbs/:uuid', async function(req,res){
 })
 
 // *****************************************
+// reverse geo encoding
+// *****************************************
+apiRouter.get('/getReverseGeoEncodingStatus', function(req,res){
+  res.json(s.reverseGeoEncoding.status());
+});
+
+apiRouter.post('/enqueueReverseGeoEncoding', function(req,res){
+  let {uuid, gps_lat, gps_long} = req.body;
+  if (uuid && gps_lat && gps_long){
+    s.reverseGeoEncoding.enqueue(uuid, gps_lat, gps_long);
+  }
+  res.sendStatus(200);
+});
+
+apiRouter.post('/enqueueManyReverseGeoEncoding', function(req,res){
+  let entries = req.body;
+  s.reverseGeoEncoding.enqueueMany(entries);
+  res.sendStatus(200);
+});
+
+// *****************************************
 // album organization
 // *****************************************
 apiRouter.post('/updateAlbumName', async function(req,res){

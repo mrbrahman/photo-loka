@@ -1,12 +1,19 @@
 import { config } from '../config.mjs';
+import 'dotenv/config';
 
 import { getAllCollections } from '../database/collection-db.mjs';
 import {indexCollection, indexerDbFlush} from './indexer.mjs';
 import {exiftool} from 'exiftool-vendored';
 import {startWatchersForAllCollections, stopAllWatchers} from './watcher.mjs';
 import {db} from '../database/sqlite-database.mjs';
+import {saveRateLimitState} from './reverse-geo-encoding.mjs';
 
 export function startUpActivities(){
+  // Check if geonames username is configured
+  if (!process.env.GEONAMES_USERNAME) {
+    throw new Error('GEONAMES_USERNAME environment variable is required but not set');
+  }
+
   // setup watch during start-up
   if(config.startFileWatcherAtStartup){
     startWatchersForAllCollections();
@@ -26,6 +33,7 @@ export function startUpActivities(){
 export async function shutdownCleanup(){
   stopAllWatchers();
   await indexerDbFlush();  // commit any pending indexing changes
+  saveRateLimitState();  // save rate limiting counters
   exiftool.end();
   db.close();
 }

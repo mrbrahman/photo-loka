@@ -29,6 +29,10 @@ config.dbFile = path.join(config.dataDir, 'MEMORIES-DATABASE.sqlite')
 // will help if changes (e.g. rename folders, move files) needs to be synced to multiple hard drives
 config.auditFiles = true;
 
+// geonames API rate limiting
+config.geonamesHourlyLimit = 1000;
+config.geonamesDailyLimit = 10000;
+
 // TODO: read & write a yml / json5 file specified as parameter? or node env?
 
 export {config};

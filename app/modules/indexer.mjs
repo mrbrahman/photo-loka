@@ -15,6 +15,7 @@ import * as fileOps from './helpers/file-ops.mjs';
 import { ParallelProcesses as pp } from '../utils/parallel-processes.mjs';
 import {config} from '../config.mjs';
 import * as db from '../database/indexer-db.mjs';
+import { enqueue as enqueueReverseGeoEncoding } from './reverse-geo-encoding.mjs';
 
 // to be used in case of emergencies like shutdown, etc.
 export let indexerDbFlush = ()=>db.indexerDbWriteInChunks.runNow();
@@ -165,9 +166,18 @@ async function indexFile(collection, sourceFileName, uuid, inPlace){
       }
     }
   }
+
+  // grab the country code before sending to DB (as DB converts it to JSON string)
+  let countryCode = p.geolocation_api_json?.GeolocationCountryCode
   
   // Step 6: Make an entry in db
-  db.indexerDbWriteInChunks.add( {action: 'insert', data: p} );
+  // db.indexerDbWriteInChunks.add( {action: 'insert', data: p} );
+  db.insertMetadataRow(p);
+
+  // Step 7: Queue reverse geo encoding if GPS coordinates are available and location is in US
+  if (p.gps_lat && p.gps_long && countryCode === 'US') {
+    enqueueReverseGeoEncoding(p.uuid, p.gps_lat, p.gps_long);
+  }
 
   console.log(`${sourceFileName} finished in ${performance.now()-fileStart} ms`);
 }
