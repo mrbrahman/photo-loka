@@ -16,7 +16,7 @@
 import {EventEmitter} from 'events';
 
 export function ParallelProcesses(){
-  var maxConcurrency=1, processInInsertOrder=false, autoStart=true, emitter;
+  var maxConcurrency=1, processInInsertOrder=false, autoStart=true, emitter, pauseConditionFn;
   let queue=[], processingCnt=0, pendingCnt=0, completedCnt=0, failedCnt=0, paused=false;
   
   function my(){
@@ -57,6 +57,9 @@ export function ParallelProcesses(){
 
   // this one is not exposed
   let dequeue = function(){
+    if(pauseConditionFn && !pauseConditionFn()){
+      paused = true;
+    }
     if (!paused && processingCnt<maxConcurrency && queue.length>0){
       if(processingCnt == 0){
         if(emitter){
@@ -149,6 +152,10 @@ export function ParallelProcesses(){
     } else {
       return emitter ? true : false;
     }
+  }
+
+  my.pauseConditionFn = function(_){
+    return arguments.length ? (pauseConditionFn = _, my): pauseConditionFn;
   }
 
   my.status = function(){
