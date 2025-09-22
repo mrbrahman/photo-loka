@@ -6,6 +6,7 @@ import {indexCollection, indexerDbFlush} from './indexer.mjs';
 import {exiftool} from 'exiftool-vendored';
 import {startWatchersForAllCollections, stopAllWatchers} from './watcher.mjs';
 import {db} from '../database/sqlite-database.mjs';
+import {closePool} from '../database/db-pool.mjs';
 import {saveRateLimitState} from './reverse-geo-encoding.mjs';
 
 export function startUpActivities(){
@@ -35,5 +36,6 @@ export async function shutdownCleanup(){
   await indexerDbFlush();  // commit any pending indexing changes
   saveRateLimitState();  // save rate limiting counters
   exiftool.end();
+  closePool();
   db.close();
 }

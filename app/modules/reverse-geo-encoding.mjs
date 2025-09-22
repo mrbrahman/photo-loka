@@ -92,7 +92,7 @@ async function performReverseGeoEncoding(uuid, gps_lat, gps_long) {
   console.log(`Starting reverse geo-encoding for ${uuid} at ${gps_lat}, ${gps_long}`);
   
   // First try exact match up to 4 decimal places
-  const exactMatch = findExactGeoMatch(gps_lat, gps_long);
+  const exactMatch = await findExactGeoMatch(gps_lat, gps_long);
 
   if (exactMatch) {
     console.log(`Found exact match for ${uuid}`);
@@ -108,12 +108,12 @@ async function performReverseGeoEncoding(uuid, gps_lat, gps_long) {
     ].filter(x => x).join(", ");
     
     // Update geo_address for the current uuid
-    updateGeoAddress(uuid, geo_address, 'FOUND_DB_EXACT_MATCH', exactMatch.uuid);
+    await updateGeoAddress(uuid, geo_address, 'FOUND_DB_EXACT_MATCH', exactMatch.uuid);
     return { uuid: exactMatch.uuid, geo_address };
   }
 
   // If no exact match, try proximity match (within reasonable distance)
-  const proximityMatch = findProximityGeoMatch(gps_lat, gps_long);
+  const proximityMatch = await findProximityGeoMatch(gps_lat, gps_long);
 
   if (proximityMatch) {
     console.log(`Found proximity match for ${uuid}`);
@@ -129,13 +129,13 @@ async function performReverseGeoEncoding(uuid, gps_lat, gps_long) {
     ].filter(x => x).join(", ");
     
     // Update geo_address for the current uuid
-    updateGeoAddress(uuid, geo_address, 'FOUND_DB_PROXIMITY_MATCH', proximityMatch.uuid);
+    await updateGeoAddress(uuid, geo_address, 'FOUND_DB_PROXIMITY_MATCH', proximityMatch.uuid);
     return { uuid: proximityMatch.uuid, geo_address };
   }
 
   // No match found, queue geonames lookup
   console.log(`No DB match for ${uuid}, queuing API lookup`);
-  updateGeoEncodingStatus(uuid, 'QUEUED_FOR_API');
+  await updateGeoEncodingStatus(uuid, 'QUEUED_FOR_API');
   geonamesProcessor.enqueue(lookupGeonames, [uuid, gps_lat, gps_long]);
   return null;
 }
@@ -165,22 +165,22 @@ async function lookupGeonames(uuid, gps_lat, gps_long) {
       dailyCount++;
       
       // Update both geonames_rev_address_json and geo_address
-      updateGeonamesData(uuid, JSON.stringify(data), geo_address);
+      await updateGeonamesData(uuid, JSON.stringify(data), geo_address);
       
       return { uuid, geo_address, geonames_data: data };
     } else if (Object.keys(data).length > 0) {
       // Non-empty response without address indicates an error
       console.log(`API error for ${uuid}: ${JSON.stringify(data)}`);
-      updateGeoEncodingStatus(uuid, 'API_ERROR');
+      await updateGeoEncodingStatus(uuid, 'API_ERROR');
       throw new Error(`Geonames API error response: ${JSON.stringify(data)}`);
     } else {
       // Empty response - no address found
       console.log(`No address found for ${uuid}`);
-      updateGeoEncodingStatus(uuid, 'NO_ADDRESS_FOUND');
+      await updateGeoEncodingStatus(uuid, 'NO_ADDRESS_FOUND');
     }
   } catch (error) {
     console.error('Geonames API error:', error);
-    updateGeoEncodingStatus(uuid, 'API_ERROR');
+    await updateGeoEncodingStatus(uuid, 'API_ERROR');
   }
   
   return null;
