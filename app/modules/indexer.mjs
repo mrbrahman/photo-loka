@@ -17,8 +17,6 @@ import {config} from '../config.mjs';
 import * as db from '../database/indexer-db.mjs';
 import { enqueue as enqueueReverseGeoEncoding } from './reverse-geo-encoding.mjs';
 
-// to be used in case of emergencies like shutdown, etc.
-export let indexerDbFlush = ()=>db.indexerDbWriteInChunks.runNow();
 
 class EmitterClass extends EventEmitter {};
 export const indexerEvents = new EmitterClass();
@@ -171,7 +169,6 @@ async function indexFile(collection, sourceFileName, uuid, inPlace){
   let countryCode = p.geolocation_api_json?.GeolocationCountryCode
   
   // Step 6: Make an entry in db
-  // db.indexerDbWriteInChunks.add( {action: 'insert', data: p} );
   db.insertMetadataRow(p);
 
   // Step 7: Queue reverse geo encoding if GPS coordinates are available and location is in US
@@ -182,6 +179,7 @@ async function indexFile(collection, sourceFileName, uuid, inPlace){
   console.log(`${sourceFileName} finished in ${performance.now()-fileStart} ms`);
 }
 
+// This function is not used currently, just leaving it in case it needs to be used later
 async function deleteFromCollection(uuid){
   let start = performance.now();
   console.log(`DELETE: start to delete for uuid: ${uuid}`);
@@ -195,7 +193,7 @@ async function deleteFromCollection(uuid){
   // delete faces
   thumbs.deleteFaceThumbnails(uuid);
   // remove from db
-  db.indexerDbWriteInChunks.add( {action: 'delete', data: {uuid: uuid}} );
+  db.deleteMetadataRow(uuid);
 
   // the file is already gone, so no need to try to remove it
   //fileOps.deleteFile(filename);
@@ -372,7 +370,7 @@ export async function refreshMetadata(uuid, filename){
   let metadata = await m.getMetadata(filename);
   metadata['uuid'] = uuid;
 
-  db.indexerDbWriteInChunks.add( {action: 'update', data: metadata} );
+  db.updateMetadataRow(metadata)
 
 }
 
