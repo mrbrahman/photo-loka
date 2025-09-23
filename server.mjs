@@ -111,6 +111,10 @@ apiRouter.get('/getGpsCoordinates', function(req,res){
   res.json(s.search.getGpsCoordinates());
 });
 
+apiRouter.get('/searchForExistingAlbums', function(req,res){
+  res.json(s.search.searchForExistingAlbums(req.query.searchStr, req.query.wantFullName))
+});
+
 apiRouter.post('/searchByGpsCoordinates', function(req,res){
   let {collection_id, coordinates} = req.body;
   res.json(s.search.searchByGpsCoordinates(collection_id, coordinates));
