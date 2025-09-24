@@ -1,15 +1,6 @@
-import {EventEmitter} from 'events';
-
 import {config} from '../config.mjs'
 import { db } from './sqlite-database.mjs';
-import {ProcessDataInChunks as chunks} from '../utils/process-data-in-chunks.mjs'
 
-class EmitterClass extends EventEmitter {};
-export const dbEvents = new EmitterClass();
-
-dbEvents.on('ran', (_)=>{
-  console.log(`DB Update ran. ${_} entries`)
-});
 
 const deleteFromMetadataStatement = `
 delete from metadata
@@ -172,37 +163,9 @@ export function insertMetadataRow(row){
 export function updateMetadataRow(row){
   return updateMetadata.run( transformDataToMetadataRow(row) );
 }
-
-async function indexerDbTask(entries){
-  let start = performance.now();
-
-  let insertMany = db.transaction(
-    function(tasks){
-      for (let task of tasks) {
-        if(task.action == 'delete'){
-          deleteObjectDetails.run(task.data);  // TODO: revisit this. probably not needed
-          deleteMetadata.run(task.data);
-        } else if (task.action == 'insert'){
-          insertMetadata.run( transformDataToMetadataRow(task.data) );
-        } else if (task.action == 'update'){
-          updateMetadata.run( transformDataToMetadataRow(task.data) );
-        }
-      } // for loop
-    } // end of function
-  ); // db.transaction
-
-  insertMany(entries);
-  console.log(`DB update: Completed ${entries.length} entries in ${performance.now()-start} ms`)
-  return entries.length
+export function deleteMetadataRow(uuid){
+  return deleteMetadata.run({uuid})
 }
-
-// expose a function to perform db activities in "chunks"
-export const indexerDbWriteInChunks = chunks()
-  .maxWaitTimeBeforeScoopMS(config.indexerDbUpdateTimeout)
-  .maxItemsBeforeScoop(config.indexerDbUpdateChunk)
-  .emitter(dbEvents)
-  .invokeFunction( (_)=>indexerDbTask(_) )
-;
 
 // async function, so it can be run in background
 export async function getIndexedFilesModifyTime(collection_id){

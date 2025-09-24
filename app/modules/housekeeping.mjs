@@ -2,7 +2,7 @@ import { config } from '../config.mjs';
 import 'dotenv/config';
 
 import { getAllCollections } from '../database/collection-db.mjs';
-import {indexCollection, indexerDbFlush} from './indexer.mjs';
+import {indexCollection} from './indexer.mjs';
 import {exiftool} from 'exiftool-vendored';
 import {startWatchersForAllCollections, stopAllWatchers} from './watcher.mjs';
 import {db} from '../database/sqlite-database.mjs';
@@ -33,7 +33,6 @@ export function startUpActivities(){
 
 export async function shutdownCleanup(){
   stopAllWatchers();
-  await indexerDbFlush();  // commit any pending indexing changes
   saveRateLimitState();  // save rate limiting counters
   exiftool.end();
   closePool();
