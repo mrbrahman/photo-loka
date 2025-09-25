@@ -30,6 +30,23 @@ let state = {};
 
 state.collection_id = 1; // until UI is implemented
 
+// PWA install prompt handling
+let deferredPrompt;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+});
+
+// Optional: Add install button functionality
+function showInstallPrompt() {
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    deferredPrompt.userChoice.then((choiceResult) => {
+      deferredPrompt = null;
+    });
+  }
+}
+
 // found at https://tutorial.eyehunts.com/js/call-javascript-function-on-enter-keypress-in-the-textbox-example-code/
 let searchBox = document.getElementById("nav-search-box");
 searchBox.addEventListener("keyup", function (e) {

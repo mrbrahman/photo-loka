@@ -7,6 +7,11 @@
   
   <title>Rewind, Replay</title>
   <link rel="icon" type="image/x-icon" href="assets/R3-resized.png">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#66b3ff">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="apple-touch-icon" href="assets/R3-resized.png">
 
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/themes/light.css" />
   <script type="module" src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/shoelace.js" ></script>
@@ -751,6 +756,12 @@
   <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
   
   <script src="js/main.mjs" type="module"></script>
+  
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js');
+    }
+  </script>
 
 </body>
 </html>
