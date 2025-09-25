@@ -11,6 +11,7 @@ import * as collections from './collections.mjs';
 import * as m from './helpers/metadata.mjs';
 import * as thumbs from './helpers/thumbnails.mjs';
 import * as fileOps from './helpers/file-ops.mjs';
+import * as videoCompression from './helpers/video-compression.mjs';
 
 import { ParallelProcesses as pp } from '../utils/parallel-processes.mjs';
 import {config} from '../config.mjs';
@@ -127,8 +128,13 @@ async function indexFile(collection, sourceFileName, uuid, inPlace){
         // extract video thumbnail (screenshot) and use that image to extract image thumbs
         imageFileName = await thumbs.generateVideoThumbnail(p.uuid, p.filename);
         playImageOverlay=true;
+        
+        // compress video for streaming
+        let videoCompressStartTime = performance.now();
+        await videoCompression.compressVideo(p.uuid, p.filename);
+        console.log(`Video compression for ${p.filename} took ${(performance.now()-videoCompressStartTime)/1000} seconds`);
       } catch(error){
-        throw `ERROR during generateVideoThumbnail for file: ${sourceFileName}: ${error}`;
+        throw `ERROR during video processing for file: ${p.filename}: ${error}`;
       }
     }
 
@@ -192,6 +198,8 @@ async function deleteFromCollection(uuid){
   thumbs.deleteImageThumbnails(uuid);
   // delete faces
   thumbs.deleteFaceThumbnails(uuid);
+  // delete compressed video
+  videoCompression.deleteCompressedVideo(uuid);
   // remove from db
   await db.deleteMetadataRow(uuid);
 

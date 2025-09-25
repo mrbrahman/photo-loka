@@ -210,7 +210,7 @@ export function streamVideo(uuid, filename){
   let webmFile = path.join(
     config.thumbsDir,
     ...Array.from(uuid).slice(0,3),
-    uuid+'.webm'
+    uuid+'_compressed_video.webm'
   );
 
   if(fs.existsSync(webmFile)){
