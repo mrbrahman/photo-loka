@@ -8,8 +8,8 @@ import {addToIndexQueue, ignoreWatcherList} from './indexer.mjs';
 // store an array of {collection_id: <id>, listen_path: <path>, watcher: <chokidar watcher>}
 var allWatchers = [];
 
-export function startWatchersForAllCollections(){
-  let collections = getAllCollections();
+export async function startWatchersForAllCollections(){
+  let collections = await getAllCollections();
 
   for(let c of collections){
     startWatcherForCollection(c);

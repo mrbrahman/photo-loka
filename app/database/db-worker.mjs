@@ -22,7 +22,9 @@ parentPort.on('message', ({ sql, parameters, method, action }) => {
       preparedStatements.set(sql, stmt);
     }
     
-    const result = stmt[method || 'all'](...(parameters || []));
+    const result = parameters && parameters.length > 0 ? 
+      stmt[method || 'all'](...parameters) :   // parameters are individual arguments
+      stmt[method || 'all'](parameters || {}); // parameters are named parameters in an object
     parentPort.postMessage({ success: true, result });
   } catch (error) {
     parentPort.postMessage({ success: false, error: error.message });

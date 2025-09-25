@@ -9,7 +9,7 @@ import {db} from '../database/sqlite-database.mjs';
 import {closePool} from '../database/db-pool.mjs';
 import {saveRateLimitState} from './reverse-geo-encoding.mjs';
 
-export function startUpActivities(){
+export async function startUpActivities(){
   // Check if geonames username is configured
   if (!process.env.GEONAMES_USERNAME) {
     throw new Error('GEONAMES_USERNAME environment variable is required but not set');
@@ -17,12 +17,12 @@ export function startUpActivities(){
 
   // setup watch during start-up
   if(config.startFileWatcherAtStartup){
-    startWatchersForAllCollections();
+    await startWatchersForAllCollections();
   }
 
   // Scan for file additions / changes and index them
   if(config.scanFilesForChangesAndIndexAtStartup){
-    let collections = getAllCollections();
+    let collections = await getAllCollections();
     for (let c of collections){
       indexCollection(c.collection_id, false)
         .then(()=>console.log('done indexing'))

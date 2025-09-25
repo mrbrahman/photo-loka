@@ -50,7 +50,8 @@ export function closePool() {
   Spawn workers that try to drain the queue.
  */
 
-new Array(os.availableParallelism()).fill(null).forEach(function spawn() {
+// Limit to 7 workers max (+1 for the main thread)
+new Array(Math.min(os.availableParallelism(), 8)-1).fill(null).forEach(function spawn() {
   const workerInstance = new Worker(path.join(__dirname, 'db-worker.mjs'));
 
   let job = null; // Current item from the queue

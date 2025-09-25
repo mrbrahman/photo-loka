@@ -75,7 +75,7 @@ export function addToIndexQueue(collection, filename, uuid, inPlace){
 
 // TODO: see if this can be used in the main indexFile function as well?
 export async function refreshThumbs(uuid){
-  let meta = db.retriveMetadata(uuid),
+  let meta = await db.retriveMetadata(uuid),
     imageFileName = meta.filename, playImageOverlay = false;
   
   if (meta.mediatype == 'video'){
@@ -169,7 +169,7 @@ async function indexFile(collection, sourceFileName, uuid, inPlace){
   let countryCode = p.geolocation_api_json?.GeolocationCountryCode
   
   // Step 6: Make an entry in db
-  db.insertMetadataRow(p);
+  await db.insertMetadataRow(p);
 
   // Step 7: Queue reverse geo encoding if GPS coordinates are available and location is in US
   if (p.gps_lat && p.gps_long && countryCode === 'US') {
@@ -184,7 +184,7 @@ async function deleteFromCollection(uuid){
   let start = performance.now();
   console.log(`DELETE: start to delete for uuid: ${uuid}`);
 
-  let filename = db.getFileName(uuid);
+  let filename = await db.getFileName(uuid);
   // TODO: read trash folder for collection, and if present, move file to trash
   // but we don't want to query the collection for every delete, so need to think of a better solution
 
@@ -193,7 +193,7 @@ async function deleteFromCollection(uuid){
   // delete faces
   thumbs.deleteFaceThumbnails(uuid);
   // remove from db
-  db.deleteMetadataRow(uuid);
+  await db.deleteMetadataRow(uuid);
 
   // the file is already gone, so no need to try to remove it
   //fileOps.deleteFile(filename);
@@ -205,7 +205,7 @@ export async function indexCollection(collection_id, firstTime=false){
 
   return new Promise(async (resolve, reject)=>{
     // TODO: should this accept a collection instead of collection_id?
-    let c = collections.getCollection(collection_id);
+    let c = await collections.getCollection(collection_id);
     let files = [];
   
     if(firstTime){
@@ -258,7 +258,7 @@ export async function indexCollection(collection_id, firstTime=false){
 }
 
 export async function updateAlbum(collection_id, fromAlbum, toAlbum){
-  let c = collections.getCollection(collection_id);
+  let c = await collections.getCollection(collection_id);
   let currFolderName=path.join(c.collection_path,fromAlbum),
   newFolderName=path.join(c.collection_path,toAlbum)
   
@@ -266,19 +266,19 @@ export async function updateAlbum(collection_id, fromAlbum, toAlbum){
     fileOps.renameFolder(currFolderName, newFolderName);  
   }
   
-  return db.updateAlbum(
+  return await db.updateAlbum(
     collection_id, fromAlbum, toAlbum, 
     c.album_type=="FOLDER_ALBUM" ? true : false  // whether to update file name
   );
 }
 
 export async function moveItemsToAlbum(collection_id, uuid_arr, newAlbumName){
-  let c = collections.getCollection(collection_id),
+  let c = await collections.getCollection(collection_id),
     newPath = path.join(c.collection_path, newAlbumName);
   
   // TODO: convert this to array of promises?
   for(let uuid of uuid_arr){
-    let f = db.getFileName(uuid);
+    let f = await db.getFileName(uuid);
     await fileOps.moveItem(f, path.join(newPath, path.basename(f)));
   }
   return db.updateAlbumForItems(
@@ -290,12 +290,12 @@ export async function moveItemsToAlbum(collection_id, uuid_arr, newAlbumName){
 export async function moveFileToTrash(uuid_arr){
   // Rename file to start with '.Trash_' and update trashed flag in db
   for(let uuid of uuid_arr){
-    let f = db.getFileName(uuid),
+    let f = await db.getFileName(uuid),
       filename = path.basename(f),
       trashFilename = path.join(path.dirname(f), `.Trash_${filename}`);
     
     await fileOps.moveItem(f, trashFilename);
-    db.trashItem(uuid, trashFilename);
+    await db.trashItem(uuid, trashFilename);
   }
 
 }
@@ -362,7 +362,7 @@ export async function refreshMetadataForCollection(collection_id){
 
 export async function refreshMetadata(uuid, filename){
   if(!filename){
-    filename = db.getFileName(uuid);
+    filename = await db.getFileName(uuid);
   }
   console.log(`Re-extracting metadata for ${filename}`);
 
@@ -370,7 +370,7 @@ export async function refreshMetadata(uuid, filename){
   let metadata = await m.getMetadata(filename);
   metadata['uuid'] = uuid;
 
-  db.updateMetadataRow(metadata)
+  await db.updateMetadataRow(metadata)
 
 }
 

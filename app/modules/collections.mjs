@@ -4,7 +4,7 @@ import * as path from 'path';
 import * as watcher from './watcher.mjs';
 import * as db from '../database/collection-db.mjs';
 
-export function createNewCollection(record){
+export async function createNewCollection(record){
   if(!isValidDir(record.collection_path)){
     throw `${record.collection_path} is not a valid path in collection path`
   }
@@ -20,22 +20,22 @@ export function createNewCollection(record){
     throw `${record.album_type} is invalid album type. Valid values are: ${albumTypes.join(', ')}`
   }
   
-  let id = db.createNewCollection(record);
+  let id = await db.createNewCollection(record);
   watcher.startWatcherForCollection({collection_id: id, ...record});
   
   return id;
 } 
 
-export function getAllCollections(){
-  return db.getAllCollections()
+export async function getAllCollections(){
+  return await db.getAllCollections()
 }
 
-export function getDefaultCollection(){
-  return db.getDefaultCollection()
+export async function getDefaultCollection(){
+  return await db.getDefaultCollection()
 }
 
-export function getCollection(collection_id){
-  return db.getCollection(collection_id)
+export async function getCollection(collection_id){
+  return await db.getCollection(collection_id)
 }
 
 export function isValidDir(path){
@@ -48,8 +48,9 @@ export function listSubDirs(dir){
     .map(x => x.name)
 }
 
-export function getFileCount(collection_id){
-  let dir = getCollection(collection_id).collection_path
+export async function getFileCount(collection_id){
+  let collection = await getCollection(collection_id);
+  let dir = collection.collection_path
   return lsCnt(dir)
 }
 

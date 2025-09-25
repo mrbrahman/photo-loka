@@ -1,5 +1,5 @@
-import {config} from '../config.mjs'
-import { db } from './sqlite-database.mjs';
+import { asyncGet, asyncAll, asyncRun } from './db-pool.mjs';
+import { db } from './sqlite-database.mjs'; // For transaction-based operations
 
 
 const deleteFromMetadataStatement = `
@@ -135,19 +135,10 @@ const getPendingExifUpdatesStatemet = `
   where update_status = 'P'
   group by uuid
 `;
-
-const deleteMetadata = db.prepare(deleteFromMetadataStatement);
-const insertMetadata = db.prepare(insertIntoMetadataStatement);
-const updateMetadata = db.prepare(updateMetadataStatement);
 // const deleteObjectDetails = db.prepare(deleteFromObjectDetailsStatement);
 // const insertObjectDetails = db.prepare(insertIntoObjectDetailsStatement);
 const insertIntoExifUpdates = db.prepare(insertIntoExifUpdatesStatement);
 const updateRatingInDb = db.prepare(updateRatingStatement);
-const updateToTrashInDb = db.prepare(updateToTrashStatement);
-const getFileNameFromDb = db.prepare(getFileNameStatement);
-const retriveMetadataFromDb = db.prepare(retriveMetadataStatement);
-const fileAuditInDb = db.prepare(fileAuditStatement);
-const getPendingExifUpdatesFromDb = db.prepare(getPendingExifUpdatesStatemet);
 
 function transformDataToMetadataRow(row){
   ['faces','objects','keywords','xmpregion','geolocation_api_json'].forEach(c=>{
@@ -157,42 +148,39 @@ function transformDataToMetadataRow(row){
   return row;
 }
 
-export function insertMetadataRow(row){
-  return insertMetadata.run( transformDataToMetadataRow(row) );
+export async function insertMetadataRow(row){
+  return await asyncRun(insertIntoMetadataStatement, transformDataToMetadataRow(row));
 }
-export function updateMetadataRow(row){
-  return updateMetadata.run( transformDataToMetadataRow(row) );
+export async function updateMetadataRow(row){
+  return await asyncRun(updateMetadataStatement, transformDataToMetadataRow(row));
 }
-export function deleteMetadataRow(uuid){
-  return deleteMetadata.run({uuid})
+export async function deleteMetadataRow(uuid){
+  return await asyncRun(deleteFromMetadataStatement, {uuid});
 }
 
 // async function, so it can be run in background
 export async function getIndexedFilesModifyTime(collection_id){
-  let stmt = db.prepare(`
+  return await asyncAll(`
     select filename, uuid, file_modify_date
     from metadata
     where collection_id = ?
-  `);
-
-  let result = stmt.all(collection_id);
-  return result
+  `, collection_id);
 }
 
-export function updateAlbum(collection_id, fromAlbum, toAlbum, updateFileName){
-  let stmt = db.prepare(`
+export async function updateAlbum(collection_id, fromAlbum, toAlbum, updateFileName){
+  const sql = `
     update metadata
     set album = @toAlbum
       ${updateFileName ? ", filename = replace(filename, @fromAlbum, @toAlbum)" : ''} 
     where collection_id = @collection_id
     and album = @fromAlbum
-  `);
-
-  let cnt = stmt.run({collection_id, fromAlbum, toAlbum});
-  return cnt;
+  `;
+  
+  return await asyncRun(sql, {collection_id, fromAlbum, toAlbum});
 }
 
 export function updateAlbumForItems(uuid_arr, toAlbum, updateFileName){
+  // Use transaction for bulk operations - keep using direct db connection
   let stmt = db.prepare(`
     update metadata
     set album = @toAlbum
@@ -212,16 +200,17 @@ export function updateAlbumForItems(uuid_arr, toAlbum, updateFileName){
 }
 
 
-export function getFileName(uuid){
-  return getFileNameFromDb.get({uuid}).filename;
+export async function getFileName(uuid){
+  const result = await asyncGet(getFileNameStatement, {uuid});
+  return result.filename;
 }
 
-export function retriveMetadata(uuid){
-  return retriveMetadataFromDb.get({uuid});
+export async function retriveMetadata(uuid){
+  return await asyncGet(retriveMetadataStatement, {uuid});
 }
 
 export function updateRating(uuid_arr, newRating, fileModifyDate){
-
+  // Use transaction for bulk operations - keep using direct db connection
   let trans = db.transaction(
     function(uuid_arr, newRating, fileModifyDate){
       for (let uuid of uuid_arr){
@@ -234,13 +223,14 @@ export function updateRating(uuid_arr, newRating, fileModifyDate){
   trans(uuid_arr, newRating, fileModifyDate);
 }
 
-export function trashItem(uuid, trashFilename){
+export async function trashItem(uuid, trashFilename){
   console.log(`Updating to trash ${uuid} ${trashFilename}`);
-  updateToTrashInDb.run({uuid, trashFilename});
+  return await asyncRun(updateToTrashStatement, {uuid, trashFilename});
 }
 
-export function scheduleExif(uuid_arr, new_exif_json){
-  let insertMany = db.transaction(
+export async function scheduleExif(uuid_arr, new_exif_json){
+  // Use transaction for bulk operations - keep using direct db connection
+  const insertMany = db.transaction(
     function(uuid_arr, new_exif_json){
       for(let uuid of uuid_arr){
         insertIntoExifUpdates.run({uuid, new_exif_json: JSON.stringify(new_exif_json)})
@@ -252,10 +242,10 @@ export function scheduleExif(uuid_arr, new_exif_json){
   return uuid_arr.length;
 }
 
-export function fileAudit(action, path1, path2=null){
-  fileAuditInDb.run({action, path1, path2});
+export async function fileAudit(action, path1, path2=null){
+  return await asyncRun(fileAuditStatement, {action, path1, path2});
 }
 
-export function getPendingExifUpdates(){
-  return getPendingExifUpdatesFromDb.get()
+export async function getPendingExifUpdates(){
+  return await asyncGet(getPendingExifUpdatesStatemet);
 }

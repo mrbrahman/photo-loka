@@ -1,4 +1,4 @@
-import { db } from './sqlite-database.mjs';
+import { asyncGet, asyncAll, asyncRun } from './db-pool.mjs';
 
 function transformEntryToDb(row){
   // make a copy of the object, don't change the original
@@ -16,48 +16,43 @@ function transformEntryFromDb(row){
   return row;
 }
 
-export function createNewCollection(entry){
-  var stmt = db.prepare(`
+export async function createNewCollection(entry){
+  const info = await asyncRun(`
     insert into collections
     (collection_name, collection_path, album_type, listen_paths, apply_folder_pattern, default_collection)
     values
     (@collection_name, @collection_path, @album_type, json(@listen_paths), @apply_folder_pattern, @default_collection)
-  `);
-
-  let info = stmt.run( transformEntryToDb(entry)) ;
+  `, transformEntryToDb(entry));
   return info.lastInsertRowid;
 }
 
-export function getAllCollections(){
+export async function getAllCollections(){
   // convert listen_paths back to JavaScript Array
-  var stmt = db.prepare(`
+  const output = await asyncAll(`
     select collection_id, collection_name, collection_path, album_type,
       listen_paths, apply_folder_pattern, default_collection
     from collections
-  `)
-  let output = stmt.all();
+  `);
   return output.map(transformEntryFromDb)
 }
 
-export function getCollection(collection_id){
+export async function getCollection(collection_id){
   // convert listen_paths back to JavaScript Array
-  var stmt = db.prepare(`
+  const output = await asyncGet(`
     select collection_id, collection_name, collection_path, album_type,
       listen_paths, apply_folder_pattern, default_collection, trash_days
     from collections where collection_id = ?
-  `)
-  let output = stmt.get(collection_id);
+  `, collection_id);
   return transformEntryFromDb(output);
 }
 
-export function getDefaultCollection(){
+export async function getDefaultCollection(){
   // convert listen_paths back to JavaScript Array
-  var stmt = db.prepare(`
+  const output = await asyncGet(`
     select collection_id, collection_name, collection_path, album_type,
       listen_paths, apply_folder_pattern, default_collection
     from collections where default_collection = 1
-  `)
-  let output = stmt.get();
+  `);
   return transformEntryFromDb(output);
 }
 

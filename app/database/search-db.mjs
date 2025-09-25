@@ -1,4 +1,4 @@
-import { db } from './sqlite-database.mjs';
+import { asyncGet, asyncAll, asyncRun } from './db-pool.mjs';
 
 export const restrictSearchCols = ['album', 'keywords', 'faces', 'objects', 'mediatype', 'make', 'model', 'geo_address'];
 
@@ -98,7 +98,7 @@ function converToFilterStr(searchStr){
 
 }
 
-export function runSearch(collection_id, searchStr, trashed = false, groupByAlbum = true) {
+export async function runSearch(collection_id, searchStr, trashed = false, groupByAlbum = true) {
   let filters = [], limit = false;
   
   filters.push(`coalesce(trashed, false) = ${trashed}`);
@@ -154,9 +154,8 @@ export function runSearch(collection_id, searchStr, trashed = false, groupByAlbu
   }
 
   console.log(sql)
-  var stmt = db.prepare(sql)
   
-  let results = stmt.all();
+  let results = await asyncAll(sql);
   return groupByAlbum ? transformSearchResultsFromDb(results) : results.map(row => JSON.parse(row.item));
 }
 
@@ -168,7 +167,7 @@ function transformSearchResultsFromDb(rows){
   });
 }
 
-export function searchForExistingAlbums(searchStr, wantFullName){
+export async function searchForExistingAlbums(searchStr, wantFullName){
   // sqlite substr is '1' based
   // TODO: Remove hardcoding of 16 - get it from collection.apply_folder_pattern
   // TODO: How to even more generalize it? For e.g. someone may want '<album name> YYYY-MM-DD'
@@ -183,11 +182,10 @@ export function searchForExistingAlbums(searchStr, wantFullName){
     limit 10
   `;
 
-  var stmt = db.prepare(sql);
-  return stmt.all();
+  return await asyncAll(sql);
 }
 
-export function getGpsCoordinates(){
+export async function getGpsCoordinates(){
   let sql = `
     select 
       round(gps_lat, 4) as lat,
@@ -201,16 +199,15 @@ export function getGpsCoordinates(){
     group by 1, 2
   `;
   
-  var stmt = db.prepare(sql);
-  return stmt.all();
+  return await asyncAll(sql);
 }
 
-export function searchByGpsCoordinates(collection_id, coordinates, trashed = false) {
+export async function searchByGpsCoordinates(collection_id, coordinates, trashed = false) {
   let coordFilters = coordinates.map(coord => 
     `(${coord.lat}, ${coord.lng})`
   ).join(', ');
   
   let searchStr = `raw:"(round(gps_lat,4), round(gps_long, 4)) in (${coordFilters})"`;
-  return runSearch(collection_id, searchStr, trashed, false);
+  return await runSearch(collection_id, searchStr, trashed, false);
 }
 

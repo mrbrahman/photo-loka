@@ -66,8 +66,8 @@ const apiRouter = express.Router();
 // *****************************************
 
 // TODO: rename this
-apiRouter.get('/getAll', function(req,res){
-  res.json(s.search.getAllFromDefaultCollection());
+apiRouter.get('/getAll', async function(req,res){
+  res.json(await s.search.getAllFromDefaultCollection());
 });
 
 apiRouter.get('/getThumbnail', function(req,res){
@@ -82,7 +82,7 @@ apiRouter.get('/getThumbnail', function(req,res){
   res.sendFile(fileName, {root: '.'});
 });
 
-apiRouter.get('/getImage', function(req,res){
+apiRouter.get('/getImage', async function(req,res){
   let uuid = req.query.uuid, height = +req.query.height, width = +req.query.width;
   
   res.type('image/jpg');
@@ -90,51 +90,51 @@ apiRouter.get('/getImage', function(req,res){
   //   "Content-Disposition": `inline;filename="${filename.split(/\//).pop()}"`
   // });
 
-  // s.search.getImage(uuid, width, height).pipe(res);
-  s.search.getImage(uuid, 1920, 1080).pipe(res);
+  // (await s.search.getImage(uuid, width, height)).pipe(res);
+  (await s.search.getImage(uuid, 1920, 1080)).pipe(res);
 });
 
 
-apiRouter.get('/getVideo', function(req,res){
+apiRouter.get('/getVideo', async function(req,res){
   let uuid = req.query.uuid, height = +req.query.height, width = +req.query.width;
 
-  s.search.getVideo(uuid).pipe(res);
+  (await s.search.getVideo(uuid)).pipe(res);
 
 });
 
-apiRouter.post('/search', function(req,res){
+apiRouter.post('/search', async function(req,res){
   let {collection_id, searchText} = req.body;
-  res.json(s.search.search(collection_id, searchText));
+  res.json(await s.search.search(collection_id, searchText));
 });
 
-apiRouter.get('/getGpsCoordinates', function(req,res){
-  res.json(s.search.getGpsCoordinates());
+apiRouter.get('/getGpsCoordinates', async function(req,res){
+  res.json(await s.search.getGpsCoordinates());
 });
 
-apiRouter.get('/searchForExistingAlbums', function(req,res){
-  res.json(s.search.searchForExistingAlbums(req.query.searchStr, req.query.wantFullName))
+apiRouter.get('/searchForExistingAlbums', async function(req,res){
+  res.json(await s.search.searchForExistingAlbums(req.query.searchStr, req.query.wantFullName))
 });
 
-apiRouter.post('/searchByGpsCoordinates', function(req,res){
+apiRouter.post('/searchByGpsCoordinates', async function(req,res){
   let {collection_id, coordinates} = req.body;
-  res.json(s.search.searchByGpsCoordinates(collection_id, coordinates));
+  res.json(await s.search.searchByGpsCoordinates(collection_id, coordinates));
 });
 
 // *****************************************
 // collection functions
 // *****************************************
-apiRouter.post('/createNewCollection', function(req,res,next){
+apiRouter.post('/createNewCollection', async function(req,res,next){
   let c = req.body;
   try {
-    let id = s.collections.createNewCollection(c)
+    let id = await s.collections.createNewCollection(c)
     res.json(id)
   } catch (error){
     next(error);
   }
 });
 
-apiRouter.get('/getAllCollections', function(req,res){
-  res.json( s.collections.getAllCollections() )
+apiRouter.get('/getAllCollections', async function(req,res){
+  res.json( await s.collections.getAllCollections() )
 });
 
 
@@ -313,8 +313,8 @@ const handleServerShutdown = async function(){
   });
 }
 
-let server = app.listen(9000, ()=>{
+let server = app.listen(9000, async ()=>{
   console.log("app started and listening in port 9000!");
   // Perform startup activities
-  s.housekeeping.startUpActivities();
+  await s.housekeeping.startUpActivities();
 });
