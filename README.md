@@ -40,8 +40,14 @@ Currently this project is very much a work-in-progress.
 - Mark as favorite / stars (there is no favorite in exif, but there is a 'rating' field)
 - Optimize write of metadata to files by delaying the write. This enables grouping all the changes together and writing to file at one go
 
+## Enrichments
+- Lookup GPS location
+    * First using geolocation api (that comes with exiftool)
+    * For US based addresses, use findNearestAdderss API (need a registered username)
+
 ## UI features
 - Display photos and videos on a responsive, progressive, scrollable grid
+- Cluster photos on a map
 - Slideshow
 - Search photos based on their metadata, using SQLite FTS5
     1. Github *like* search features (key value pairs)
@@ -71,7 +77,6 @@ Currently this project is very much a work-in-progress.
 - Ability to rename files
 
 **After near future**
-- Clustering photos on map
 - Face recognition
 - An acutal form to setup collections
 - Form to update config and save it to persistant storage (file?)
@@ -88,11 +93,10 @@ Currently this project is very much a work-in-progress.
 
 - **Install necessary software**
   - [Node](https://nodejs.org/en/) (to run the server)
-  - [SQLite3](https://www.sqlite.org/download.html) (for better-sqlite3)
   - [ffmpeg](https://ffmpeg.org/download.html) (for fluent-ffmpeg)
   - On Linux, simply run 
     ```bash
-    sudo apt install node sqlite3 ffmpeg
+    sudo apt install node ffmpeg
     ```
 
 - **Install code (just clone this repo)**
