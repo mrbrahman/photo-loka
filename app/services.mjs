@@ -4,3 +4,4 @@ export * as search      from './modules/search-and-fetch.mjs';
 export * as watcher     from './modules/watcher.mjs';
 export * as housekeeping from './modules/housekeeping.mjs';
 export * as reverseGeoEncoding from './modules/reverse-geo-encoding.mjs';
+export * as nightlyIndexing from './modules/nightly-indexing.mjs';

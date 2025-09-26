@@ -2,29 +2,26 @@ import * as fs from 'fs';
 const fsPromises = fs.promises;
 import * as path from 'path';
 import {EOL} from 'os';
+import { fdir } from 'fdir';
 
 import dateformat from 'dateformat';
 
 import * as db from '../../database/indexer-db.mjs';
 import { config } from '../../config.mjs';
 
-function lsRecursive(dir) {
-  let ls = fs.readdirSync(dir, { withFileTypes: true });
-  let files = ls.filter(x => !x.isDirectory())
-    .map(x => path.join(dir, x.name));
-
-  return files.concat(
-    ls.filter(x => x.isDirectory())
-      .map(x => lsRecursive(path.join(dir, x.name))) // recursive call
-      .reduce((acc, curr) => acc.concat(curr), [])
-  );
+export async function lsRecursive(dir) {
+  return new fdir()
+    .withFullPaths()
+    .onlyFiles()
+    .crawl(dir)
+    .withPromise();
 }
 
-export function listAllFilesForCollection(collection) {
+export async function listAllFilesForCollection(collection) {
   let start = performance.now();
   console.log(`starting to list all files for collection path: ${collection.collection_path}`);
 
-  let files = lsRecursive(collection.collection_path);
+  let files = await lsRecursive(collection.collection_path);
   
   console.log(`finished listing files in ${(performance.now() - start)/1000} secs`)
 
@@ -32,7 +29,7 @@ export function listAllFilesForCollection(collection) {
 }
 
 export async function getFilesMtime(dir) {
-  let files = lsRecursive(dir);
+  let files = await lsRecursive(dir);
 
   let result = files.map(f => {
     return {

@@ -8,6 +8,7 @@ import {startWatchersForAllCollections, stopAllWatchers} from './watcher.mjs';
 import {db} from '../database/sqlite-database.mjs';
 import {closePool} from '../database/db-pool.mjs';
 import {saveRateLimitState} from './reverse-geo-encoding.mjs';
+import {startNightlyIndexing, stopNightlyIndexing} from './nightly-indexing.mjs';
 
 export async function startUpActivities(){
   // Check if geonames username is configured
@@ -29,10 +30,14 @@ export async function startUpActivities(){
       ;
     }
   }
+
+  // Start nightly indexing
+  startNightlyIndexing();
 }
 
 export async function shutdownCleanup(){
   stopAllWatchers();
+  stopNightlyIndexing();
   saveRateLimitState();  // save rate limiting counters
   exiftool.end();
   closePool();

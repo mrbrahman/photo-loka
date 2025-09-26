@@ -73,6 +73,12 @@ export function addToIndexQueue(collection, filename, uuid, inPlace){
   indexerQueue.enqueue(indexFile, [collection, filename, uuid, inPlace])
 }
 
+export function bulkAddToIndexQueue(collection, filenames){
+  indexerQueue.enqueueMany(
+    filenames.map(filename => [indexFile, [collection, filename, null, false]])
+  );
+}
+
 
 // TODO: see if this can be used in the main indexFile function as well?
 export async function refreshThumbs(uuid){
@@ -241,7 +247,7 @@ export async function indexCollection(collection_id, firstTime=false){
   
     if(firstTime){
       // save some time, and just get a list of all files
-      files = {added: fileOps.listAllFilesForCollection(c), changed:[], deleted: []};
+      files = {added: await fileOps.listAllFilesForCollection(c), changed:[], deleted: []};
     } else {
       // painstakingly find out which files are added/updated/removed
       files = await listDeltaFilesForCollection(c);

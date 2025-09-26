@@ -278,6 +278,20 @@ apiRouter.post('/stopAllWatchers', function(req,res){
   res.sendStatus(200);
 });
 
+// *****************************************
+// nightly indexing
+// *****************************************
+
+apiRouter.post('/startNightlyIndexing', function(req,res){
+  s.nightlyIndexing.startNightlyIndexing();
+  res.sendStatus(200);
+});
+
+apiRouter.post('/stopNightlyIndexing', function(req,res){
+  s.nightlyIndexing.stopNightlyIndexing();
+  res.sendStatus(200);
+});
+
 
 // TODO
 // apiRouter.delete('/deleteAlbum/:albumName', function(req,res){
