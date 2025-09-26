@@ -85,7 +85,6 @@ Currently this project is very much a work-in-progress.
 - Ability to upload photos from device
 - Intelligent scrollbar (folder levels?)
 - Object detection (computer vision)
-- PWA
 - Authentication and Authorization
 - Sharing photos/albums
 
