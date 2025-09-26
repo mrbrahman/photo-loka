@@ -209,6 +209,11 @@ apiRouter.put('/refreshThumbs/:uuid', async function(req,res){
   res.sendStatus(200);
 })
 
+apiRouter.put('/compressVideo/:uuid', async function(req,res){
+  await s.indexer.compressVideo(req.params.uuid);
+  res.sendStatus(200);
+})
+
 // *****************************************
 // reverse geo encoding
 // *****************************************

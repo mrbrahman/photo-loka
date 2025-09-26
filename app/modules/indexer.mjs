@@ -90,6 +90,20 @@ export async function refreshThumbs(uuid){
   // TODO: Should I?
 }
 
+export async function compressVideo(uuid, inputVideoPath) {
+  try{
+    if (!inputVideoPath) {
+      inputVideoPath = await db.getFileName(uuid);
+    }
+    console.log(`Compressing video for ${uuid} ${inputVideoPath}`);
+    indexerQueue.enqueue(videoCompression.compressVideo, [uuid, inputVideoPath]);
+  }
+  catch(err){
+    console.log(`Error compressing video for ${uuid} ${err}`);
+    throw(err);
+  }
+}
+
 async function indexFile(collection, sourceFileName, uuid, inPlace){
   // indexing is a series of steps, where the latter steps
   // are dependent on former steps

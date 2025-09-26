@@ -61,8 +61,12 @@ compressVideo(uuid, inputVideoPath) {
         .addOptions(['-crf 23', '-maxrate 1.5M', '-bufsize 3M', '-movflags +faststart']);
     }
     
+    let startTime = performance.now();
     ffmpegCmd.output(outputPath)
-      .on('end', () => resolve(outputPath))
+      .on('end', () => {
+        console.log(`Video compression completed for ${uuid} in ${(performance.now() - startTime)/1000/60} minutes`);
+        resolve(outputPath)
+      })
       .on('error', (err) => reject(err))
       .run();
   });
