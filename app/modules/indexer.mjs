@@ -76,27 +76,27 @@ export function addToIndexQueue(collection, filename, uuid, inPlace){
 
 // TODO: see if this can be used in the main indexFile function as well?
 export async function refreshThumbs(uuid){
-  let meta = await db.retriveMetadata(uuid),
+  let filename = await db.getFileName(uuid),
     imageFileName = meta.filename, playImageOverlay = false;
   
   if (meta.mediatype == 'video'){
-    imageFileName = await thumbs.generateVideoThumbnail(uuid, meta.filename);
+    imageFileName = await thumbs.generateVideoThumbnail(uuid, filename);
     playImageOverlay=true;
   }
 
   let buf = fs.readFileSync(imageFileName);
   await thumbs.createImageThumbnails(uuid, buf, playImageOverlay);
-  // not extracting face regions here
-  // TODO: Should I?
 }
 
-export async function compressVideo(uuid, inputVideoPath) {
+export async function compressVideo(uuid, filename) {
   try{
-    if (!inputVideoPath) {
-      inputVideoPath = await db.getFileName(uuid);
+    if (!filename) {
+      filename = await db.getFileName(uuid);
     }
-    console.log(`Compressing video for ${uuid} ${inputVideoPath}`);
-    indexerQueue.enqueue(videoCompression.compressVideo, [uuid, inputVideoPath]);
+    let startTime = performance.now();
+    console.log(`Starting video compression for ${uuid} ${filename}`);
+    await videoCompression.compressVideo(uuid, filename);
+    console.log(`Video compression for ${uuid} ${filename} took ${(performance.now()-startTime)/1000/60} minutes`);
   }
   catch(err){
     console.log(`Error compressing video for ${uuid} ${err}`);
@@ -142,11 +142,6 @@ async function indexFile(collection, sourceFileName, uuid, inPlace){
         // extract video thumbnail (screenshot) and use that image to extract image thumbs
         imageFileName = await thumbs.generateVideoThumbnail(p.uuid, p.filename);
         playImageOverlay=true;
-        
-        // compress video for streaming
-        let videoCompressStartTime = performance.now();
-        await videoCompression.compressVideo(p.uuid, p.filename);
-        console.log(`Video compression for ${p.filename} took ${(performance.now()-videoCompressStartTime)/1000} seconds`);
       } catch(error){
         throw `ERROR during video processing for file: ${p.filename}: ${error}`;
       }
@@ -167,7 +162,18 @@ async function indexFile(collection, sourceFileName, uuid, inPlace){
       throw `ERROR during createImageThumbnails for file: ${sourceFileName}: ${error}`;
     }
 
-    // face region extraction (if present)
+    // Step 5: video compression for streaming
+    try{
+      if(p.mediatype == "video"){
+        // perform video compression to help with streaming
+        await videoCompression.compressVideo(p.uuid, p.filename);
+      }
+    } catch(error){
+      throw `ERROR during compressVideo for file: ${sourceFileName}: ${error}`;
+    }
+
+    // Step 6: face region extraction (if present)
+    // TODO: is this really needed? revisit during face recognition implementation
     if (p.xmpregion
       && p.xmpregion.RegionList.filter(d => d.Type == 'Face').length > 0
       && p.xmpregion.AppliedToDimensions.Unit == 'pixel') // TODO: don't know what to do with others just yet
@@ -188,15 +194,18 @@ async function indexFile(collection, sourceFileName, uuid, inPlace){
   // grab the country code before sending to DB (as DB converts it to JSON string)
   let countryCode = p.geolocation_api_json?.GeolocationCountryCode
   
-  // Step 6: Make an entry in db
+  // Step 8: Make an entry in db
   await db.insertMetadataRow(p);
 
+  // -------------------------
+  // Enrichments
+  // -------------------------
   // Step 7: Queue reverse geo encoding if GPS coordinates are available and location is in US
   if (p.gps_lat && p.gps_long && countryCode === 'US') {
     enqueueReverseGeoEncoding(p.uuid, p.gps_lat, p.gps_long);
   }
 
-  console.log(`${sourceFileName} finished in ${performance.now()-fileStart} ms`);
+  console.log(`Indexing of ${sourceFileName} finished in ${performance.now()-fileStart} ms`);
 }
 
 // This function is not used currently, just leaving it in case it needs to be used later
