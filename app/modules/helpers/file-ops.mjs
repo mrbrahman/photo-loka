@@ -111,7 +111,7 @@ export async function moveItem(src, dest){
     let targetDir = path.dirname(dest);
     if(!fs.existsSync(targetDir)){
       await fsPromises.mkdir(targetDir, {recursive: true});
-      logChange('create-dir', targetDir);
+      logChange('create-dir', null, targetDir);
     }
     // try to fist rename the file. in case the file is in the same mountpoint
     // this will be faster than copying
