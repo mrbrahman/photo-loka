@@ -11,4 +11,4 @@ export * as watcher     from './infrastructure/file-watcher.mjs';
 export * as startup     from './infrastructure/startup-manager.mjs';
 export * as shutdown    from './infrastructure/shutdown-manager.mjs';
 export * as geoEncoder  from './core/geo/geo-encoder.mjs';
-export * as scheduler   from './infrastructure/scheduler.mjs';
+export * as jobs        from './jobs/nightly-indexing-job.mjs';

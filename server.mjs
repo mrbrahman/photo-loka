@@ -283,12 +283,12 @@ apiRouter.post('/stopAllWatchers', function(req,res){
 // *****************************************
 
 apiRouter.post('/startNightlyIndexing', function(req,res){
-  s.scheduler.startNightlyIndexing();
+  s.jobs.startNightlyIndexing();
   res.sendStatus(200);
 });
 
 apiRouter.post('/stopNightlyIndexing', function(req,res){
-  s.scheduler.stopNightlyIndexing();
+  s.jobs.stopNightlyIndexing();
   res.sendStatus(200);
 });
 

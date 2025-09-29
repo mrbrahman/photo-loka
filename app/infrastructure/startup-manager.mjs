@@ -4,7 +4,7 @@ import 'dotenv/config';
 import { getAllCollections } from '../core/collections/collection-manager.mjs';
 import { indexCollection } from '../core/indexing/batch-indexer.mjs';
 import { startWatchersForAllCollections } from './file-watcher.mjs';
-import { startNightlyIndexing } from './scheduler.mjs';
+import { startNightlyIndexing } from '../jobs/nightly-indexing-job.mjs';
 
 export async function startUpActivities(){
   // Check if geonames username is configured
