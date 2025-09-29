@@ -6,7 +6,7 @@ import { fdir } from 'fdir';
 
 import dateformat from 'dateformat';
 
-import * as db from '../../database/indexer-db.mjs';
+import * as db from '../indexing/indexer-db.mjs';
 import { config } from '../../config.mjs';
 
 export async function lsRecursive(dir) {
@@ -111,7 +111,7 @@ export async function moveItem(src, dest){
     let targetDir = path.dirname(dest);
     if(!fs.existsSync(targetDir)){
       await fsPromises.mkdir(targetDir, {recursive: true});
-      logChange('create-dir', targetDir);
+      logChange('create-dir', null, targetDir);
     }
     // try to fist rename the file. in case the file is in the same mountpoint
     // this will be faster than copying
@@ -138,16 +138,22 @@ export function deleteFile(fileName){
   logChange('delete', fileName)
 }
 
+export async function moveFileToTrash(uuid_arr){
+  // Rename file to start with '.Trash_' and update trashed flag in db
+  for(let uuid of uuid_arr){
+    let f = await db.getFileName(uuid),
+      filename = path.basename(f),
+      trashFilename = path.join(path.dirname(f), `.Trash_${filename}`);
+    
+    await moveItem(f, trashFilename);
+    await db.trashItem(uuid, trashFilename);
+  }
+}
+
 async function logChange(action, path1, path2){
   if(!config.auditFiles){
     return
   }
-  // await fsPromises.appendFile(
-  //   config.albumNameChangesFile, 
-  //   JSON.stringify({
-  //     action, path2, path2
-  //   }) + EOL
-  // );
 
   // make an entry into db rather than updating a file
   // this will help with select when needs to be used (for e.g. select after a specific timestamp etc)

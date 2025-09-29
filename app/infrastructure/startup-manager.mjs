@@ -1,14 +1,10 @@
 import { config } from '../config.mjs';
 import 'dotenv/config';
 
-import { getAllCollections } from '../database/collection-db.mjs';
-import {indexCollection} from './indexer.mjs';
-import {exiftool} from 'exiftool-vendored';
-import {startWatchersForAllCollections, stopAllWatchers} from './watcher.mjs';
-import {db} from '../database/sqlite-database.mjs';
-import {closePool} from '../database/db-pool.mjs';
-import {saveRateLimitState} from './reverse-geo-encoding.mjs';
-import {startNightlyIndexing, stopNightlyIndexing} from './nightly-indexing.mjs';
+import { getAllCollections } from '../core/collections/collection-manager.mjs';
+import { indexCollection } from '../core/indexing/batch-indexer.mjs';
+import { startWatchersForAllCollections } from './file-watcher.mjs';
+import { startNightlyIndexing } from './scheduler.mjs';
 
 export async function startUpActivities(){
   // Check if geonames username is configured
@@ -33,13 +29,4 @@ export async function startUpActivities(){
 
   // Start nightly indexing
   startNightlyIndexing();
-}
-
-export async function shutdownCleanup(){
-  stopAllWatchers();
-  stopNightlyIndexing();
-  saveRateLimitState();  // save rate limiting counters
-  exiftool.end();
-  closePool();
-  db.close();
 }

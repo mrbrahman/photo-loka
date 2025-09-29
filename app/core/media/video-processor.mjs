@@ -3,6 +3,23 @@ import path from 'path';
 import fs from 'fs';
 import {glob} from 'glob';
 import {config} from '../../config.mjs';
+import {getFileName} from '../indexing/indexer-db.mjs';
+
+export async function compressVideo(uuid, filename) {
+  try{ 
+    if (!filename) {
+      filename = await getFileName(uuid);
+    } 
+    let startTime = performance.now();
+    console.log(`Starting video compression for ${uuid} ${filename}`);
+    await compressVideoWithFFMpeg(uuid, filename);
+    console.log(`Video compression for ${uuid} ${filename} took ${(performance.now()-startTime)/1000/60} minutes`);
+  }
+  catch(err){
+    console.log(`Error compressing video for ${uuid} ${err}`);
+    throw(err); 
+  }
+}
 
 /*
  * Video Compression Logic:
@@ -28,9 +45,7 @@ import {config} from '../../config.mjs';
  *   - Settings: CRF 23, streaming optimized
  */
 
-export async function 
-
-compressVideo(uuid, inputVideoPath) {
+async function compressVideoWithFFMpeg(uuid, inputVideoPath) {
   const isWebM = config.videoEncoder === 'libvpx' || config.videoEncoder === 'libvpx-vp9';
   const container = isWebM ? 'webm' : 'mp4';
   
@@ -70,8 +85,9 @@ compressVideo(uuid, inputVideoPath) {
   });
 }
 
+// TODO: fix path
 export function deleteCompressedVideo(uuid) {
-  const pattern = path.join(config.thumbsPath, `${uuid}_compressed_video.*`);
+  const pattern = path.join(config.thumbsDir, `${uuid}_compressed_video.*`);
   const files = glob.sync(pattern);
   
   files.forEach(filePath => {
@@ -79,8 +95,9 @@ export function deleteCompressedVideo(uuid) {
   });
 }
 
+// TODO: Fix path
 export function getCompressedVideoPath(uuid) {
-  const pattern = path.join(config.thumbsPath, `${uuid}_compressed_video.*`);
+  const pattern = path.join(config.thumbsDir, `${uuid}_compressed_video.*`);
   const files = glob.sync(pattern);
   
   if (files.length > 0) {
@@ -90,5 +107,28 @@ export function getCompressedVideoPath(uuid) {
   // If none exist, return path for current encoder
   const isWebM = config.videoEncoder === 'libvpx' || config.videoEncoder === 'libvpx-vp9';
   const container = isWebM ? 'webm' : 'mp4';
-  return path.join(config.thumbsPath, `${uuid}_compressed_video.${container}`);
+  return path.join(config.thumbsDir, `${uuid}_compressed_video.${container}`);
+}
+
+export function streamVideo(uuid, filename){
+  let readStream;
+
+  let webmFile = path.join(
+    config.thumbsDir,
+    ...Array.from(uuid).slice(0,3),
+    uuid+'_compressed_video.webm'
+  );
+
+  if(fs.existsSync(webmFile)){
+    readStream = fs.createReadStream(webmFile);
+  } else {
+    readStream = fs.createReadStream(filename);
+  }
+
+  return readStream;
+}
+
+export async function getVideo(uuid){
+  let filename = await getFileName(uuid);
+  return streamVideo(uuid, filename);
 }

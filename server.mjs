@@ -90,15 +90,15 @@ apiRouter.get('/getImage', async function(req,res){
   //   "Content-Disposition": `inline;filename="${filename.split(/\//).pop()}"`
   // });
 
-  // (await s.search.getImage(uuid, width, height)).pipe(res);
-  (await s.search.getImage(uuid, 1920, 1080)).pipe(res);
+  // (await s.thumbnails.getImage(uuid, width, height)).pipe(res);
+  (await s.thumbnails.getImage(uuid, 1920, 1080)).pipe(res);
 });
 
 
 apiRouter.get('/getVideo', async function(req,res){
   let uuid = req.query.uuid, height = +req.query.height, width = +req.query.width;
 
-  (await s.search.getVideo(uuid)).pipe(res);
+  (await s.videos.getVideo(uuid)).pipe(res);
 
 });
 
@@ -112,7 +112,7 @@ apiRouter.get('/getGpsCoordinates', async function(req,res){
 });
 
 apiRouter.get('/searchForExistingAlbums', async function(req,res){
-  res.json(await s.search.searchForExistingAlbums(req.query.searchStr, req.query.wantFullName))
+  res.json(await s.albums.searchForExistingAlbums(req.query.searchStr, req.query.wantFullName))
 });
 
 apiRouter.post('/searchByGpsCoordinates', async function(req,res){
@@ -144,13 +144,13 @@ apiRouter.get('/getAllCollections', async function(req,res){
 
 apiRouter.post('/startIndexingFirstTime', async function(req,res){
   let {collection_id} = req.query;
-  s.indexer.indexCollection(collection_id, true);
+  s.batchIndexer.indexCollection(collection_id, true);
   res.sendStatus(200);
 });
 
 apiRouter.post('/indexCollection/:collection_id', function(req,res){
   let collection_id = req.params.collection_id;
-  s.indexer.indexCollection(collection_id);
+  s.batchIndexer.indexCollection(collection_id);
   res.sendStatus(200);
 });
 
@@ -183,12 +183,12 @@ apiRouter.put('/updateIndexerConcurrency/:concurrency', function(req,res,next){
 
 apiRouter.post('/refreshMetadataForCollection/:collection_id', function(req,res){
   let collection_id = +req.params.collection_id;
-  s.indexer.refreshMetadataForCollection(collection_id);
+  s.batchIndexer.refreshMetadataForCollection(collection_id);
   res.sendStatus(200);
 });
 
 apiRouter.post('/refreshMetadataForItem/:uuid', async function(req,res){
-  await s.indexer.refreshMetadata(req.params.uuid);
+  await s.batchIndexer.refreshMetadata(req.params.uuid);
   res.sendStatus(200);
 });
 
@@ -196,7 +196,7 @@ apiRouter.post('/refreshMetadataForItem/:uuid', async function(req,res){
 apiRouter.put('/updateRating', function(req,res){
   let {uuid_arr, newRating} = req.body;
   try{
-    s.indexer.updateRating(uuid_arr, newRating);
+    s.exif.updateRating(uuid_arr, newRating);
   } catch(err){
     res.status(500).json({error: err.message});
     return;
@@ -205,12 +205,12 @@ apiRouter.put('/updateRating', function(req,res){
 });
 
 apiRouter.put('/refreshThumbs/:uuid', async function(req,res){
-  await s.indexer.refreshThumbs(req.params.uuid);
+  await s.thumbnails.refreshThumbs(req.params.uuid);
   res.sendStatus(200);
 })
 
 apiRouter.put('/compressVideo/:uuid', async function(req,res){
-  await s.indexer.compressVideo(req.params.uuid);
+  await s.videos.compressVideo(req.params.uuid);
   res.sendStatus(200);
 })
 
@@ -218,20 +218,20 @@ apiRouter.put('/compressVideo/:uuid', async function(req,res){
 // reverse geo encoding
 // *****************************************
 apiRouter.get('/getReverseGeoEncodingStatus', function(req,res){
-  res.json(s.reverseGeoEncoding.status());
+  res.json(s.geoEncoder.status());
 });
 
 apiRouter.post('/enqueueReverseGeoEncoding', function(req,res){
   let {uuid, gps_lat, gps_long} = req.body;
   if (uuid && gps_lat && gps_long){
-    s.reverseGeoEncoding.enqueue(uuid, gps_lat, gps_long);
+    s.geoEncoder.enqueue(uuid, gps_lat, gps_long);
   }
   res.sendStatus(200);
 });
 
 apiRouter.post('/enqueueManyReverseGeoEncoding', function(req,res){
   let entries = req.body;
-  s.reverseGeoEncoding.enqueueMany(entries);
+  s.geoEncoder.enqueueMany(entries);
   res.sendStatus(200);
 });
 
@@ -242,7 +242,7 @@ apiRouter.post('/updateAlbumName', async function(req,res){
   let {collection_id, currAlbumName, newAlbumName} = req.body;
 
   try {
-    let updates = await s.indexer.updateAlbum(collection_id, currAlbumName, newAlbumName);
+    let updates = await s.albums.updateAlbum(collection_id, currAlbumName, newAlbumName);
     res.json(updates);
   } catch (err) {
     res.status(500).json(err);
@@ -252,13 +252,13 @@ apiRouter.post('/updateAlbumName', async function(req,res){
 
 apiRouter.delete('/trashItems', async function(req,res){
   let {uuid_arr} = req.body;
-  await s.indexer.moveFileToTrash(uuid_arr);
+  await s.fileOps.moveFileToTrash(uuid_arr);
   res.sendStatus(200);
 });
 
 apiRouter.put('/moveItems', async function(req,res){
   let {collection_id, uuid_arr, new_album_name} = req.body;
-  await s.indexer.moveItemsToAlbum(collection_id, uuid_arr, new_album_name);
+  await s.albums.moveItemsToAlbum(collection_id, uuid_arr, new_album_name);
   res.sendStatus(200);
 });
 
@@ -283,12 +283,12 @@ apiRouter.post('/stopAllWatchers', function(req,res){
 // *****************************************
 
 apiRouter.post('/startNightlyIndexing', function(req,res){
-  s.nightlyIndexing.startNightlyIndexing();
+  s.scheduler.startNightlyIndexing();
   res.sendStatus(200);
 });
 
 apiRouter.post('/stopNightlyIndexing', function(req,res){
-  s.nightlyIndexing.stopNightlyIndexing();
+  s.scheduler.stopNightlyIndexing();
   res.sendStatus(200);
 });
 
@@ -324,7 +324,7 @@ process.on('SIGTERM', function(){
 });
 
 const handleServerShutdown = async function(){
-  await s.housekeeping.shutdownCleanup();
+  await s.shutdown.shutdownCleanup();
 
   server.close(()=>{
     console.log('app shutdown. Ending process... ');
@@ -335,5 +335,5 @@ const handleServerShutdown = async function(){
 let server = app.listen(9000, async ()=>{
   console.log("app started and listening in port 9000!");
   // Perform startup activities
-  await s.housekeeping.startUpActivities();
+  await s.startup.startUpActivities();
 });

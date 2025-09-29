@@ -1,4 +1,6 @@
 import {ExifTool} from 'exiftool-vendored';
+import dateFormat from 'dateformat';
+import * as db from '../indexing/indexer-db.mjs';
 
 const exiftool = new ExifTool({
   numericTags: ['FileSize', 'Orientation', 'Duration', 'GPSLatitude', 'GPSLongitude', 'GPSAltitude', 'Rating', 'ImageWidth', 'ImageHeight'],
@@ -96,4 +98,13 @@ export async function updateMetadata(file, updates){
   // (both image and metadata) and the only diffs should be the updates
 
   await exiftool.write(file, updates, ['-overwrite_original']);
+}
+
+export function updateRating(uuid_arr, newRating){
+  // we also update the file modify date so that next time server starts up, it doesn't
+  // see this as a new file and re-indexes it
+  let fileModifyDate = dateFormat(new Date(), 'isoDateTime');
+
+  db.updateRating(uuid_arr, newRating, fileModifyDate);
+  db.scheduleExif(uuid_arr, {Rating: newRating, FileModifyDate: fileModifyDate});
 }

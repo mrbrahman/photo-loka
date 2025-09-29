@@ -1,94 +1,13 @@
-import { ParallelProcesses } from '../utils/parallel-processes.mjs';
-import { findExactGeoMatch, findProximityGeoMatch, updateGeoAddress, updateGeonamesData, updateGeoEncodingStatus, saveRateLimitCounters, loadRateLimitCounters } from '../database/geo-encoding-db.mjs';
-import { config } from '../config.mjs';
+import { ParallelProcesses } from '../../utils/parallel-processes.mjs';
+import { findExactGeoMatch, findProximityGeoMatch, updateGeoAddress, updateGeonamesData, updateGeoEncodingStatus } from './geo-encoding-db.mjs';
+import { checkGeonamesRateLimit, incrementCounters } from './rate-limiter.mjs';
 import 'dotenv/config';
 
-const processor = ParallelProcesses();
 const geonamesProcessor = ParallelProcesses();
-
-// Rate limiting for geonames API
-let hourlyCount = 0, dailyCount = 0;
-let currentHour = new Date().getUTCHours();
-let currentDay = new Date().getUTCDate();
-
-// Load saved counters on startup
-const savedCounters = loadRateLimitCounters();
-if (savedCounters) {
-  const now = new Date();
-  const hour = now.getUTCHours();
-  const day = now.getUTCDate();
-  
-  // Only restore if same hour/day
-  if (savedCounters.current_hour === hour) hourlyCount = savedCounters.hourly_count;
-  if (savedCounters.current_day === day) dailyCount = savedCounters.daily_count;
-}
-
-function checkGeonamesRateLimit() {
-  const now = new Date();
-  const hour = now.getUTCHours();
-  const day = now.getUTCDate();
-  
-  // Reset hourly counter at hour mark
-  if (hour !== currentHour) {
-    hourlyCount = 0;
-    currentHour = hour;
-  }
-  
-  // Reset daily counter at midnight UTC
-  if (day !== currentDay) {
-    dailyCount = 0;
-    currentDay = day;
-  }
-  
-  // Check limits
-  if (hourlyCount >= config.geonamesHourlyLimit || dailyCount >= config.geonamesDailyLimit) {
-    // Set timeout to resume at next appropriate time
-    const msToNextHour = (60 - now.getUTCMinutes()) * 60 * 1000 - now.getUTCSeconds() * 1000;
-    const msToMidnight = (24 - now.getUTCHours()) * 60 * 60 * 1000 - now.getUTCMinutes() * 60 * 1000 - now.getUTCSeconds() * 1000;
-    
-    const resumeTime = hourlyCount >= config.geonamesHourlyLimit ? msToNextHour : msToMidnight;
-    
-    setTimeout(() => {
-      if (hourlyCount >= config.geonamesHourlyLimit && hour !== new Date().getUTCHours()) hourlyCount = 0;
-      if (dailyCount >= config.geonamesDailyLimit && day !== new Date().getUTCDate()) dailyCount = 0;
-      geonamesProcessor.resume();
-    }, resumeTime + 30000); // Add 30 seconds buffer for clock sync issues
-    
-    return false;
-  }
-  
-  return true;
-}
 
 geonamesProcessor.pauseConditionFn(checkGeonamesRateLimit);
 
-export function enqueue(uuid, gps_lat, gps_long) {
-  processor.enqueue(performReverseGeoEncoding, [uuid, gps_lat, gps_long]);
-}
-
-export function enqueueMany(entries) {
-  const tasks = entries.map(({uuid, gps_lat, gps_long}) => [performReverseGeoEncoding, [uuid, gps_lat, gps_long]]);
-  processor.enqueueMany(tasks);
-}
-
-export function status() {
-  return {
-    dbLookup: processor.status(),
-    geonamesApi: {
-      ...geonamesProcessor.status(),
-      hourlyCount,
-      dailyCount,
-      hourlyLimit: config.geonamesHourlyLimit,
-      dailyLimit: config.geonamesDailyLimit
-    }
-  };
-}
-
-export function saveRateLimitState() {
-  saveRateLimitCounters(hourlyCount, dailyCount, currentHour, currentDay);
-}
-
-async function performReverseGeoEncoding(uuid, gps_lat, gps_long) {
+export async function performReverseGeoEncoding(uuid, gps_lat, gps_long) {
   console.log(`Starting reverse geo-encoding for ${uuid} at ${gps_lat}, ${gps_long}`);
   
   // First try exact match up to 4 decimal places
@@ -161,8 +80,7 @@ async function lookupGeonames(uuid, gps_lat, gps_long) {
       console.log(`API success for ${uuid}: ${geo_address}`);
       
       // Increment counters after successful API call
-      hourlyCount++;
-      dailyCount++;
+      incrementCounters();
       
       // Update both geonames_rev_address_json and geo_address
       await updateGeonamesData(uuid, JSON.stringify(data), geo_address);
@@ -185,4 +103,3 @@ async function lookupGeonames(uuid, gps_lat, gps_long) {
   
   return null;
 }
-

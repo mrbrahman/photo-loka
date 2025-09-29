@@ -5,6 +5,7 @@ import {default as ffmpeg} from 'fluent-ffmpeg';
 
 import {config} from '../../config.mjs';
 import {overlays} from './overlays/all-overlays.mjs';
+import * as db from '../indexing/indexer-db.mjs';
 
 const sizes = [
   // below are thumbnails with same aspect ratio as original image
@@ -17,8 +18,7 @@ const sizes = [
   {width: 50,  height: 50,  fit: 'cover', suffix: 'center', playIcon: 'play-button-20.png'}
 ];
 
-let thumbsDir = config.thumbsDir;  // TODO: check if these change if and when config changes during the run
-let facesDir = config.facesDir;
+let thumbsDir = config.thumbsDir;
 
 // Note Samsung phones have issue, which needs {failOnError: true}
 // when reading the image / buffer with sharp
@@ -68,68 +68,6 @@ export async function createImageThumbnails(uuid, buf, playImageOverlay){
   // TODO: extract and return image hash? (to help identify dups)
 }
 
-
-export async function extractFaceRegions(uuid, buf, xmpregion) {
-  let start = performance.now();
-  
-  let faceExtractPromises=[], parsedFaces=[];
-  let faces = xmpregion.RegionList.filter(d => d.Type == 'Face');
-  
-  for (let face of faces) {
-
-    // ignore un-named faces
-    if(!face.Name){
-      console.warn(`${uuid} Skipping face extraction. No face tagged at x: ${face.Area.X} y: ${face.Area.Y} w: ${face.Area.W} h: ${face.Area.H}`);
-      continue;
-    }
-
-    let faceDir = path.join(facesDir, face.Name);
-    if (!fs.existsSync(faceDir)) {
-      fs.mkdirSync(faceDir, { recursive: true });
-    }
-
-    let { W, H } = xmpregion.AppliedToDimensions;
-
-    // Note: xmp stores X and Y as center of the area
-    let [left, width] = [face.Area.X - face.Area.W / 2, face.Area.W].map(x => Math.floor(x * W));
-    let [top, height] = [face.Area.Y - face.Area.H / 2, face.Area.H].map(x => Math.floor(x * H));
-    console.log(`${uuid} extracting ${left} ${top} ${width} ${height} for ${face.Name}`);
-
-    // check if dimensions are valid
-    if(left+width > W || top+height > H){
-      console.warn(`${uuid} Skipping face extraction. Bad extract area. Pic dimensions w: ${W} h: ${H}`);
-      continue;
-    }
-
-    // add a promise
-    let facePromise = sharp(buf, { failOnError: false })
-      .withMetadata() // keep metadata to help with rotation after extract
-      .extract({
-        left: left,
-        top: top,
-        width: width,
-        height: height
-      })
-      .toBuffer()
-      .then((faceBuf)=>{
-        sharp(faceBuf)
-          // rotate the image, and lose the metadata
-          .rotate()
-          // TODO: same face appearing multiple times in the image? for e.g a photo in a photo?
-          .toFile(path.join(faceDir, `${uuid}.jpg`)) 
-      })
-    ;
-    
-    faceExtractPromises.push(facePromise);
-    parsedFaces.push(face)
-  }
-
-  await Promise.all(faceExtractPromises);
-  console.log(`faces: For ${uuid} generated ${faceExtractPromises.length} in ${performance.now()-start} ms`);
-
-  return parsedFaces;
-}
-
 export async function generateVideoThumbnail(uuid, videoFilename){
   // convert the callback into a Promise, so caller can "await"
   return new Promise((resolve,reject)=>{
@@ -176,20 +114,6 @@ export function deleteImageThumbnails(uuid){
   }
 }
 
-export function deleteFaceThumbnails(uuid){
-  let dir = path.join(
-    facesDir,
-    ...Array.from(uuid).slice(0,3)
-  );
-
-  if(fs.existsSync(dir)){
-    fs.readdirSync(dir)
-      .filter(f=>f.startsWith(uuid))
-      .forEach(f=>fs.unlinkSync(path.join(dir,f)))
-    ;
-  }
-}
-
 export function resizeImage(filename, width, height){
   const readStream = fs.createReadStream(filename);
   let transform = sharp({failOnError: false})
@@ -204,21 +128,20 @@ export function resizeImage(filename, width, height){
   return readStream.pipe(transform);
 }
 
-export function streamVideo(uuid, filename){
-  let readStream;
-
-  let webmFile = path.join(
-    config.thumbsDir,
-    ...Array.from(uuid).slice(0,3),
-    uuid+'_compressed_video.webm'
-  );
-
-  if(fs.existsSync(webmFile)){
-    readStream = fs.createReadStream(webmFile);
-  } else {
-    readStream = fs.createReadStream(filename);
+export async function refreshThumbs(uuid){
+  let meta = await db.retriveMetadata(uuid),
+    imageFileName = meta.filename, playImageOverlay = false;
+  
+  if (meta.mediatype === 'video'){
+    imageFileName = await generateVideoThumbnail(uuid, filename);
+    playImageOverlay=true;
   }
 
-  return readStream;
+  let buf = fs.readFileSync(imageFileName);
+  await createImageThumbnails(uuid, buf, playImageOverlay);
 }
 
+export async function getImage(uuid, width, height){
+  let filename = await db.getFileName(uuid);
+  return resizeImage(filename, width, height);
+}
