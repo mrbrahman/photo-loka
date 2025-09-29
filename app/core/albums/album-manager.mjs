@@ -1,7 +1,7 @@
 import * as path from 'path';
 import * as indexerDb from '../indexing/indexer-db.mjs';
 import * as db from './album-db.mjs';
-import * as fileOps from '../collections/file-organizer.mjs';
+import * as fileOps from '../indexing/file-organizer.mjs';
 import { getCollection } from '../collections/collection-manager.mjs';
 
 export async function updateAlbum(collection_id, fromAlbum, toAlbum){

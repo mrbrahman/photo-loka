@@ -1,12 +1,11 @@
 import * as fs from 'fs';
 const fsPromises = fs.promises;
 import * as path from 'path';
-import {EOL} from 'os';
 import { fdir } from 'fdir';
 
 import dateformat from 'dateformat';
 
-import * as db from '../indexing/indexer-db.mjs';
+import * as db from './indexer-db.mjs';
 import { config } from '../../config.mjs';
 
 export async function lsRecursive(dir) {

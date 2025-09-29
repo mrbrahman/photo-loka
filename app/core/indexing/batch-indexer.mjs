@@ -1,4 +1,4 @@
-import * as fileOps from '../collections/file-organizer.mjs';
+import * as fileOps from './file-organizer.mjs';
 import * as db from './indexer-db.mjs';
 import * as exifManager from '../media/exif-manager.mjs';
 import { addToIndexQueue, bulkAddToIndexQueue } from './queue-manager.mjs';

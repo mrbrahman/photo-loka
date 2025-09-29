@@ -6,7 +6,7 @@ export * as thumbnails  from './core/media/thumbnail-manager.mjs';
 export * as videos      from './core/media/video-processor.mjs';
 export * as exif        from './core/media/exif-manager.mjs';
 export * as albums      from './core/albums/album-manager.mjs';
-export * as fileOps     from './core/collections/file-organizer.mjs';
+export * as fileOps     from './core/indexing/file-organizer.mjs';
 export * as watcher     from './infrastructure/file-watcher.mjs';
 export * as startup     from './infrastructure/startup-manager.mjs';
 export * as shutdown    from './infrastructure/shutdown-manager.mjs';

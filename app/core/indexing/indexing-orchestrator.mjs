@@ -5,7 +5,7 @@ import * as exifManager from '../media/exif-manager.mjs';
 import * as thumbnailManager from '../media/thumbnail-manager.mjs';
 import * as videoProcessor from '../media/video-processor.mjs';
 import * as faceExtractor from '../media/face-extractor.mjs';
-import * as fileOps from '../collections/file-organizer.mjs';
+import * as fileOps from './file-organizer.mjs';
 
 import * as db from './indexer-db.mjs';
 import { enqueue as enqueueReverseGeoEncoding } from '../geo/geo-encoder.mjs';
