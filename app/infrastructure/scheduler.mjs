@@ -59,7 +59,7 @@ export function startNightlyIndexing() {
     return;
   }
   
-  registerJob('nightly-indexing', '55 13 * * *', nightlyIndexingJob.run);
+  registerJob('nightly-indexing', '0 2 * * *', nightlyIndexingJob.run);
   const job = registeredJobs.get('nightly-indexing');
   if (job) job.start();
 }

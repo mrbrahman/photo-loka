@@ -167,39 +167,6 @@ export async function getIndexedFilesModifyTime(collection_id){
   `, collection_id);
 }
 
-export async function updateAlbum(collection_id, fromAlbum, toAlbum, updateFileName){
-  const sql = `
-    update metadata
-    set album = @toAlbum
-      ${updateFileName ? ", filename = replace(filename, @fromAlbum, @toAlbum)" : ''} 
-    where collection_id = @collection_id
-    and album = @fromAlbum
-  `;
-  
-  return await asyncRun(sql, {collection_id, fromAlbum, toAlbum});
-}
-
-export function updateAlbumForItems(uuid_arr, toAlbum, updateFileName){
-  // Use transaction for bulk operations - keep using direct db connection
-  let stmt = db.prepare(`
-    update metadata
-    set album = @toAlbum
-      ${updateFileName ? ", filename = replace(filename, album, @toAlbum)" : ''} 
-    where uuid = @uuid
-  `);
-
-  let trans = db.transaction(
-    function(uuid_arr, toAlbum, updateFileName){
-      for (let uuid of uuid_arr){
-        stmt.run({uuid, toAlbum, updateFileName});
-      }
-    }
-  )
-
-  trans(uuid_arr, toAlbum, updateFileName);
-}
-
-
 export async function getFileName(uuid){
   const result = await asyncGet(getFileNameStatement, {uuid});
   return result.filename;

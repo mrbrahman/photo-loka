@@ -1,8 +1,8 @@
 import * as path from 'path';
-import * as db from '../indexing/indexer-db.mjs';
-import * as searchDb from '../search/search-db.mjs';
-import * as fileOps from './file-organizer.mjs';
-import { getCollection } from './collection-manager.mjs';
+import * as indexerDb from '../indexing/indexer-db.mjs';
+import * as db from './album-db.mjs';
+import * as fileOps from '../collections/file-organizer.mjs';
+import { getCollection } from '../collections/collection-manager.mjs';
 
 export async function updateAlbum(collection_id, fromAlbum, toAlbum){
   let c = await getCollection(collection_id);
@@ -25,7 +25,7 @@ export async function moveItemsToAlbum(collection_id, uuid_arr, newAlbumName){
   
   // TODO: convert this to array of promises?
   for(let uuid of uuid_arr){
-    let f = await db.getFileName(uuid);
+    let f = await indexerDb.getFileName(uuid);
     await fileOps.moveItem(f, path.join(newPath, path.basename(f)));
   }
   return db.updateAlbumForItems(
@@ -35,5 +35,5 @@ export async function moveItemsToAlbum(collection_id, uuid_arr, newAlbumName){
 }
 
 export async function searchForExistingAlbums(searchStr, wantFullName){
-  return await searchDb.searchForExistingAlbums(searchStr, wantFullName)
+  return await db.searchForExistingAlbums(searchStr, wantFullName)
 }

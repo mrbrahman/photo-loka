@@ -313,6 +313,11 @@ app.use('/api', apiRouter);
 // start server
 // *****************************************
 
+process.on('SIGUSR2', function(){
+  console.log('***** Nodemon restart signal received **** ');
+  handleServerShutdown();
+});
+
 process.on('SIGINT', function(){
   console.log('***** Interrupt signal received **** ');
   handleServerShutdown();
