@@ -10,7 +10,7 @@ export async function updateAlbum(collection_id, fromAlbum, toAlbum){
   newFolderName=path.join(c.collection_path,toAlbum)
   
   if(c.album_type=="FOLDER_ALBUM"){
-    fileOps.renameFolder(currFolderName, newFolderName);  
+    await fileOps.renameFolder(currFolderName, newFolderName);  
   }
   
   return await db.updateAlbum(

@@ -62,7 +62,7 @@ export async function placeFileInCollection(collection, filename, file_date, inP
       dateformat(file_date, 'yyyy-mm-dd');  // TODO: timezone?
   
     albumFilename = filename;
-    logChange('in-place', filename);
+    await logChange('in-place', filename);
   } else {
     // i.e. file needs to be moved from listen_path to collection_path
 
@@ -95,10 +95,10 @@ export async function placeFileInCollection(collection, filename, file_date, inP
   }
 }
 
-export function renameFolder(currAlbum, newAlbum){
+export async function renameFolder(currAlbum, newAlbum){
   try {
     fs.renameSync(currAlbum, newAlbum);
-    logChange('move', currAlbum, newAlbum);
+    await logChange('move', currAlbum, newAlbum);
   } catch (err) {
     console.log(err)
     throw {code: err.code, message: err.message};
@@ -110,7 +110,7 @@ export async function moveItem(src, dest){
     let targetDir = path.dirname(dest);
     if(!fs.existsSync(targetDir)){
       await fsPromises.mkdir(targetDir, {recursive: true});
-      logChange('create-dir', null, targetDir);
+      await logChange('create-dir', null, targetDir);
     }
     // try to fist rename the file. in case the file is in the same mountpoint
     // this will be faster than copying
@@ -129,12 +129,12 @@ export async function moveItem(src, dest){
   }
 
   // if we've reached till here, the move has been successful
-  logChange('move', src, dest)
+  await logChange('move', src, dest)
 }
 
-export function deleteFile(fileName){
+export async function deleteFile(fileName){
   fs.unlinkSync(fileName);
-  logChange('delete', fileName)
+  await logChange('delete', fileName)
 }
 
 export async function moveFileToTrash(uuid_arr){
@@ -157,5 +157,5 @@ async function logChange(action, path1, path2){
   // make an entry into db rather than updating a file
   // this will help with select when needs to be used (for e.g. select after a specific timestamp etc)
   // also one less file to maintain
-  db.fileAudit(action, path1, path2)
+  await db.fileAudit(action, path1, path2)
 }

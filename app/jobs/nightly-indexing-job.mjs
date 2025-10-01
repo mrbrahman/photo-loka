@@ -5,7 +5,7 @@ import path from 'path';
 import { addJob, deleteJob } from '../infrastructure/scheduler.mjs';
 import { getAllCollections } from '../core/collections/collection-manager.mjs';
 import { bulkAddToIndexQueue } from '../core/indexing/queue-manager.mjs';
-import { indexFile } from '../core/indexing/indexing-orchestrator.mjs';
+import { indexFile } from '../core/indexing/file-indexer.mjs';
 import { config } from '../config.mjs';
 
 export function startNightlyIndexing() {
@@ -14,7 +14,7 @@ export function startNightlyIndexing() {
     return;
   }
   
-  addJob('nightly-indexing', '0 2 * * *', run);
+  addJob('nightly-indexing', '35 6 * * *', run);
 }
 
 export function stopNightlyIndexing() {

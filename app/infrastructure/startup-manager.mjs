@@ -2,7 +2,7 @@ import { config } from '../config.mjs';
 import 'dotenv/config';
 
 import { getAllCollections } from '../core/collections/collection-manager.mjs';
-import { indexCollection } from '../core/indexing/batch-indexer.mjs';
+import { indexCollection } from '../core/indexing/collection-indexer.mjs';
 import { startWatchersForAllCollections } from './file-watcher.mjs';
 import { startNightlyIndexing } from '../jobs/nightly-indexing-job.mjs';
 

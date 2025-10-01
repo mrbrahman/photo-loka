@@ -4,7 +4,7 @@ import chokidar from 'chokidar';
 import {config} from '../config.mjs';
 import {getAllCollections} from '../core/collections/collection-manager.mjs';
 import {addToIndexQueue, ignoreWatcherList} from '../core/indexing/queue-manager.mjs';
-import {indexFile} from '../core/indexing/indexing-orchestrator.mjs';
+import {indexFile} from '../core/indexing/file-indexer.mjs';
 
 // store an array of {collection_id: <id>, listen_path: <path>, watcher: <chokidar watcher>}
 var allWatchers = [];

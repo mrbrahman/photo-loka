@@ -144,13 +144,13 @@ apiRouter.get('/getAllCollections', async function(req,res){
 
 apiRouter.post('/startIndexingFirstTime', async function(req,res){
   let {collection_id} = req.query;
-  s.batchIndexer.indexCollection(collection_id, true);
+  s.bulkIndexer.indexCollection(collection_id, true);
   res.sendStatus(200);
 });
 
 apiRouter.post('/indexCollection/:collection_id', function(req,res){
   let collection_id = req.params.collection_id;
-  s.batchIndexer.indexCollection(collection_id);
+  s.bulkIndexer.indexCollection(collection_id);
   res.sendStatus(200);
 });
 
@@ -183,12 +183,12 @@ apiRouter.put('/updateIndexerConcurrency/:concurrency', function(req,res,next){
 
 apiRouter.post('/refreshMetadataForCollection/:collection_id', function(req,res){
   let collection_id = +req.params.collection_id;
-  s.batchIndexer.refreshMetadataForCollection(collection_id);
+  s.bulkIndexer.refreshMetadataForCollection(collection_id);
   res.sendStatus(200);
 });
 
 apiRouter.post('/refreshMetadataForItem/:uuid', async function(req,res){
-  await s.batchIndexer.refreshMetadata(req.params.uuid);
+  await s.metadataUpdates.refreshMetadata(req.params.uuid);
   res.sendStatus(200);
 });
 
@@ -196,7 +196,7 @@ apiRouter.post('/refreshMetadataForItem/:uuid', async function(req,res){
 apiRouter.put('/updateRating', function(req,res){
   let {uuid_arr, newRating} = req.body;
   try{
-    s.exif.updateRating(uuid_arr, newRating);
+    s.metadataUpdates.updateRating(uuid_arr, newRating);
   } catch(err){
     res.status(500).json({error: err.message});
     return;

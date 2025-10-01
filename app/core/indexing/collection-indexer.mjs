@@ -1,9 +1,9 @@
 import * as fileOps from './file-organizer.mjs';
 import * as db from './indexer-db.mjs';
-import * as exifManager from '../media/exif-manager.mjs';
-import { addToIndexQueue, bulkAddToIndexQueue } from './queue-manager.mjs';
+import { bulkAddToIndexQueue } from './queue-manager.mjs';
 import { getCollection } from '../collections/collection-manager.mjs';
-import { indexFile } from './indexing-orchestrator.mjs';
+import { indexFile } from './file-indexer.mjs';
+import { refreshMetadata } from './metadata-updates.mjs';
 
 export async function indexCollection(collection_id, firstTime=false){
 
@@ -40,7 +40,6 @@ export async function indexCollection(collection_id, firstTime=false){
     }
 
     resolve()
-    
   })
 }
 
@@ -99,17 +98,4 @@ export async function refreshMetadataForCollection(collection_id){
       return [refreshMetadata, [file.uuid, file.filename]];
     })
   );
-}
-
-export async function refreshMetadata(uuid, filename){
-  if(!filename){
-    filename = await db.getFileName(uuid);
-  }
-  console.log(`Re-extracting metadata for ${filename}`);
-
-  // get metadata from exiftool
-  let metadata = await exifManager.getMetadata(filename);
-  metadata['uuid'] = uuid;
-
-  await db.updateMetadataRow(metadata)
 }
