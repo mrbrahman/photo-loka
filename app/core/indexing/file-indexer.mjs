@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as path from 'path';
 import {v4 as uuidv4} from 'uuid';
 
 import * as exifManager from '../media/exif-manager.mjs';
@@ -9,6 +10,7 @@ import * as fileOps from './file-organizer.mjs';
 
 import * as db from './indexer-db.mjs';
 import { enqueue as enqueueReverseGeoEncoding } from '../geo/geo-encoder.mjs';
+import {config} from '../../config.mjs';
 
 export async function indexFile(collection, sourceFileName, uuid, inPlace){
   // indexing is a series of steps, where the latter steps
@@ -68,14 +70,30 @@ export async function indexFile(collection, sourceFileName, uuid, inPlace){
       throw `ERROR during createImageThumbnails for file: ${sourceFileName}: ${error}`;
     }
 
-    // Step 5: video compression for streaming
+    // Step 5: video compression to help with streaming on browsers
     try{
       if(p.mediatype == "video"){
-        // perform video compression to help with streaming
-        await videoProcessor.compressVideo(p.uuid, p.filename);
+        // Check for pre-compressed webm file
+        const baseName = path.basename(sourceFileName, path.extname(sourceFileName));
+        const sourceDir = path.dirname(sourceFileName);
+        const preCompressedWebm = path.join(sourceDir, `${baseName}_compressed_video.webm`);
+        
+        if(fs.existsSync(preCompressedWebm)){
+          // Move pre-compressed webm to thumbnail directory
+          const thumbsDir = path.join(
+            config.thumbsDir,
+            ...Array.from(p.uuid).slice(0,3),
+            `${p.uuid}_compressed_video.webm`
+          );
+          await fileOps.moveItem(preCompressedWebm, thumbsDir, true);
+          console.log(`Moved pre-compressed webm: ${preCompressedWebm}`);
+        } else {
+          // perform video compression to help with streaming
+          await videoProcessor.compressVideo(p.uuid, p.filename);
+        }
       }
     } catch(error){
-      throw `ERROR during compressVideo for file: ${sourceFileName}: ${error}`;
+      throw `ERROR during video compression for file: ${sourceFileName}: ${error}`;
     }
 
     // Step 6: face region extraction (if present)

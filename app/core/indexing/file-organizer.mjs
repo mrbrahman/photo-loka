@@ -105,12 +105,12 @@ export async function renameFolder(currAlbum, newAlbum){
   }
 }
 
-export async function moveItem(src, dest){
+export async function moveItem(src, dest, silent = false){
   try {
     let targetDir = path.dirname(dest);
     if(!fs.existsSync(targetDir)){
       await fsPromises.mkdir(targetDir, {recursive: true});
-      await logChange('create-dir', null, targetDir);
+      if(!silent) await logChange('create-dir', null, targetDir);
     }
     // try to fist rename the file. in case the file is in the same mountpoint
     // this will be faster than copying
@@ -122,14 +122,14 @@ export async function moveItem(src, dest){
     // workaround found at https://stackoverflow.com/questions/43206198/what-does-the-exdev-cross-device-link-not-permitted-error-mean
     
     if(err.code !== 'EXDEV'){
-      throw `Errow while move: ${err.code} ${err.message}`;
+      throw `Error while move: ${err.code} ${err.message}`;
     }
     await fsPromises.cp(src, dest, {preserveTimestamps: true, errorOnExist: true});
     fs.unlinkSync(src);
   }
 
   // if we've reached till here, the move has been successful
-  await logChange('move', src, dest)
+  if(!silent) await logChange('move', src, dest)
 }
 
 export async function deleteFile(fileName){
