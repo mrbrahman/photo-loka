@@ -5,6 +5,7 @@ import {config} from '../config.mjs';
 import {getAllCollections} from '../core/collections/collection-manager.mjs';
 import {addToIndexQueue, ignoreWatcherList} from '../core/indexing/queue-manager.mjs';
 import {indexFile} from '../core/indexing/file-indexer.mjs';
+import {shouldIgnoreFile} from '../utils/file-filters.mjs';
 
 // store an array of {collection_id: <id>, listen_path: <path>, watcher: <chokidar watcher>}
 var allWatchers = [];
@@ -20,10 +21,7 @@ export async function startWatchersForAllCollections(){
 export function startWatcherForCollection(collection){
   for(let p of collection.listen_paths){
     let w = chokidar.watch(p, {
-      ignored: function(filePath) {
-        // ignore dotfiles
-        return /(^[.#]|(?:__|~)$)/.test(path.basename(filePath));
-      }
+      ignored: shouldIgnoreFile
     })
       .on('add', file=>{
         if(ignoreWatcherList[file] != undefined){

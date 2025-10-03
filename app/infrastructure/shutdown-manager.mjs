@@ -1,5 +1,5 @@
 import {exiftool} from 'exiftool-vendored';
-import {stopAllWatchers} from './file-watcher.mjs';
+import {stopAllWatchers} from '../jobs/file-watcher-job.mjs';
 import {db} from '../database/sqlite-database.mjs';
 import {closePool} from '../database/db-pool.mjs';
 import {saveRateLimitState} from '../core/geo/rate-limiter.mjs';

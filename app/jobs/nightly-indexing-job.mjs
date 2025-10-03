@@ -7,6 +7,7 @@ import { getAllCollections } from '../core/collections/collection-manager.mjs';
 import { bulkAddToIndexQueue } from '../core/indexing/queue-manager.mjs';
 import { indexFile } from '../core/indexing/file-indexer.mjs';
 import { config } from '../config.mjs';
+import { shouldIgnoreFile } from '../utils/file-filters.mjs';
 
 export function startNightlyIndexing() {
   if (!config.enableNightlyIndexing) {
@@ -25,7 +26,7 @@ export function stopNightlyIndexing() {
 async function findPendingFiles(dirPath, cutoffDate) {
   const allFiles = await new fdir()
     .withFullPaths()
-    .filter((filePath) => !path.basename(filePath).startsWith('.'))  // exclude . files
+    .filter((filePath) => !shouldIgnoreFile(filePath))
     .crawl(dirPath)
     .withPromise();
 
