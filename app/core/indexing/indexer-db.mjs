@@ -16,7 +16,8 @@ insert into metadata
   image_width, image_height, aspectratio,
   make, model, orientation, duration, 
   gps_lat, gps_long, gps_alt, geolocation_api_json, geo_address,
-  datetime_original, create_date, file_modify_date, file_date
+  datetime_original, create_date, file_modify_date, file_date,
+  indexed_dt
 )
 values
 (
@@ -26,7 +27,8 @@ values
   @image_width, @image_height, @aspectratio,
   @make, @model, @orientation, @duration, 
   @gps_lat, @gps_long, @gps_alt, @geolocation_api_json, @geo_address,
-  @datetime_original, @create_date, @file_modify_date, @file_date
+  @datetime_original, @create_date, @file_modify_date, @file_date,
+  datetime('now','localtime')
 )
 `;
 

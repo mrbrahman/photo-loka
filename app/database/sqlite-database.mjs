@@ -70,7 +70,8 @@ function initialDbSetup() {
       geonames_rev_address_json UNINDEXED, geonames_encoding_status UNINDEXED, geonames_db_matched_uuid UNINDEXED,
       geo_address, 
       datetime_original UNINDEXED, create_date UNINDEXED, file_modify_date UNINDEXED, file_date UNINDEXED,
-      trashed, trashed_dt
+      trashed, trashed_dt,
+      indexed_dt, updated_dt
     );
   `);
   var info = stmt.run();
