@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import {default as sharp} from 'sharp';
-import {default as ffmpeg} from 'fluent-ffmpeg';
+import { spawn } from 'child_process';
 
 import {config} from '../../config.mjs';
 import {overlays} from './overlays/all-overlays.mjs';
@@ -69,7 +69,6 @@ export async function createImageThumbnails(uuid, buf, playImageOverlay){
 }
 
 export async function generateVideoThumbnail(uuid, videoFilename){
-  // convert the callback into a Promise, so caller can "await"
   return new Promise((resolve,reject)=>{
     // use the same thumbnails dir to store vide thumbnail (screenshot) as well.
     // in case of videos, we additionally store the full video screenshot,
@@ -82,22 +81,24 @@ export async function generateVideoThumbnail(uuid, videoFilename){
       fs.mkdirSync(videoThumbsDir, { recursive: true });
     }
 
-    ffmpeg(videoFilename)
-      .on('error', (error)=>{
-        console.log(`FFMpeg error for ${videoFilename}: ${error}`)
-        reject(error)
-      })
-      .thumbnail({
-        count: 1,
-        folder: videoThumbsDir,
-        filename: `${uuid}.jpg`
-      })
-      .on("end", async function(){
-        // return with video screenshot filename
-        resolve(path.join(videoThumbsDir, `${uuid}.jpg`))
-      })
-    ;
-  })
+    const outputPath = path.join(videoThumbsDir, `${uuid}.jpg`);
+    const args = ['-i', videoFilename, '-vframes', '1', '-y', outputPath];
+    
+    const ffmpegProcess = spawn('ffmpeg', args);
+    
+    ffmpegProcess.on('close', (code) => {
+      if (code === 0) {
+        resolve(outputPath);
+      } else {
+        reject(new Error(`ffmpeg process exited with code ${code}`));
+      }
+    });
+    
+    ffmpegProcess.on('error', (error) => {
+      console.log(`FFMpeg error for ${videoFilename}: ${error}`);
+      reject(error);
+    });
+  });
 }
 
 export function deleteImageThumbnails(uuid){

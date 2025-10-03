@@ -1,4 +1,4 @@
-import ffmpeg from 'fluent-ffmpeg';
+import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import {glob} from 'glob';
@@ -60,28 +60,31 @@ async function compressVideoWithFFMpeg(uuid, inputVideoPath) {
     const isVP9 = config.videoEncoder === 'libvpx-vp9';
     const isHardware = config.videoEncoder.includes('nvenc') || config.videoEncoder.includes('qsv') || config.videoEncoder.includes('amf');
     
-    let ffmpegCmd = ffmpeg(inputVideoPath).videoCodec(config.videoEncoder);
+    let args = ['-i', inputVideoPath, '-c:v', config.videoEncoder];
     
     if (isVP8) {
-      ffmpegCmd.audioCodec('libvorbis')
-        .addOptions(['-crf 23', '-b:v 1M', '-b:a 128k']);
+      args.push('-c:a', 'libvorbis', '-crf', '23', '-b:v', '1M', '-b:a', '128k');
     } else if (isVP9) {
-      ffmpegCmd.audioCodec('libopus')
-        .addOptions(['-crf 30', '-b:v 0', '-maxrate 1M', '-bufsize 2M', '-b:a 128k']);
+      args.push('-c:a', 'libopus', '-crf', '30', '-b:v', '0', '-maxrate', '1M', '-bufsize', '2M', '-b:a', '128k');
     } else if (isHardware) {
-      ffmpegCmd.audioCodec('aac')
-        .addOptions(['-preset fast', '-crf 23', '-maxrate 1.5M', '-bufsize 3M', '-movflags +faststart']);
+      args.push('-c:a', 'aac', '-preset', 'fast', '-crf', '23', '-maxrate', '1.5M', '-bufsize', '3M', '-movflags', '+faststart');
     } else {
-      ffmpegCmd.audioCodec('aac')
-        .addOptions(['-crf 23', '-maxrate 1.5M', '-bufsize 3M', '-movflags +faststart']);
+      args.push('-c:a', 'aac', '-crf', '23', '-maxrate', '1.5M', '-bufsize', '3M', '-movflags', '+faststart');
     }
     
-    ffmpegCmd.output(outputPath)
-      .on('end', () => {
-        resolve(outputPath)
-      })
-      .on('error', (err) => reject(err))
-      .run();
+    args.push('-y', outputPath);
+    
+    const ffmpegProcess = spawn('ffmpeg', args);
+    
+    ffmpegProcess.on('close', (code) => {
+      if (code === 0) {
+        resolve(outputPath);
+      } else {
+        reject(new Error(`ffmpeg process exited with code ${code}`));
+      }
+    });
+    
+    ffmpegProcess.on('error', (err) => reject(err));
   });
 }
 
