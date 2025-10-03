@@ -14,7 +14,7 @@ export function startNightlyIndexing() {
     return;
   }
   
-  addJob('nightly-indexing', '35 6 * * *', run);
+  addJob('nightly-indexing', '0 1 * * *', run);
 }
 
 export function stopNightlyIndexing() {
