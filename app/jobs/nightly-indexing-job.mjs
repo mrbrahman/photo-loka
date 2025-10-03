@@ -1,10 +1,9 @@
 import {fdir} from 'fdir';
 import { stat } from 'fs/promises';
-import path from 'path';
 
 import { addJob, deleteJob } from '../infrastructure/scheduler.mjs';
 import { getAllCollections } from '../core/collections/collection-manager.mjs';
-import { bulkAddToIndexQueue } from '../core/indexing/queue-manager.mjs';
+import { bulkAddToIndexQueue, indexerStatus } from '../core/indexing/queue-manager.mjs';
 import { indexFile } from '../core/indexing/file-indexer.mjs';
 import { config } from '../config.mjs';
 import { shouldIgnoreFile } from '../utils/file-filters.mjs';
@@ -49,6 +48,12 @@ async function findPendingFiles(dirPath, cutoffDate) {
 
 async function run() {
   console.log('Starting nightly indexing job...');
+
+  // Skip if indexer is already running
+  if (indexerStatus.processingCnt > 0 || indexerStatus.pendingCnt > 0) {
+    console.log('Indexer is currently running. Skipping nightly indexing.');
+    return;
+  }
   
   const collections = await getAllCollections();
   // Files older than this date will be indexed (mtime < cutoffDate)
