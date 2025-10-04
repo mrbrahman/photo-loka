@@ -154,6 +154,15 @@ apiRouter.post('/indexCollection/:collection_id', function(req,res){
   res.sendStatus(200);
 });
 
+apiRouter.post('/startStaleFileIndexing', function(req,res){
+  s.staleIndexer.enqueueStaleFiles();
+  res.sendStatus(200);
+});
+
+// *****************************************
+// indexer control functions
+// *****************************************
+
 apiRouter.get('/getIndexerStatus', function(req,res){
   res.json(s.indexer.indexerStatus());
 });

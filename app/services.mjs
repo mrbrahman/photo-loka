@@ -1,6 +1,7 @@
 export * as collections from './core/collections/collection-manager.mjs';
 export * as indexer     from './core/indexing/queue-manager.mjs';
 export * as bulkIndexer from './core/indexing/collection-indexer.mjs';
+export * as staleIndexer from './core/indexing/stale-file-indexer.mjs';
 export * as metadataUpdates from './core/indexing/metadata-updates.mjs';
 
 export * as albums      from './core/albums/album-manager.mjs';
