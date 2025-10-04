@@ -56,8 +56,8 @@ async function findPendingFiles(dirPath, cutoffDate) {
   for (const filePath of allFiles) {
     try {
       const stats = await stat(filePath);
-      console.log(stats.mtime);
-      console.log(cutoffDate);
+      // console.log(stats.mtime);
+      // console.log(cutoffDate);
       if (stats.mtime < cutoffDate) {
         pendingFiles.push(filePath);
       }

@@ -77,11 +77,11 @@ async function compressVideoWithFFMpeg(uuid, inputVideoPath) {
     const ffmpegProcess = spawn('ffmpeg', args);
 
     ffmpegProcess.stderr.on('data', (data) => {
-      console.log(`ffmpeg stderr: ${data}`);
+      // console.log(`ffmpeg stderr: ${data}`);
     });
 
     ffmpegProcess.stdout.on('data', (data) => {
-      console.log(`ffmpeg stdout: ${data}`);
+      // console.log(`ffmpeg stdout: ${data}`);
     });
 
     ffmpegProcess.on('exit', (code) => {
@@ -92,7 +92,7 @@ async function compressVideoWithFFMpeg(uuid, inputVideoPath) {
       if (code === 0) {
         resolve(outputPath);
       } else {
-        reject(new Error(`ffmpeg process exited with code ${code}`));
+        reject(new Error(`ffmpeg process closed with code ${code}`));
       }
     });
     
