@@ -1,5 +1,5 @@
-import { asyncGet, asyncAll, asyncRun } from '../../database/db-pool.mjs';
-import { db } from '../../database/sqlite-database.mjs'; // For transaction-based operations
+import { asyncGet, asyncAll, asyncRun } from '#db/db-pool';
+import { db } from '#db/sqlite-database'; // For transaction-based operations
 
 
 const deleteFromMetadataStatement = `

@@ -1,11 +1,11 @@
 import {fdir} from 'fdir';
 import { stat } from 'fs/promises';
 
-import { getAllCollections } from '../collections/collection-manager.mjs';
+import { getAllCollections } from '#collections/collection-manager';
 import { bulkAddToIndexQueue, indexerStatus } from './queue-manager.mjs';
 import { indexFile } from './file-indexer.mjs';
-import { shouldIgnoreFile } from '../../utils/file-filters.mjs';
-import { config } from '../../config.mjs';
+import { shouldIgnoreFile } from '#utils/file-filters';
+import { config } from '#config';
 
 async function enqueueStaleFiles() {
   console.log('Starting stale file indexing...');

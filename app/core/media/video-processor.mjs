@@ -2,8 +2,8 @@ import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import {glob} from 'glob';
-import {config} from '../../config.mjs';
-import {getFileName} from '../indexing/indexer-db.mjs';
+import {config} from '#config';
+import {getFileName} from '#indexing/indexer-db';
 
 export async function compressVideo(uuid, filename) {
   try{ 

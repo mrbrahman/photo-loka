@@ -33,5 +33,23 @@
   },
   "devDependencies": {
     "nodemon": "^3.1.4"
+  },
+  "type": "module",
+  "imports": {
+    "#config": "./app/config.mjs",
+    "#services": "./app/services.mjs",
+
+    "#utils/*": "./app/utils/*.mjs",
+    "#db/*": "./app/database/*.mjs",
+    "#infra/*": "./app/infrastructure/*.mjs",
+    "#jobs/*": "./app/jobs/*.mjs",
+    
+    "#albums/*": "./app/core/albums/*.mjs",
+    "#collections/*": "./app/core/collections/*.mjs",
+    "#geo/*": "./app/core/geo/*.mjs",
+    "#indexing/*": "./app/core/indexing/*.mjs",
+    "#media/*": "./app/core/media/*.mjs",
+    "#overlays/*": "./app/core/media/overlays/*",
+    "#search/*": "./app/core/search/*.mjs"
   }
 }

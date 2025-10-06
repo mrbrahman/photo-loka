@@ -1,8 +1,8 @@
 import * as path from 'path';
-import * as indexerDb from '../indexing/indexer-db.mjs';
+import * as indexerDb from '#indexing/indexer-db';
 import * as db from './album-db.mjs';
-import * as fileOps from '../indexing/file-organizer.mjs';
-import { getCollection } from '../collections/collection-manager.mjs';
+import * as fileOps from '#indexing/file-organizer';
+import { getCollection } from '#collections/collection-manager';
 
 export async function updateAlbum(collection_id, fromAlbum, toAlbum){
   let c = await getCollection(collection_id);

@@ -1,10 +1,10 @@
-import { config } from '../config.mjs';
+import { config } from '#config';
 import 'dotenv/config';
 
-import { getAllCollections } from '../core/collections/collection-manager.mjs';
-import { indexCollection } from '../core/indexing/collection-indexer.mjs';
-import { startWatchersForAllCollections } from '../jobs/file-watcher-job.mjs';
-import { startNightlyIndexing } from '../jobs/nightly-indexing-job.mjs';
+import { getAllCollections } from '#collections/collection-manager';
+import { indexCollection } from '#indexing/collection-indexer';
+import { startWatchersForAllCollections } from '#jobs/file-watcher-job';
+import { startNightlyIndexing } from '#jobs/nightly-indexing-job';
 
 export async function startUpActivities(){
   // Check if geonames username is configured

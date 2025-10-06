@@ -3,9 +3,9 @@ import * as path from 'path';
 import {default as sharp} from 'sharp';
 import { spawn } from 'child_process';
 
-import {config} from '../../config.mjs';
-import {overlays} from './overlays/all-overlays.mjs';
-import * as db from '../indexing/indexer-db.mjs';
+import {config} from '#config';
+import {overlays} from '#overlays/all-overlays.mjs';
+import * as db from '#indexing/indexer-db';
 
 const sizes = [
   // below are thumbnails with same aspect ratio as original image

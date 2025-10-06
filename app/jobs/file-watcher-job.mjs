@@ -1,11 +1,11 @@
 import * as path from 'path';
 import chokidar from 'chokidar';
 
-import {config} from '../config.mjs';
-import {getAllCollections} from '../core/collections/collection-manager.mjs';
-import {addToIndexQueue, ignoreWatcherList} from '../core/indexing/queue-manager.mjs';
-import {indexFile} from '../core/indexing/file-indexer.mjs';
-import {shouldIgnoreFile} from '../utils/file-filters.mjs';
+import {config} from '#config';
+import {getAllCollections} from '#collections/collection-manager';
+import {addToIndexQueue, ignoreWatcherList} from '#indexing/queue-manager';
+import {indexFile} from '#indexing/file-indexer';
+import {shouldIgnoreFile} from '#utils/file-filters';
 
 // store an array of {collection_id: <id>, listen_path: <path>, watcher: <chokidar watcher>}
 var allWatchers = [];

@@ -1,6 +1,6 @@
-import { addJob, deleteJob } from '../infrastructure/scheduler.mjs';
-import { config } from '../config.mjs';
-import { enqueueStaleFiles } from '../core/indexing/stale-file-indexer.mjs';
+import { addJob, deleteJob } from '#infra/scheduler';
+import { config } from '#config';
+import { enqueueStaleFiles } from '#indexing/stale-file-indexer';
 
 export function startNightlyIndexing() {
   if (!config.enableNightlyIndexing) {

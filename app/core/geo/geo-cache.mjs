@@ -1,4 +1,4 @@
-import { ParallelProcesses } from '../../utils/parallel-processes.mjs';
+import { ParallelProcesses } from '#utils/parallel-processes';
 import { findExactGeoMatch, findProximityGeoMatch, updateGeoAddress, updateGeonamesData, updateGeoEncodingStatus } from './geo-encoding-db.mjs';
 import { checkGeonamesRateLimit, incrementCounters } from './rate-limiter.mjs';
 import 'dotenv/config';

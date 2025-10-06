@@ -1,6 +1,6 @@
 import dateFormat from 'dateformat';
 import * as db from './indexer-db.mjs';
-import * as exifManager from '../media/exif-manager.mjs';
+import * as exifManager from '#media/exif-manager';
 
 export async function refreshMetadata(uuid, filename){
   if(!filename){

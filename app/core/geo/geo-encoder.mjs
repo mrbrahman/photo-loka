@@ -1,4 +1,4 @@
-import { ParallelProcesses } from '../../utils/parallel-processes.mjs';
+import { ParallelProcesses } from '#utils/parallel-processes';
 import { performReverseGeoEncoding } from './geo-cache.mjs';
 
 const processor = ParallelProcesses();

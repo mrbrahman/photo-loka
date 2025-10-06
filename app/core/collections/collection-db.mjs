@@ -1,4 +1,4 @@
-import { asyncGet, asyncAll, asyncRun } from '../../database/db-pool.mjs';
+import { asyncGet, asyncAll, asyncRun } from '#db/db-pool';
 
 function transformEntryToDb(row){
   // make a copy of the object, don't change the original

@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import path from 'path';
 import Database from 'better-sqlite3';
 
-import {config} from '../config.mjs';
+import {config} from '#config';
 
 // TODO: configure this to run on worker threads (is it needed after PRAGMA statements below?)
 // https://github.com/JoshuaWise/better-sqlite3/blob/master/docs/threads.md
@@ -103,6 +103,13 @@ function initialDbSetup() {
       path1 string,
       path2 string,
       action_tm date DEFAULT (datetime('now','localtime','subsecond'))
+    );
+  `)
+  var info = stmt.run();
+
+  var stmt = db.prepare(`
+    create table sync_status (
+      device_id, device_name, device_desc, last_sym_id
     );
   `)
   var info = stmt.run();

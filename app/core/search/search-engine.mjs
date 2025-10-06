@@ -1,4 +1,4 @@
-import {getDefaultCollection} from '../collections/collection-manager.mjs';
+import {getDefaultCollection} from '#collections/collection-manager';
 import * as db from './search-db.mjs';
 
 export async function search(collection_id, searchStr){

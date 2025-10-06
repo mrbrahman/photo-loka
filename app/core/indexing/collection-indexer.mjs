@@ -1,7 +1,7 @@
 import * as fileOps from './file-organizer.mjs';
 import * as db from './indexer-db.mjs';
 import { bulkAddToIndexQueue } from './queue-manager.mjs';
-import { getCollection } from '../collections/collection-manager.mjs';
+import { getCollection } from '#collections/collection-manager';
 import { indexFile } from './file-indexer.mjs';
 import { refreshMetadata } from './metadata-updates.mjs';
 

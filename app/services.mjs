@@ -1,21 +1,21 @@
-export * as collections from './core/collections/collection-manager.mjs';
-export * as indexer     from './core/indexing/queue-manager.mjs';
-export * as bulkIndexer from './core/indexing/collection-indexer.mjs';
-export * as staleIndexer from './core/indexing/stale-file-indexer.mjs';
-export * as metadataUpdates from './core/indexing/metadata-updates.mjs';
+export * as collections from '#collections/collection-manager';
+export * as indexer     from '#indexing/queue-manager';
+export * as bulkIndexer from '#indexing/collection-indexer';
+export * as staleIndexer from '#indexing/stale-file-indexer';
+export * as metadataUpdates from '#indexing/metadata-updates';
 
-export * as albums      from './core/albums/album-manager.mjs';
+export * as albums      from '#albums/album-manager';
 
-export * as search      from './core/search/search-engine.mjs';
+export * as search      from '#search/search-engine';
 
-export * as thumbnails  from './core/media/thumbnail-manager.mjs';
-export * as videos      from './core/media/video-processor.mjs';
-export * as exif        from './core/media/exif-manager.mjs';
-export * as fileOps     from './core/indexing/file-organizer.mjs';
+export * as thumbnails  from '#media/thumbnail-manager';
+export * as videos      from '#media/video-processor';
+export * as exif        from '#media/exif-manager';
+export * as fileOps     from '#indexing/file-organizer';
 
-export * as geoEncoder  from './core/geo/geo-encoder.mjs';
+export * as geoEncoder  from '#geo/geo-encoder';
 
-export * as startup     from './infrastructure/startup-manager.mjs';
-export * as shutdown    from './infrastructure/shutdown-manager.mjs';
-export * as watcher     from './jobs/file-watcher-job.mjs';
-export * as jobs        from './jobs/nightly-indexing-job.mjs';
+export * as startup     from '#infra/startup-manager';
+export * as shutdown    from '#infra/shutdown-manager';
+export * as watcher     from '#jobs/file-watcher-job';
+export * as jobs        from '#jobs/nightly-indexing-job';

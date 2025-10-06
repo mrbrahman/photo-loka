@@ -1,4 +1,4 @@
-import { asyncGet, asyncAll, asyncRun } from '../../database/db-pool.mjs';
+import { asyncGet, asyncAll, asyncRun } from '#db/db-pool';
 
 export const restrictSearchCols = ['album', 'keywords', 'faces', 'objects', 'mediatype', 'make', 'model', 'geo_address'];
 

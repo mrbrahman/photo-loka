@@ -1,5 +1,5 @@
-import { asyncAll, asyncRun } from "../../database/db-pool.mjs";
-import { db } from "../../database/sqlite-database.mjs";
+import { asyncAll, asyncRun } from '#db/db-pool';
+import { db } from '#db/sqlite-database';
 
 export async function searchForExistingAlbums(searchStr, wantFullName) {
   // sqlite substr is '1' based

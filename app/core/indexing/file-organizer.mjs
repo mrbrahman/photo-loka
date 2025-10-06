@@ -6,7 +6,7 @@ import { fdir } from 'fdir';
 import dateformat from 'dateformat';
 
 import * as db from './indexer-db.mjs';
-import { config } from '../../config.mjs';
+import { config } from '#config';
 
 export async function lsRecursive(dir) {
   return new fdir()

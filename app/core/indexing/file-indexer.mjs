@@ -2,15 +2,15 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {v4 as uuidv4} from 'uuid';
 
-import * as exifManager from '../media/exif-manager.mjs';
-import * as thumbnailManager from '../media/thumbnail-manager.mjs';
-import * as videoProcessor from '../media/video-processor.mjs';
-import * as faceExtractor from '../media/face-extractor.mjs';
+import * as exifManager from '#media/exif-manager';
+import * as thumbnailManager from '#media/thumbnail-manager';
+import * as videoProcessor from '#media/video-processor';
+import * as faceExtractor from '#media/face-extractor';
 import * as fileOps from './file-organizer.mjs';
 
 import * as db from './indexer-db.mjs';
-import { enqueue as enqueueReverseGeoEncoding } from '../geo/geo-encoder.mjs';
-import {config} from '../../config.mjs';
+import { enqueue as enqueueReverseGeoEncoding } from '#geo/geo-encoder';
+import {config} from '#config';
 
 export async function indexFile(collection, sourceFileName, uuid, inPlace){
   // indexing is a series of steps, where the latter steps

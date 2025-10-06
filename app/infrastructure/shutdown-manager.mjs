@@ -1,9 +1,9 @@
 import {exiftool} from 'exiftool-vendored';
-import {stopAllWatchers} from '../jobs/file-watcher-job.mjs';
-import {db} from '../database/sqlite-database.mjs';
-import {closePool} from '../database/db-pool.mjs';
-import {saveRateLimitState} from '../core/geo/rate-limiter.mjs';
-import {stopNightlyIndexing} from '../jobs/nightly-indexing-job.mjs';
+import {stopAllWatchers} from '#jobs/file-watcher-job';
+import {db} from '#db/sqlite-database';
+import {closePool} from '#db/db-pool';
+import {saveRateLimitState} from '#geo/rate-limiter';
+import {stopNightlyIndexing} from '#jobs/nightly-indexing-job';
 
 export async function shutdownCleanup(){
   stopAllWatchers();

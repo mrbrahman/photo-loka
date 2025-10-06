@@ -1,6 +1,6 @@
 import {EventEmitter} from 'events';
-import { ParallelProcesses as pp } from '../../utils/parallel-processes.mjs';
-import {config} from '../../config.mjs';
+import { ParallelProcesses as pp } from '#utils/parallel-processes';
+import {config} from '#config';
 
 class EmitterClass extends EventEmitter {};
 export const indexerEvents = new EmitterClass();
