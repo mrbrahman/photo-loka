@@ -29,6 +29,7 @@ async function enqueueStaleFiles() {
         
         if (pendingFiles.length > 0) {
           console.log(`Found ${pendingFiles.length} files in ${listenPath}. Enqueuing for indexing...`);
+	  console.log(JSON.stringify(pendingFiles, null, 2));
           bulkAddToIndexQueue(
             pendingFiles.map(f=>{
               return [indexFile, [collection, f, null, false]];
