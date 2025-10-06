@@ -62,7 +62,7 @@ export async function placeFileInCollection(collection, filename, file_date, inP
       dateformat(file_date, 'yyyy-mm-dd');  // TODO: timezone?
   
     albumFilename = filename;
-    await logChange('in-place', filename);
+    await logChange('in-place', null, filename);
   } else {
     // i.e. file needs to be moved from listen_path to collection_path
 
