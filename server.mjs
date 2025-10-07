@@ -301,6 +301,40 @@ apiRouter.post('/stopNightlyIndexing', function(req,res){
   res.sendStatus(200);
 });
 
+// *****************************************
+// sync functions
+// *****************************************
+
+apiRouter.post('/syncConnectedDevices', async function(req,res){
+  let dryRun = req.query.dryRun === 'true';
+  try {
+    const results = await s.sync.syncConnectedDevices(dryRun);
+    res.json(results);
+  } catch (error) {
+    res.status(500).json({error: error.message});
+  }
+});
+
+apiRouter.post('/syncDevice/:deviceId', async function(req,res){
+  let dryRun = req.query.dryRun === 'true';
+  let deviceId = req.params.deviceId;
+  try {
+    const results = await s.sync.syncDevice(deviceId, dryRun);
+    res.json(results);
+  } catch (error) {
+    res.status(500).json({error: error.message});
+  }
+});
+
+apiRouter.get('/getAllSyncRegistrations', async function(req,res){
+  try {
+    const registrations = await s.sync.getAllSyncRegistrations();
+    res.json(registrations);
+  } catch (error) {
+    res.status(500).json({error: error.message});
+  }
+});
+
 
 // TODO
 // apiRouter.delete('/deleteAlbum/:albumName', function(req,res){

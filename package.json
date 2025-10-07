@@ -50,6 +50,7 @@
     "#indexing/*": "./app/core/indexing/*.mjs",
     "#media/*": "./app/core/media/*.mjs",
     "#overlays/*": "./app/core/media/overlays/*",
-    "#search/*": "./app/core/search/*.mjs"
+    "#search/*": "./app/core/search/*.mjs",
+    "#sync/*": "./app/core/sync/*.mjs"
   }
 }

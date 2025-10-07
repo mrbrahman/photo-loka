@@ -1,15 +1,5 @@
 import * as path from 'path';
 
-let listenPaths = [
-  'listen1', 'listen2'
-];
-
-let collectionPaths = [
-  '/path/to/collection/'
-];
-
-let target = 'backup';
-
 // Scenario 1: simple one
 // let changes = [
 //   {action: 'create-dir', path1: null, path2: '/path/to/collection/dir1'},
@@ -46,14 +36,14 @@ let target = 'backup';
 //   {action: 'delete', path1: '/path/to/collection/dir1', path2: null},
 // ];
 
-let changes = [
-  {action: 'in-place', path1: null, path2: '/path/to/collection/dir1/file11.jpg'},
-  {action: 'move', path1: '/path/to/collection/dir1/file11.jpg', path2: '/path/to/collection/dir2/file11.jpg'},
+// let changes = [
+//   {action: 'in-place', path1: null, path2: '/path/to/collection/dir1/file11.jpg'},
+//   {action: 'move', path1: '/path/to/collection/dir1/file11.jpg', path2: '/path/to/collection/dir2/file11.jpg'},
   
-  {action: 'delete', path1: '/path/to/collection/dir1', path2: null},
-];
+//   {action: 'delete', path1: '/path/to/collection/dir1', path2: null},
+// ];
 
-function getRelativePath(fullPath) {
+function getRelativePath(fullPath, collectionPaths) {
   for (let colPath of collectionPaths) {
     if (fullPath.startsWith(colPath)) {
       return fullPath.substring(colPath.length);
@@ -62,7 +52,7 @@ function getRelativePath(fullPath) {
   return null;
 }
 
-function getTargetPath(srcPath) {
+function getTargetPath(srcPath, collectionPaths, target) {
   for (let colPath of collectionPaths) {
     if (srcPath.startsWith(colPath)) {
       return path.join(
@@ -74,7 +64,7 @@ function getTargetPath(srcPath) {
   return null;
 }
 
-function isListenPath(fullPath) {
+function isListenPath(fullPath, listenPaths) {
   for (let listenPath of listenPaths) {
     if (fullPath.startsWith(listenPath)) {
       return true;
@@ -83,7 +73,7 @@ function isListenPath(fullPath) {
   return false;
 }
 
-function computeSyncOperations(changes) {
+export function computeSyncOperations(changes, listenPaths, collectionPaths, target) {
   let effective = [];
   let pathChanges = new Map();
 
@@ -135,7 +125,7 @@ function computeSyncOperations(changes) {
         effective.push({
           'action': 'create-dir', 
           path1: null, 
-          path2: getTargetPath(currentPath)
+          path2: getTargetPath(currentPath, collectionPaths, target)
         });
       }
     }
@@ -146,27 +136,27 @@ function computeSyncOperations(changes) {
         effective.push({
           'action': 'dir-and-copy', 
           path1: currentPath, 
-          path2: getTargetPath(currentPath)
+          path2: getTargetPath(currentPath, collectionPaths, target)
         });
       }
     }
     
     else if (change.action === 'move') {
-      if (isListenPath(change.path1)) {
+      if (isListenPath(change.path1, listenPaths)) {
         // file is moved from listen path to collection
         let currentPath = effectivePath(idx, change.path2);
         if (currentPath) {
           effective.push({
             'action': 'copy', 
             path1: currentPath, 
-            path2: getTargetPath(currentPath)
+            path2: getTargetPath(currentPath, collectionPaths, target)
           });
         }
       }
       else {
         // file is moved within collection
-        let fromPath = getTargetPath(change.path1);
-        let toPath = getTargetPath(effectivePath(idx, change.path2));
+        let fromPath = getTargetPath(change.path1, collectionPaths, target);
+        let toPath = getTargetPath(effectivePath(idx, change.path2), collectionPaths, target);
 
         if(toPath){
           effective.push({
@@ -181,7 +171,7 @@ function computeSyncOperations(changes) {
     else if (change.action === 'delete') {
       effective.push({
         'action': 'delete', 
-        path1: getTargetPath(change.path1), 
+        path1: getTargetPath(change.path1, collectionPaths, target), 
         path2: null
       })
     }
@@ -189,5 +179,3 @@ function computeSyncOperations(changes) {
   return effective;
 }
 
-let e = computeSyncOperations(changes);
-console.log(e);
