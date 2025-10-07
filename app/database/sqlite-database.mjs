@@ -99,6 +99,7 @@ function initialDbSetup() {
   var stmt = db.prepare(`
     create table file_audit_log (
       id integer PRIMARY KEY AUTOINCREMENT,
+      collection_id integer,
       action string,
       path1 string,
       path2 string,
@@ -109,7 +110,7 @@ function initialDbSetup() {
 
   var stmt = db.prepare(`
     create table sync_status (
-      device_id, device_name, device_desc, backup_path, last_sync_id
+      device_id, device_name, device_desc, collection_id, backup_path, last_sync_id
     );
   `)
   var info = stmt.run();

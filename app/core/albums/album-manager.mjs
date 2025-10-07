@@ -10,7 +10,7 @@ export async function updateAlbum(collection_id, fromAlbum, toAlbum){
   newFolderName=path.join(c.collection_path,toAlbum)
   
   if(c.album_type=="FOLDER_ALBUM"){
-    await fileOps.renameFolder(currFolderName, newFolderName);  
+    await fileOps.renameFolder(collection_id, currFolderName, newFolderName);  
   }
   
   return await db.updateAlbum(
@@ -26,7 +26,7 @@ export async function moveItemsToAlbum(collection_id, uuid_arr, newAlbumName){
   // TODO: convert this to array of promises?
   for(let uuid of uuid_arr){
     let f = await indexerDb.getFileName(uuid);
-    await fileOps.moveItem(f, path.join(newPath, path.basename(f)));
+    await fileOps.moveItem(collection_id, f, path.join(newPath, path.basename(f)));
   }
   return db.updateAlbumForItems(
     uuid_arr, newAlbumName,

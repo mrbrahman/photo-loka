@@ -126,9 +126,9 @@ const retriveMetadataStatement = `
 
 const fileAuditStatement = `
   insert into file_audit_log
-  (action, path1, path2)
+  (collection_id, action, path1, path2)
   values
-  (@action, @path1, @path2)
+  (@collection_id, @action, @path1, @path2)
 `;
 
 const getPendingExifUpdatesStatemet = `
@@ -211,8 +211,8 @@ export async function scheduleExif(uuid_arr, new_exif_json){
   return uuid_arr.length;
 }
 
-export async function fileAudit(action, path1, path2=null){
-  return await asyncRun(fileAuditStatement, {action, path1, path2});
+export async function fileAudit(collection_id, action, path1, path2=null){
+  return await asyncRun(fileAuditStatement, {collection_id, action, path1, path2});
 }
 
 export async function getPendingExifUpdates(){

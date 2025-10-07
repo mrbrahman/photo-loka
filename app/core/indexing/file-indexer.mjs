@@ -85,7 +85,7 @@ export async function indexFile(collection, sourceFileName, uuid, inPlace){
             ...Array.from(p.uuid).slice(0,3),
             `${p.uuid}_compressed_video.webm`
           );
-          await fileOps.moveItem(preCompressedWebm, thumbsDir, true);
+          await fileOps.moveItem(null, preCompressedWebm, thumbsDir, true);
           console.log(`Moved pre-compressed webm: ${preCompressedWebm}`);
         } else {
           // perform video compression to help with streaming

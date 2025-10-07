@@ -260,8 +260,8 @@ apiRouter.post('/updateAlbumName', async function(req,res){
 });
 
 apiRouter.delete('/trashItems', async function(req,res){
-  let {uuid_arr} = req.body;
-  await s.fileOps.moveFileToTrash(uuid_arr);
+  let {collection_id, uuid_arr} = req.body;
+  await s.fileOps.moveFileToTrash(collection_id, uuid_arr);
   res.sendStatus(200);
 });
 

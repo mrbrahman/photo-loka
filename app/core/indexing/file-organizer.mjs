@@ -62,7 +62,7 @@ export async function placeFileInCollection(collection, filename, file_date, inP
       dateformat(file_date, 'yyyy-mm-dd');  // TODO: timezone?
   
     albumFilename = filename;
-    await logChange('in-place', null, filename);
+    await logChange(collection.collection_id, 'in-place', null, filename);
   } else {
     // i.e. file needs to be moved from listen_path to collection_path
 
@@ -79,7 +79,7 @@ export async function placeFileInCollection(collection, filename, file_date, inP
     let newFolder = path.join(collection.collection_path, subFolder);
     let newFileName = path.join(newFolder, path.basename(filename));
 
-    await moveItem(filename, newFileName);
+    await moveItem(collection.collection_id, filename, newFileName);
 
     album = collection.album_type=='FOLDER_ALBUM' ? 
       // newly created sub folder becomes the album
@@ -95,22 +95,22 @@ export async function placeFileInCollection(collection, filename, file_date, inP
   }
 }
 
-export async function renameFolder(currAlbum, newAlbum){
+export async function renameFolder(collection_id, currAlbum, newAlbum){
   try {
     fs.renameSync(currAlbum, newAlbum);
-    await logChange('move', currAlbum, newAlbum);
+    await logChange(collection_id, 'move', currAlbum, newAlbum);
   } catch (err) {
     console.log(err)
     throw {code: err.code, message: err.message};
   }
 }
 
-export async function moveItem(src, dest, silent = false){
+export async function moveItem(collection_id, src, dest, silent = false){
   try {
     let targetDir = path.dirname(dest);
     if(!fs.existsSync(targetDir)){
       await fsPromises.mkdir(targetDir, {recursive: true});
-      if(!silent) await logChange('create-dir', null, targetDir);
+      if(!silent) await logChange(collection_id, 'create-dir', null, targetDir);
     }
     // try to fist rename the file. in case the file is in the same mountpoint
     // this will be faster than copying
@@ -129,27 +129,27 @@ export async function moveItem(src, dest, silent = false){
   }
 
   // if we've reached till here, the move has been successful
-  if(!silent) await logChange('move', src, dest)
+  if(!silent) await logChange(collection_id, 'move', src, dest)
 }
 
-export async function deleteFile(fileName){
+export async function deleteFile(collection_id, fileName){
   fs.unlinkSync(fileName);
-  await logChange('delete', fileName)
+  await logChange(collection_id, 'delete', fileName)
 }
 
-export async function moveFileToTrash(uuid_arr){
+export async function moveFileToTrash(collection_id, uuid_arr){
   // Rename file to start with '.Trash_' and update trashed flag in db
   for(let uuid of uuid_arr){
     let f = await db.getFileName(uuid),
       filename = path.basename(f),
       trashFilename = path.join(path.dirname(f), `.Trash_${filename}`);
     
-    await moveItem(f, trashFilename);
+    await moveItem(collection_id, f, trashFilename);
     await db.trashItem(uuid, trashFilename);
   }
 }
 
-async function logChange(action, path1, path2){
+async function logChange(collection_id, action, path1, path2){
   if(!config.auditFiles){
     return
   }
@@ -157,5 +157,5 @@ async function logChange(action, path1, path2){
   // make an entry into db rather than updating a file
   // this will help with select when needs to be used (for e.g. select after a specific timestamp etc)
   // also one less file to maintain
-  await db.fileAudit(action, path1, path2)
+  await db.fileAudit(collection_id, action, path1, path2)
 }
