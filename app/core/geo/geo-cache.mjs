@@ -17,7 +17,7 @@ export async function performReverseGeoEncoding(uuid, gps_lat, gps_long) {
   const exactMatch = await findExactGeoMatch(gps_lat, gps_long);
 
   if (exactMatch) {
-    logger.debug(`Found exact match for ${uuid}`);
+    logger.info(`Found exact match for ${uuid}`);
     // Parse geonames JSON and extract address
     const geonamesData = JSON.parse(exactMatch.geonames_rev_address_json);
     const geo_address = [
@@ -38,7 +38,7 @@ export async function performReverseGeoEncoding(uuid, gps_lat, gps_long) {
   const proximityMatch = await findProximityGeoMatch(gps_lat, gps_long);
 
   if (proximityMatch) {
-    logger.debug(`Found proximity match for ${uuid}`);
+    logger.info(`Found proximity match for ${uuid}`);
     // Parse geonames JSON and extract address
     const geonamesData = JSON.parse(proximityMatch.geonames_rev_address_json);
     const geo_address = [
@@ -56,7 +56,7 @@ export async function performReverseGeoEncoding(uuid, gps_lat, gps_long) {
   }
 
   // No match found, queue geonames lookup
-  logger.debug(`No DB match for ${uuid}, queuing API lookup`);
+  logger.info(`No DB match for ${uuid}, queuing API lookup`);
   await updateGeoEncodingStatus(uuid, 'QUEUED_FOR_API');
   geonamesProcessor.enqueue(lookupGeonames, [uuid, gps_lat, gps_long]);
   return null;
@@ -64,7 +64,7 @@ export async function performReverseGeoEncoding(uuid, gps_lat, gps_long) {
 
 async function lookupGeonames(uuid, gps_lat, gps_long) {
   const url = `http://api.geonames.org/findNearestAddressJSON?lat=${gps_lat}&lng=${gps_long}&username=${process.env.GEONAMES_USERNAME}`;
-  logger.debug(`API lookup for ${uuid}: ${url}`);
+  logger.info(`API lookup for ${uuid}: ${url}`);
   
   try {
     const response = await fetch(url);

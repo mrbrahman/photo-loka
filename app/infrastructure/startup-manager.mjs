@@ -25,7 +25,7 @@ export async function startUpActivities(){
     let collections = await getAllCollections();
     for (let c of collections){
       indexCollection(c.collection_id, false)
-        .then(()=>logger.info('done indexing'))
+        .then(()=>logger.info(`Completed indexing setup for collection ${c.collection_id}`))
       ;
     }
   }

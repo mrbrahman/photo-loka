@@ -88,7 +88,7 @@ async function compressVideoWithFFMpeg(uuid, inputVideoPath) {
     });
 
     ffmpegProcess.on('exit', (code) => {
-      logger.debug(`ffmpeg process exited with code ${code}`);
+      logger.info(`${uuid} ${inputVideoPath} ffmpeg process exited with code: ${code}`);
     });
     
     ffmpegProcess.on('close', (code) => {

@@ -15,7 +15,7 @@ async function enqueueStaleFiles() {
 
   // Skip if indexer is already running
   if (indexerStatus.processingCnt > 0 || indexerStatus.pendingCnt > 0) {
-    logger.info('Indexer is currently running. Skipping stale file indexing.');
+    logger.warn('Indexer is currently running. Skipping stale file indexing.');
     return;
   }
   
@@ -32,7 +32,8 @@ async function enqueueStaleFiles() {
         
         if (pendingFiles.length > 0) {
           logger.info(`Found ${pendingFiles.length} files in ${listenPath}. Enqueuing for indexing...`);
-	  logger.debug(JSON.stringify(pendingFiles, null, 2));
+	        logger.info(JSON.stringify(pendingFiles, null, 2));
+          
           bulkAddToIndexQueue(
             pendingFiles.map(f=>{
               return [indexFile, [collection, f, null, false]];

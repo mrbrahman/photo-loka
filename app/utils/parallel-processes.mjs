@@ -86,7 +86,7 @@ export function ParallelProcesses(){
           }
         })
         .catch(error=>{
-          logger.error('caught error in parallel-processes:', error);
+          logger.error(`Error while processing task ${taskInfo}: ${error}`);
           processingCnt--; failedCnt++;
           if(emitter){
             emitter.emit('error', taskInfo, error);

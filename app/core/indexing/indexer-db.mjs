@@ -186,7 +186,7 @@ export function updateRating(uuid_arr, newRating, fileModifyDate){
   let trans = db.transaction(
     function(uuid_arr, newRating, fileModifyDate){
       for (let uuid of uuid_arr){
-        logger.debug(`${uuid} ${newRating} ${fileModifyDate}`);
+        logger.info(`${uuid} ${newRating} ${fileModifyDate}`);
         updateRatingInDb.run({uuid, newRating, fileModifyDate});
       }
     }
