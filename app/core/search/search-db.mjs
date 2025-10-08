@@ -1,4 +1,7 @@
 import { asyncGet, asyncAll, asyncRun } from '#db/db-pool';
+import { createLogger } from '#utils/logger';
+
+const logger = createLogger(import.meta.url);
 
 export const restrictSearchCols = ['album', 'keywords', 'faces', 'objects', 'mediatype', 'make', 'model', 'geo_address'];
 
@@ -108,13 +111,13 @@ export async function runSearch(collection_id, searchStr, trashed = false, group
 
   if(searchStr){
     let parsedCondition = converToFilterStr(searchStr);
-    console.log(parsedCondition);
+    logger.debug(parsedCondition);
 
     filters.push(parsedCondition)
   } else {
     limit = true;
   }
-  // console.log(filters)
+  // logger.debug(filters)
 
   const baseQuery = `
     select album,
@@ -153,7 +156,7 @@ export async function runSearch(collection_id, searchStr, trashed = false, group
     `;
   }
 
-  console.log(sql)
+  logger.debug(sql)
   
   let results = await asyncAll(sql);
   return groupByAlbum ? transformSearchResultsFromDb(results) : results.map(row => JSON.parse(row.item));

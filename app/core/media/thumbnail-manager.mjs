@@ -2,10 +2,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {default as sharp} from 'sharp';
 import { spawn } from 'child_process';
+import { createLogger } from '#utils/logger';
 
 import {config} from '#config';
 import {overlays} from '#overlays/all-overlays.mjs';
 import * as db from '#indexing/indexer-db';
+
+const logger = createLogger(import.meta.url);
 
 const sizes = [
   // below are thumbnails with same aspect ratio as original image
@@ -63,7 +66,7 @@ export async function createImageThumbnails(uuid, buf, playImageOverlay){
   });
   
   await Promise.all(thumbnailPromises);
-  console.log(`thumbs: For ${uuid} generated ${sizes.length} thumbnails in ${performance.now()-start} ms`);
+  logger.info(`thumbs: For ${uuid} generated ${sizes.length} thumbnails in ${performance.now()-start} ms`);
 
   // TODO: extract and return image hash? (to help identify dups)
 }
@@ -95,7 +98,7 @@ export async function generateVideoThumbnail(uuid, videoFilename){
     });
     
     ffmpegProcess.on('error', (error) => {
-      console.log(`FFMpeg error for ${videoFilename}: ${error}`);
+      logger.error(`FFMpeg error for ${videoFilename}: ${error}`);
       reject(error);
     });
   });

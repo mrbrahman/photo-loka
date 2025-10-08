@@ -1,5 +1,8 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { createLogger } from '#utils/logger';
+
+const logger = createLogger(import.meta.url);
 
 export async function executeSyncOperations(operations) {
   const results = [];
@@ -8,10 +11,10 @@ export async function executeSyncOperations(operations) {
     try {
       const result = await executeSingleOperation(op);
       results.push({ ...op, success: true, result });
-      console.log(`Sync operation completed: ${op.action} - ${op.path1 || 'null'} -> ${op.path2 || 'null'}`);
+      logger.info(`Sync operation completed: ${op.action} - ${op.path1 || 'null'} -> ${op.path2 || 'null'}`);
     } catch (error) {
       results.push({ ...op, success: false, error: error.message });
-      console.error(`Sync operation failed: ${op.action} - ${error.message}`);
+      logger.error(`Sync operation failed: ${op.action} - ${error.message}`);
       break;
     }
   }

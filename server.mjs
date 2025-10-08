@@ -3,10 +3,14 @@ import * as path from 'path';
 import express from 'express';
 import compression from 'compression';
 import morgan from 'morgan';
-import winston from 'winston';
+import { createLogger } from './app/utils/logger.mjs';
 
 import {config} from './app/config.mjs';
 import * as s from './app/services.mjs'
+
+const logger = createLogger(import.meta.url);
+
+
 
 const app = express();
 
@@ -21,33 +25,14 @@ app.use(express.static('public'));
 //   return !req.url.startsWith('/getThumbnail');
 // };
 
-const { format } = winston;
-const logger = winston.createLogger({
-  format: format.combine(
-    format.colorize(),
-    format.timestamp(),
-    format.printf((msg) => {
-      return `${msg.timestamp} [${msg.level}] ${msg.message}`;
-    })
-  ),
-  transports: [new winston.transports.Console({
-    // format: winston.format.combine(
-    //   winston.format((info) => {
-    //       // Apply the filter to check if the log should be recorded
-    //       // return requestFilter(info.req) ? info : null;
-    //       return info
-    //   })(),
-    //   winston.format.colorize()
-    // ),
-    // level: 'http'
-  })],
-});
+
 
 const morganMiddleware = morgan(
-  ':method :url :status :res[content-length] - :response-time ms',
+  ':method :url :status :response-time ms',
   {
+    skip: (req) => req.url.includes('/getThumbnail'),
     stream: {
-        write: (message) => logger.http(message.trim()),
+        write: (message) => logger.info(message.trim()),
     },
   }
 );
@@ -357,17 +342,17 @@ app.use('/api', apiRouter);
 // *****************************************
 
 process.on('SIGUSR2', function(){
-  console.log('***** Nodemon restart signal received **** ');
+  logger.info('***** Nodemon restart signal received **** ');
   handleServerShutdown();
 });
 
 process.on('SIGINT', function(){
-  console.log('***** Interrupt signal received **** ');
+  logger.info('***** Interrupt signal received **** ');
   handleServerShutdown();
 });
 
 process.on('SIGTERM', function(){
-  console.log('***** Terminate signal received **** ');
+  logger.info('***** Terminate signal received **** ');
   handleServerShutdown();
 });
 
@@ -375,13 +360,13 @@ const handleServerShutdown = async function(){
   await s.shutdown.shutdownCleanup();
 
   server.close(()=>{
-    console.log('app shutdown. Ending process... ');
+    logger.info('app shutdown. Ending process... ');
     process.exit(0);
   });
 }
 
 let server = app.listen(9000, async ()=>{
-  console.log("app started and listening in port 9000!");
+  logger.info("app started and listening in port 9000!");
   // Perform startup activities
   await s.startup.startUpActivities();
 });

@@ -1,10 +1,13 @@
 import { config } from '#config';
 import 'dotenv/config';
+import { createLogger } from '#utils/logger';
 
 import { getAllCollections } from '#collections/collection-manager';
 import { indexCollection } from '#indexing/collection-indexer';
 import { startWatchersForAllCollections } from '#jobs/file-watcher-job';
 import { startNightlyIndexing } from '#jobs/nightly-indexing-job';
+
+const logger = createLogger(import.meta.url);
 
 export async function startUpActivities(){
   // Check if geonames username is configured
@@ -22,7 +25,7 @@ export async function startUpActivities(){
     let collections = await getAllCollections();
     for (let c of collections){
       indexCollection(c.collection_id, false)
-        .then(()=>console.log('done indexing'))
+        .then(()=>logger.info('done indexing'))
       ;
     }
   }

@@ -1,5 +1,8 @@
 import { asyncGet, asyncAll, asyncRun } from '#db/db-pool';
 import { db } from '#db/sqlite-database'; // For transaction-based operations
+import { createLogger } from '#utils/logger';
+
+const logger = createLogger(import.meta.url);
 
 
 const deleteFromMetadataStatement = `
@@ -183,7 +186,7 @@ export function updateRating(uuid_arr, newRating, fileModifyDate){
   let trans = db.transaction(
     function(uuid_arr, newRating, fileModifyDate){
       for (let uuid of uuid_arr){
-        console.log(`${uuid} ${newRating} ${fileModifyDate}`);
+        logger.debug(`${uuid} ${newRating} ${fileModifyDate}`);
         updateRatingInDb.run({uuid, newRating, fileModifyDate});
       }
     }
@@ -193,7 +196,7 @@ export function updateRating(uuid_arr, newRating, fileModifyDate){
 }
 
 export async function trashItem(uuid, trashFilename){
-  console.log(`Updating to trash ${uuid} ${trashFilename}`);
+  logger.info(`Updating to trash ${uuid} ${trashFilename}`);
   return await asyncRun(updateToTrashStatement, {uuid, trashFilename});
 }
 

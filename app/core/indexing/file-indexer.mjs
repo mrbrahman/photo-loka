@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import {v4 as uuidv4} from 'uuid';
+import { createLogger } from '#utils/logger';
 
 import * as exifManager from '#media/exif-manager';
 import * as thumbnailManager from '#media/thumbnail-manager';
@@ -12,10 +13,12 @@ import * as db from './indexer-db.mjs';
 import { enqueue as enqueueReverseGeoEncoding } from '#geo/geo-encoder';
 import {config} from '#config';
 
+const logger = createLogger(import.meta.url);
+
 export async function indexFile(collection, sourceFileName, uuid, inPlace){
   // indexing is a series of steps, where the latter steps
   // are dependent on former steps
-  console.log(`Indexing ${sourceFileName}`);
+  logger.info(`Indexing ${sourceFileName}`);
   let fileStart = performance.now();
   
   // Step 1: Read metadata from file
@@ -86,7 +89,7 @@ export async function indexFile(collection, sourceFileName, uuid, inPlace){
             `${p.uuid}_compressed_video.webm`
           );
           await fileOps.moveItem(null, preCompressedWebm, thumbsDir, true);
-          console.log(`Moved pre-compressed webm: ${preCompressedWebm}`);
+          logger.info(`Moved pre-compressed webm: ${preCompressedWebm}`);
         } else {
           // perform video compression to help with streaming
           await videoProcessor.compressVideo(p.uuid, p.filename);
@@ -105,7 +108,7 @@ export async function indexFile(collection, sourceFileName, uuid, inPlace){
       let { W, H } = p.xmpregion.AppliedToDimensions;
       if (W != p.ImageWidth || H != p.ImageHeight) {
         // TODO: what should we do when RegionAppliedToDimensions don't match image height and width?
-        console.warn(`${imageFileName} has different region dimensions! Actual ${p.ImageWidth}x${p.ImageWidth} vs ${W}x${H}`);
+        logger.warn(`${imageFileName} has different region dimensions! Actual ${p.ImageWidth}x${p.ImageWidth} vs ${W}x${H}`);
       }
       try{
         p.parsedFaces = await faceExtractor.extractFaceRegions(p.uuid, buf, p.xmpregion);
@@ -129,5 +132,5 @@ export async function indexFile(collection, sourceFileName, uuid, inPlace){
     enqueueReverseGeoEncoding(p.uuid, p.gps_lat, p.gps_long);
   }
 
-  console.log(`Indexing of ${sourceFileName} finished in ${performance.now()-fileStart} ms`);
+  logger.info(`Indexing of ${sourceFileName} finished in ${performance.now()-fileStart} ms`);
 }

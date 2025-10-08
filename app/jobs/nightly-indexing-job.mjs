@@ -1,10 +1,13 @@
 import { addJob, deleteJob } from '#infra/scheduler';
 import { config } from '#config';
 import { enqueueStaleFiles } from '#indexing/stale-file-indexer';
+import { createLogger } from '#utils/logger';
+
+const logger = createLogger(import.meta.url);
 
 export function startNightlyIndexing() {
   if (!config.enableNightlyIndexing) {
-    console.log('Nightly indexing is disabled');
+    logger.info('Nightly indexing is disabled');
     return;
   }
   

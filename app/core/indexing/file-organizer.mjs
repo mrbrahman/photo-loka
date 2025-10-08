@@ -2,11 +2,14 @@ import * as fs from 'fs';
 const fsPromises = fs.promises;
 import * as path from 'path';
 import { fdir } from 'fdir';
+import { createLogger } from '#utils/logger';
 
 import dateformat from 'dateformat';
 
 import * as db from './indexer-db.mjs';
 import { config } from '#config';
+
+const logger = createLogger(import.meta.url);
 
 export async function lsRecursive(dir) {
   return new fdir()
@@ -18,11 +21,11 @@ export async function lsRecursive(dir) {
 
 export async function listAllFilesForCollection(collection) {
   let start = performance.now();
-  console.log(`starting to list all files for collection path: ${collection.collection_path}`);
+  logger.info(`starting to list all files for collection path: ${collection.collection_path}`);
 
   let files = await lsRecursive(collection.collection_path);
   
-  console.log(`finished listing files in ${(performance.now() - start)/1000} secs`)
+  logger.info(`finished listing files in ${(performance.now() - start)/1000} secs`)
 
   return files;
 }
@@ -100,7 +103,7 @@ export async function renameFolder(collection_id, currAlbum, newAlbum){
     fs.renameSync(currAlbum, newAlbum);
     await logChange(collection_id, 'move', currAlbum, newAlbum);
   } catch (err) {
-    console.log(err)
+    logger.error(err)
     throw {code: err.code, message: err.message};
   }
 }

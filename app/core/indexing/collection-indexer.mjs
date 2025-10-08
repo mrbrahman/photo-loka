@@ -4,6 +4,9 @@ import { bulkAddToIndexQueue } from './queue-manager.mjs';
 import { getCollection } from '#collections/collection-manager';
 import { indexFile } from './file-indexer.mjs';
 import { refreshMetadata } from './metadata-updates.mjs';
+import { createLogger } from '#utils/logger';
+
+const logger = createLogger(import.meta.url);
 
 export async function indexCollection(collection_id, firstTime=false){
 
@@ -20,9 +23,9 @@ export async function indexCollection(collection_id, firstTime=false){
       files = await listDeltaFilesForCollection(c);
     }
 
-    console.log(`added: ${files.added.length} changed ${files.changed.length} deleted ${files.deleted.length}`);
-    // console.log(`added files: ${JSON.stringify(files.added)}`);
-    // console.log(`changed files: ${JSON.stringify(files.changed)}`);
+    logger.info(`added: ${files.added.length} changed ${files.changed.length} deleted ${files.deleted.length}`);
+    // logger.debug(`added files: ${JSON.stringify(files.added)}`);
+    // logger.debug(`changed files: ${JSON.stringify(files.changed)}`);
 
     // add files to the indexer queue
     if(files['added'].length > 0){
@@ -65,25 +68,25 @@ async function listDeltaFilesForCollection(collection) {
       return acc;
     }, {})
 
-  console.log(`physicalFiles ${Object.keys(physicalFiles).length} databaseEntries: ${Object.keys(databaseEntries).length}`);
-  console.log(`Time taken to figure out files ${(performance.now()-start)/1000/60} mins`)
+  logger.info(`physicalFiles ${Object.keys(physicalFiles).length} databaseEntries: ${Object.keys(databaseEntries).length}`);
+  logger.info(`Time taken to figure out files ${(performance.now()-start)/1000/60} mins`)
 
   // Step 4: compare the two and determine which have been added/removed/modified
   let added = [], changed = [], deleted = [];
 
   Object.keys(physicalFiles).forEach(f => {
     if (!(f in databaseEntries)) {
-      console.log(`${f} is added`)
+      logger.debug(`${f} is added`)
       added.push(f);
     } else if (physicalFiles[f].mtime > databaseEntries[f].mtime) {
-      console.log(`${f} is changed`)
+      logger.debug(`${f} is changed`)
       changed.push({ uuid: databaseEntries[f].uuid, filename: f });
     }
   });
 
   Object.keys(databaseEntries).forEach(f => {
     if (!(f in physicalFiles)) {
-      console.log(`${f} is deleted`)
+      logger.debug(`${f} is deleted`)
       deleted.push({ uuid: databaseEntries[f].uuid, filename: f });
     }
   });
@@ -94,7 +97,7 @@ async function listDeltaFilesForCollection(collection) {
 export async function refreshMetadataForCollection(collection_id){
   let allFiles = await db.getIndexedFilesModifyTime(collection_id);
   
-  console.log(`Re-extracting metadata for ${allFiles.length} files`);
+  logger.info(`Re-extracting metadata for ${allFiles.length} files`);
   
   bulkAddToIndexQueue(
     allFiles.map(file=>{

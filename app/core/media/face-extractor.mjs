@@ -2,6 +2,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {default as sharp} from 'sharp';
 import {config} from '#config';
+import { createLogger } from '#utils/logger';
+
+const logger = createLogger(import.meta.url);
 
 let facesDir = config.facesDir;
 
@@ -15,7 +18,7 @@ export async function extractFaceRegions(uuid, buf, xmpregion) {
 
     // ignore un-named faces
     if(!face.Name){
-      console.warn(`${uuid} Skipping face extraction. No face tagged at x: ${face.Area.X} y: ${face.Area.Y} w: ${face.Area.W} h: ${face.Area.H}`);
+      logger.warn(`${uuid} Skipping face extraction. No face tagged at x: ${face.Area.X} y: ${face.Area.Y} w: ${face.Area.W} h: ${face.Area.H}`);
       continue;
     }
 
@@ -29,11 +32,11 @@ export async function extractFaceRegions(uuid, buf, xmpregion) {
     // Note: xmp stores X and Y as center of the area
     let [left, width] = [face.Area.X - face.Area.W / 2, face.Area.W].map(x => Math.floor(x * W));
     let [top, height] = [face.Area.Y - face.Area.H / 2, face.Area.H].map(x => Math.floor(x * H));
-    console.log(`${uuid} extracting ${left} ${top} ${width} ${height} for ${face.Name}`);
+    logger.debug(`${uuid} extracting ${left} ${top} ${width} ${height} for ${face.Name}`);
 
     // check if dimensions are valid
     if(left+width > W || top+height > H){
-      console.warn(`${uuid} Skipping face extraction. Bad extract area. Pic dimensions w: ${W} h: ${H}`);
+      logger.warn(`${uuid} Skipping face extraction. Bad extract area. Pic dimensions w: ${W} h: ${H}`);
       continue;
     }
 
@@ -61,7 +64,7 @@ export async function extractFaceRegions(uuid, buf, xmpregion) {
   }
 
   await Promise.all(faceExtractPromises);
-  console.log(`faces: For ${uuid} generated ${faceExtractPromises.length} in ${performance.now()-start} ms`);
+  logger.info(`faces: For ${uuid} generated ${faceExtractPromises.length} in ${performance.now()-start} ms`);
 
   return parsedFaces;
 }

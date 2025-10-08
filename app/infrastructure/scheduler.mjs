@@ -1,10 +1,13 @@
 import cron from 'node-cron';
+import { createLogger } from '#utils/logger';
+
+const logger = createLogger(import.meta.url);
 
 const activeJobs = new Map();
 
 export function addJob(name, cronPattern, handler) {
   if (activeJobs.has(name)) {
-    console.warn(`Job ${name} is already active`);
+    logger.warn(`Job ${name} is already active`);
     return;
   }
   
@@ -12,12 +15,12 @@ export function addJob(name, cronPattern, handler) {
     try {
       await handler();
     } catch (error) {
-      console.error(`Error in job ${name}:`, error);
+      logger.error(`Error in job ${name}:`, error);
     }
   });
   
   activeJobs.set(name, job);
-  console.log(`Job ${name} registered with pattern ${cronPattern}`);
+  logger.info(`Job ${name} registered with pattern ${cronPattern}`);
 }
 
 export function deleteJob(name) {
@@ -26,7 +29,7 @@ export function deleteJob(name) {
     job.stop();
     job.destroy();
     activeJobs.delete(name);
-    console.log(`Job ${name} unregistered`);
+    logger.info(`Job ${name} unregistered`);
   }
 }
 
@@ -34,7 +37,7 @@ export function deleteAllJobs() {
   activeJobs.forEach((job, name) => {
     job.stop();
     job.destroy();
-    console.log(`Removed job: ${name}`);
+    logger.info(`Removed job: ${name}`);
   });
 }
 

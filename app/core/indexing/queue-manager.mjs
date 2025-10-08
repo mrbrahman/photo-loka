@@ -1,6 +1,9 @@
 import {EventEmitter} from 'events';
 import { ParallelProcesses as pp } from '#utils/parallel-processes';
 import {config} from '#config';
+import { createLogger } from '#utils/logger';
+
+const logger = createLogger(import.meta.url);
 
 class EmitterClass extends EventEmitter {};
 export const indexerEvents = new EmitterClass();
@@ -19,11 +22,11 @@ indexerEvents.on('start_batch', ()=>{
 });
 
 indexerEvents.on('all_done', ()=>{
-  console.log(`Finished Indexer batch in ${(performance.now()-indexerBatchStart)/1000/60} mins`)
+  logger.info(`Finished Indexer batch in ${(performance.now()-indexerBatchStart)/1000/60} mins`)
 });
 
 indexerEvents.on('error', (item, error)=>{
-  console.log(`IndexerEvents got error: ${item} ${error}`);
+  logger.error(`IndexerEvents got error: ${item} ${error}`);
   indexerErrors.push(error);
 })
 

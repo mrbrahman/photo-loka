@@ -1,12 +1,15 @@
 import dateFormat from 'dateformat';
 import * as db from './indexer-db.mjs';
 import * as exifManager from '#media/exif-manager';
+import { createLogger } from '#utils/logger';
+
+const logger = createLogger(import.meta.url);
 
 export async function refreshMetadata(uuid, filename){
   if(!filename){
     filename = await db.getFileName(uuid);
   }
-  console.log(`Re-extracting metadata for ${filename}`);
+  logger.info(`Re-extracting metadata for ${filename}`);
 
   let metadata = await exifManager.getMetadata(filename);
   metadata['uuid'] = uuid;

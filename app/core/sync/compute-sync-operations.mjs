@@ -1,5 +1,8 @@
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import { createLogger } from '#utils/logger';
+
+const logger = createLogger(import.meta.url);
 
 // Scenario 1: simple one
 // let changes = [
@@ -122,7 +125,7 @@ export async function computeSyncOperations(changes, listenPaths, collectionPath
 
     //  (note: move can be from listen path to collection, or within collection)
 
-    console.log(`processing ${idx}: ${JSON.stringify(changes[idx])}`);
+    logger.debug(`processing ${idx}: ${JSON.stringify(changes[idx])}`);
     if (change.skip) continue;
 
     if (change.action === 'create-dir') {

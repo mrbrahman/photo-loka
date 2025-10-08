@@ -4,6 +4,9 @@ import fs from 'fs';
 import {glob} from 'glob';
 import {config} from '#config';
 import {getFileName} from '#indexing/indexer-db';
+import { createLogger } from '#utils/logger';
+
+const logger = createLogger(import.meta.url);
 
 export async function compressVideo(uuid, filename) {
   try{ 
@@ -11,12 +14,12 @@ export async function compressVideo(uuid, filename) {
       filename = await getFileName(uuid);
     } 
     let startTime = performance.now();
-    console.log(`Starting video compression for ${uuid} ${filename}`);
+    logger.info(`Starting video compression for ${uuid} ${filename}`);
     await compressVideoWithFFMpeg(uuid, filename);
-    console.log(`Video compression for ${uuid} ${filename} took ${(performance.now()-startTime)/1000/60} minutes`);
+    logger.info(`Video compression for ${uuid} ${filename} took ${(performance.now()-startTime)/1000/60} minutes`);
   }
   catch(err){
-    console.log(`Error compressing video for ${uuid} ${err}`);
+    logger.error(`Error compressing video for ${uuid} ${err}`);
     throw(err); 
   }
 }
@@ -77,15 +80,15 @@ async function compressVideoWithFFMpeg(uuid, inputVideoPath) {
     const ffmpegProcess = spawn('ffmpeg', args);
 
     ffmpegProcess.stderr.on('data', (data) => {
-      // console.log(`ffmpeg stderr: ${data}`);
+      // logger.debug(`ffmpeg stderr: ${data}`);
     });
 
     ffmpegProcess.stdout.on('data', (data) => {
-      // console.log(`ffmpeg stdout: ${data}`);
+      // logger.debug(`ffmpeg stdout: ${data}`);
     });
 
     ffmpegProcess.on('exit', (code) => {
-      console.log(`ffmpeg process exited with code ${code}`);
+      logger.debug(`ffmpeg process exited with code ${code}`);
     });
     
     ffmpegProcess.on('close', (code) => {
