@@ -1,4 +1,5 @@
 import * as path from 'path';
+import * as fs from 'fs/promises';
 
 // Scenario 1: simple one
 // let changes = [
@@ -43,15 +44,6 @@ import * as path from 'path';
 //   {action: 'delete', path1: '/path/to/collection/dir1', path2: null},
 // ];
 
-function getRelativePath(fullPath, collectionPaths) {
-  for (let colPath of collectionPaths) {
-    if (fullPath.startsWith(colPath)) {
-      return fullPath.substring(colPath.length);
-    }
-  }
-  return null;
-}
-
 function getTargetPath(srcPath, collectionPaths, target) {
   for (let colPath of collectionPaths) {
     if (srcPath.startsWith(colPath)) {
@@ -73,7 +65,7 @@ function isListenPath(fullPath, listenPaths) {
   return false;
 }
 
-export function computeSyncOperations(changes, listenPaths, collectionPaths, target) {
+export async function computeSyncOperations(changes, listenPaths, collectionPaths, target) {
   let effective = [];
   let pathChanges = new Map();
 
@@ -116,6 +108,20 @@ export function computeSyncOperations(changes, listenPaths, collectionPaths, tar
   }
 
   for (let [idx, change] of changes.entries()) {
+    // a quick revision of the file_audit_log entries:
+    // (path1 is always the source path, path2 is always the destination path)
+
+    // ┌────────────┬─────────────────────┬───────────────────────┬───────────────────────────────┐
+    // │ action     │ path1               │ path2                 │ Description                   │
+    // ├────────────┼─────────────────────┼───────────────────────┼───────────────────────────────┤
+    // │ create-dir │ null                │ dir created           │ New directory created.        │
+    // │ in-place   │ null                │ file indexed in place │ File indexed without moving.  │
+    // │ move       │ old full path       │ new full path         │ File/dir moved or relocated.  │
+    // │ delete     │ full path deleted   │ null                  │ File or directory deleted.    │
+    // └────────────┴─────────────────────┴───────────────────────┴───────────────────────────────┘
+
+    //  (note: move can be from listen path to collection, or within collection)
+
     console.log(`processing ${idx}: ${JSON.stringify(changes[idx])}`);
     if (change.skip) continue;
 
@@ -123,10 +129,14 @@ export function computeSyncOperations(changes, listenPaths, collectionPaths, tar
       // first get effective path (in case of further rename dirs)
       let currentPath = effectivePath(idx, change.path2);
       if (currentPath){
+        let srcDirStats = await fs.stat(currentPath);
+
         effective.push({
           'action': 'create-dir', 
           path1: null, 
-          path2: getTargetPath(currentPath, collectionPaths, target)
+          path2: getTargetPath(currentPath, collectionPaths, target),
+          // we store the stats of the source dir, which will be used further to 'touch' the target dir
+          stats: { atime: srcDirStats.atime, mtime: srcDirStats.mtime, mode: srcDirStats.mode }
         });
       }
     }
@@ -134,10 +144,15 @@ export function computeSyncOperations(changes, listenPaths, collectionPaths, tar
     else if (change.action === 'in-place') {
       let currentPath = effectivePath(idx, change.path2);
       if (currentPath) {
+        // get the stats of the dir where the file was in-place indexed
+        let srcDirStats = await fs.stat(path.dirname(currentPath));
+
         effective.push({
           'action': 'dir-and-copy', 
           path1: currentPath, 
-          path2: getTargetPath(currentPath, collectionPaths, target)
+          path2: getTargetPath(currentPath, collectionPaths, target),
+          // we store the stats of the source dir, which will be used further to 'touch' the target dir
+          stats: { atime: srcDirStats.atime, mtime: srcDirStats.mtime, mode: srcDirStats.mode }
         });
       }
     }
@@ -146,11 +161,16 @@ export function computeSyncOperations(changes, listenPaths, collectionPaths, tar
       if (isListenPath(change.path1, listenPaths)) {
         // file is moved from listen path to collection
         let currentPath = effectivePath(idx, change.path2);
+        
         if (currentPath) {
+          let srcDirStats = await fs.stat(path.dirname(currentPath));
+          
           effective.push({
             'action': 'copy', 
             path1: currentPath, 
-            path2: getTargetPath(currentPath, collectionPaths, target)
+            path2: getTargetPath(currentPath, collectionPaths, target),
+            // we store the stats of the source dir, which will be used further to 'touch' the target dir
+            stats: { atime: srcDirStats.atime, mtime: srcDirStats.mtime, mode: srcDirStats.mode }
           });
         }
       }
@@ -164,6 +184,7 @@ export function computeSyncOperations(changes, listenPaths, collectionPaths, tar
             'action': 'move', 
             path1: fromPath, 
             path2: toPath
+            // move of a file/dir within a collection does not change the timestamps
           });
         }
       }
@@ -174,9 +195,44 @@ export function computeSyncOperations(changes, listenPaths, collectionPaths, tar
         'action': 'delete', 
         path1: getTargetPath(change.path1, collectionPaths, target), 
         path2: null
+        // TODO - need to distinguish between file and dir deletion, and handle sync time in case of deleteion of files
+        // probably have separate actions: 'delete-file' and 'delete-dir'
+        // for now not worrying about it, as I'm not doing deletions (purge from trash yet to be implemented)
       })
     }
   }
+
+  // now figure out the directory 'touch' operations
+  // i.e. sync up the modify and access times of directories
+  // note - this is not needed for files, as when the files are copied, they are copied
+  // with the correct times. However with directories, the time on the directory
+  // changes each time an operation (create/move/delete) is carried out within the directory
+
+  // this part is a little tricky to understand, need to pay attention to the fact that
+  // stats always comes from the original source of the backup (collection dir/file)
+  let allTargetDirs = new Map();
+  for (let op of effective) {
+    if (op.action === 'create-dir' ) {
+      // create-dir is the target, but stats is from the source (see 'create-dir' handling above)
+      allTargetDirs[op.path2] = op.stats;
+    }
+    else if (op.action === 'dir-and-copy' || op.action === 'copy') {
+      allTargetDirs[path.dirname(op.path2)] = op.stats;
+    }
+    else if (op.action === 'delete') {
+      // TODO: handle dirs, when delete-file is implemented
+    }
+  }
+
+  // add touch actions on target dirs
+  for (let [k,v] of allTargetDirs) {
+    effective.push({
+      action: 'dir-touch',
+      path1: k,
+      stats: v
+    })
+  }
+  
   return effective;
 }
 

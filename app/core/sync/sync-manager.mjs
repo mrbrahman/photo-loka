@@ -53,13 +53,13 @@ export async function syncCollection(deviceId, collectionId, mountpoint, dryRun 
     
     // Compute effective sync operations
     const targetPath = path.join(mountpoint, device.backup_path);
-    const operations = computeSyncOperations(changes, listenPaths, collectionPaths, targetPath);
+    const operations = await computeSyncOperations(changes, listenPaths, collectionPaths, targetPath);
     console.log(`Computed ${operations.length} sync operations`);
     
     if (dryRun) {
       console.log('Dry run - operations that would be performed:');
       operations.forEach((op, i) => {
-        console.log(`${i + 1}. ${op.action}: ${op.path1 || 'null'} -> ${op.path2 || 'null'}`);
+        console.log(`${i + 1}. ${op.action}: ${op.path1 || 'null'} -> ${op.path2 || 'null'} ${op.stats ? `(stats: ${JSON.stringify(op.stats)})` : ''}`);
       });
       return {
         success: true,

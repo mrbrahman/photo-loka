@@ -36,6 +36,9 @@ async function executeSingleOperation(operation) {
     case 'delete':
       return await deleteFileOrDir(operation.path1);
     
+    case 'dir-touch':
+      return await dirTouch(operation.path1, operation.stats);
+    
     default:
       throw new Error(`Unknown sync operation: ${operation.action}`);
   }
@@ -47,7 +50,12 @@ async function createDirectory(dirPath) {
 }
 
 async function copyFile(srcPath, destPath) {
-  await fs.copyFile(srcPath, destPath);
+  // note: can't use the stats on the record, as that's the directory stats and not file stats
+  let stats = await fs.stat(srcPath);
+  
+  await fs.cp(srcPath, destPath, {preserveTimestamps: true, errorOnExist: true});
+  await fs.chmod(destPath, stats.mode);
+  
   return `File copied: ${srcPath} -> ${destPath}`;
 }
 
@@ -62,7 +70,8 @@ async function dirAndCopy(srcPath, destPath) {
       throw error;
     }
   }
-  await fs.copyFile(srcPath, destPath);
+  let result = await copyFile(srcPath, destPath);
+
   return `Directory created (if needed) and file copied: ${srcPath} -> ${destPath}`;
 }
 
@@ -84,4 +93,12 @@ async function deleteFileOrDir(targetPath) {
   } catch {
     return `Path does not exist: ${targetPath}`;
   }
+}
+
+async function dirTouch(dirPath, stats) {
+  await fs.utimes(dirPath, stats.atime, stats.mtime);
+  if (stats.mode) {
+    await fs.chmod(dirPath, stats.mode);
+  }
+  return `Directory timestamps and mode updated: ${dirPath}`;
 }
