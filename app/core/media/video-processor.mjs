@@ -5,6 +5,7 @@ import {glob} from 'glob';
 import {config} from '#config';
 import {getFileName} from '#indexing/indexer-db';
 import { createLogger } from '#utils/logger';
+import { fmtTime } from '#utils/time-format';
 
 const logger = createLogger(import.meta.url);
 
@@ -16,7 +17,7 @@ export async function compressVideo(uuid, filename) {
     let startTime = performance.now();
     logger.info(`Starting video compression for ${uuid} ${filename}`);
     await compressVideoWithFFMpeg(uuid, filename);
-    logger.info(`Video compression for ${uuid} ${filename} took ${(performance.now()-startTime)/1000/60} minutes`);
+    logger.info(`Video compression for ${uuid} ${filename} took ${fmtTime(performance.now()-startTime)}`);
   }
   catch(err){
     logger.error(`Error compressing video for ${uuid} ${err}`);

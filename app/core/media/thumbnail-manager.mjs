@@ -3,6 +3,7 @@ import * as path from 'path';
 import {default as sharp} from 'sharp';
 import { spawn } from 'child_process';
 import { createLogger } from '#utils/logger';
+import { fmtTime } from '#utils/time-format';
 
 import {config} from '#config';
 import {overlays} from '#overlays/all-overlays.mjs';
@@ -66,7 +67,7 @@ export async function createImageThumbnails(uuid, buf, playImageOverlay){
   });
   
   await Promise.all(thumbnailPromises);
-  logger.info(`thumbs: For ${uuid} generated ${sizes.length} thumbnails in ${performance.now()-start} ms`);
+  logger.info(`thumbs: For ${uuid} generated ${sizes.length} thumbnails in ${fmtTime(performance.now()-start)}`);
 
   // TODO: extract and return image hash? (to help identify dups)
 }

@@ -2,6 +2,7 @@ import {EventEmitter} from 'events';
 import { ParallelProcesses as pp } from '#utils/parallel-processes';
 import {config} from '#config';
 import { createLogger } from '#utils/logger';
+import { fmtTime } from '#utils/time-format';
 
 const logger = createLogger(import.meta.url);
 
@@ -22,7 +23,7 @@ indexerEvents.on('start_batch', ()=>{
 });
 
 indexerEvents.on('all_done', ()=>{
-  logger.info(`Finished Indexer batch in ${(performance.now()-indexerBatchStart)/1000/60} mins`)
+  logger.info(`Finished Indexer batch in ${fmtTime(performance.now()-indexerBatchStart)}`)
 });
 
 indexerEvents.on('error', (item, error)=>{

@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {v4 as uuidv4} from 'uuid';
 import { createLogger } from '#utils/logger';
+import { fmtTime } from '#utils/time-format';
 
 import * as exifManager from '#media/exif-manager';
 import * as thumbnailManager from '#media/thumbnail-manager';
@@ -132,5 +133,5 @@ export async function indexFile(collection, sourceFileName, uuid, inPlace){
     enqueueReverseGeoEncoding(p.uuid, p.gps_lat, p.gps_long);
   }
 
-  logger.info(`Indexing of ${sourceFileName} finished in ${performance.now()-fileStart} ms`);
+  logger.info(`Indexing of ${sourceFileName} finished in ${fmtTime(performance.now()-fileStart)}`);
 }

@@ -3,6 +3,7 @@ import * as path from 'path';
 import {default as sharp} from 'sharp';
 import {config} from '#config';
 import { createLogger } from '#utils/logger';
+import { fmtTime } from '#utils/time-format';
 
 const logger = createLogger(import.meta.url);
 
@@ -64,7 +65,7 @@ export async function extractFaceRegions(uuid, buf, xmpregion) {
   }
 
   await Promise.all(faceExtractPromises);
-  logger.info(`faces: For ${uuid} generated ${faceExtractPromises.length} in ${performance.now()-start} ms`);
+  logger.info(`faces: For ${uuid} generated ${faceExtractPromises.length} in ${fmtTime(performance.now()-start)}`);
 
   return parsedFaces;
 }

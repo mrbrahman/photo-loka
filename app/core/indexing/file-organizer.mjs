@@ -3,6 +3,7 @@ const fsPromises = fs.promises;
 import * as path from 'path';
 import { fdir } from 'fdir';
 import { createLogger } from '#utils/logger';
+import { fmtTime } from '#utils/time-format';
 
 import dateformat from 'dateformat';
 
@@ -25,7 +26,7 @@ export async function listAllFilesForCollection(collection) {
 
   let files = await lsRecursive(collection.collection_path);
   
-  logger.info(`finished listing files in ${(performance.now() - start)/1000} secs`)
+  logger.info(`finished listing files in ${fmtTime(performance.now() - start)}`)
 
   return files;
 }

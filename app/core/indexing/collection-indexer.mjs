@@ -5,6 +5,7 @@ import { getCollection } from '#collections/collection-manager';
 import { indexFile } from './file-indexer.mjs';
 import { refreshMetadata } from './metadata-updates.mjs';
 import { createLogger } from '#utils/logger';
+import { fmtTime } from '#utils/time-format';
 
 const logger = createLogger(import.meta.url);
 
@@ -69,7 +70,7 @@ async function listDeltaFilesForCollection(collection) {
     }, {})
 
   logger.info(`physicalFiles ${Object.keys(physicalFiles).length} databaseEntries: ${Object.keys(databaseEntries).length}`);
-  logger.info(`Time taken to figure out files ${(performance.now()-start)/1000/60} mins`)
+  logger.info(`Time taken to figure out files ${fmtTime(performance.now()-start)}`)
 
   // Step 4: compare the two and determine which have been added/removed/modified
   let added = [], changed = [], deleted = [];
