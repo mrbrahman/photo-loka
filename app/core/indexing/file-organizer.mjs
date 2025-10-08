@@ -11,7 +11,7 @@ import { config } from '#config';
 export async function lsRecursive(dir) {
   return new fdir()
     .withFullPaths()
-    .onlyFiles()
+    //.onlyFiles()
     .crawl(dir)
     .withPromise();
 }
