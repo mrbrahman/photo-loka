@@ -116,6 +116,7 @@ export function computeSyncOperations(changes, listenPaths, collectionPaths, tar
   }
 
   for (let [idx, change] of changes.entries()) {
+    console.log(`processing ${idx}: ${JSON.stringify(changes[idx])}`);
     if (change.skip) continue;
 
     if (change.action === 'create-dir') {

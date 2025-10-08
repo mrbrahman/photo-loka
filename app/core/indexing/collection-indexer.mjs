@@ -21,6 +21,8 @@ export async function indexCollection(collection_id, firstTime=false){
     }
 
     console.log(`added: ${files.added.length} changed ${files.changed.length} deleted ${files.deleted.length}`);
+    // console.log(`added files: ${JSON.stringify(files.added)}`);
+    // console.log(`changed files: ${JSON.stringify(files.changed)}`);
 
     // add files to the indexer queue
     if(files['added'].length > 0){
@@ -71,6 +73,7 @@ async function listDeltaFilesForCollection(collection) {
 
   Object.keys(physicalFiles).forEach(f => {
     if (!(f in databaseEntries)) {
+      console.log(`${f} is added`)
       added.push(f);
     } else if (physicalFiles[f].mtime > databaseEntries[f].mtime) {
       console.log(`${f} is changed`)
