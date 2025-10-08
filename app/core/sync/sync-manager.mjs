@@ -1,3 +1,4 @@
+import path from 'path'
 import * as syncDb from './sync-db.mjs';
 import * as syncOps from './sync-operations.mjs';
 import { computeSyncOperations } from './compute-sync-operations.mjs';
@@ -51,7 +52,7 @@ export async function syncCollection(deviceId, collectionId, mountpoint, dryRun 
     }
     
     // Compute effective sync operations
-    const targetPath = mountpoint + device.backup_path;
+    const targetPath = path.join(mountpoint, device.backup_path);
     const operations = computeSyncOperations(changes, listenPaths, collectionPaths, targetPath);
     console.log(`Computed ${operations.length} sync operations`);
     
