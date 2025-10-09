@@ -136,6 +136,7 @@ export async function computeSyncOperations(changes, listenPaths, collectionPath
 
         effective.push({
           'action': 'create-dir', 
+	  id: change.id,
           path1: null, 
           path2: getTargetPath(currentPath, collectionPaths, target),
           // we store the stats of the source dir, which will be used further to 'touch' the target dir
@@ -152,6 +153,7 @@ export async function computeSyncOperations(changes, listenPaths, collectionPath
 
         effective.push({
           'action': 'dir-and-copy', 
+	  id: change.id,
           path1: currentPath, 
           path2: getTargetPath(currentPath, collectionPaths, target),
           // we store the stats of the source dir, which will be used further to 'touch' the target dir
@@ -170,6 +172,7 @@ export async function computeSyncOperations(changes, listenPaths, collectionPath
           
           effective.push({
             'action': 'copy', 
+	    id: change.id,
             path1: currentPath, 
             path2: getTargetPath(currentPath, collectionPaths, target),
             // we store the stats of the source dir, which will be used further to 'touch' the target dir
@@ -185,6 +188,7 @@ export async function computeSyncOperations(changes, listenPaths, collectionPath
         if(toPath){
           effective.push({
             'action': 'move', 
+            id: change.id,
             path1: fromPath, 
             path2: toPath
             // move of a file/dir within a collection does not change the timestamps
@@ -196,6 +200,7 @@ export async function computeSyncOperations(changes, listenPaths, collectionPath
     else if (change.action === 'delete') {
       effective.push({
         'action': 'delete', 
+	id: change.id,
         path1: getTargetPath(change.path1, collectionPaths, target), 
         path2: null
         // TODO - need to distinguish between file and dir deletion, and handle sync time in case of deleteion of files
@@ -217,10 +222,10 @@ export async function computeSyncOperations(changes, listenPaths, collectionPath
   for (let op of effective) {
     if (op.action === 'create-dir' ) {
       // create-dir is the target, but stats is from the source (see 'create-dir' handling above)
-      allTargetDirs.set(op.path2, op.stats);
+      allTargetDirs.set(op.path2, {stats: op.stats, id: op.id});
     }
     else if (op.action === 'dir-and-copy' || op.action === 'copy') {
-      allTargetDirs.set(path.dirname(op.path2), op.stats);
+      allTargetDirs.set(path.dirname(op.path2), {stats: op.stats, id: op.id});
     }
     else if (op.action === 'delete') {
       // TODO: handle dirs, when delete-file is implemented
@@ -231,8 +236,9 @@ export async function computeSyncOperations(changes, listenPaths, collectionPath
   allTargetDirs.forEach((v,k) => {
     effective.push({
       action: 'dir-touch',
+      id: v.id,
       path1: k,
-      stats: v
+      stats: v.stats
     })
   });
   
