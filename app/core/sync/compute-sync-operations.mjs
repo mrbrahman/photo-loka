@@ -217,10 +217,10 @@ export async function computeSyncOperations(changes, listenPaths, collectionPath
   for (let op of effective) {
     if (op.action === 'create-dir' ) {
       // create-dir is the target, but stats is from the source (see 'create-dir' handling above)
-      allTargetDirs[op.path2] = op.stats;
+      allTargetDirs.set(op.path2, op.stats);
     }
     else if (op.action === 'dir-and-copy' || op.action === 'copy') {
-      allTargetDirs[path.dirname(op.path2)] = op.stats;
+      allTargetDirs.set(path.dirname(op.path2), op.stats);
     }
     else if (op.action === 'delete') {
       // TODO: handle dirs, when delete-file is implemented
@@ -228,13 +228,13 @@ export async function computeSyncOperations(changes, listenPaths, collectionPath
   }
 
   // add touch actions on target dirs
-  for (let [k,v] of allTargetDirs) {
+  allTargetDirs.forEach((v,k) => {
     effective.push({
       action: 'dir-touch',
       path1: k,
       stats: v
     })
-  }
+  });
   
   return effective;
 }
