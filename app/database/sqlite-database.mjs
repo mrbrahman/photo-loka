@@ -113,7 +113,8 @@ function initialDbSetup() {
 
   var stmt = db.prepare(`
     create table sync_status (
-      device_id, device_name, device_desc, collection_id, backup_path, last_sync_id
+      device_id, device_name, device_desc, collection_id, backup_path, 
+      last_sync_status, last_sync_id
     );
   `)
   var info = stmt.run();

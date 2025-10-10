@@ -25,8 +25,13 @@ export async function syncCollection(deviceId, collectionId, mountpoint, dryRun 
   logger.info(`Starting ${dryRun ? 'dry run ' : ''}sync for device ${deviceId}, collection ${collectionId}`);
   
   try {
-    // Get last sync ID and max audit log ID
-    const lastSyncId = await syncDb.getLastSyncId(deviceId, collectionId);
+    // Get last sync details
+    const {lastSyncStatus, lastSyncId} = await syncDb.getLastSyncDetails(deviceId, collectionId);
+    if (lastSyncStatus != 'SUCCESS') {
+      throw new Error(`Previous sync for device ${deviceId}, collection ${collectionId} failed. Please resolve the issue and update the status to proceed.`);
+    }
+    
+    logger.info(`Last sync ID for device ${deviceId}, collection ${collectionId} is ${lastSyncId}`);
     const maxId = await syncDb.getMaxAuditLogId(collectionId);
     
     if (maxId <= lastSyncId) {
@@ -80,10 +85,18 @@ export async function syncCollection(deviceId, collectionId, mountpoint, dryRun 
     const failed = results.filter(r => !r.success).length;
     const skipped = operations.length - results.length;
 
-    // TODO: need to better handle failures
+    // There is no clean way to handle failures - as we're trying to do incremental syncs.
+    // If there are failures, we may have done some operations, even some future ones,
+    // but there is no way to exactly figure out where to resume from failure.
+
+    // Hence, we update the status to 'FAILED' so we don't auto sync anymore
+    // until the user manually intervenes (e.g. do manual rsync, and then set status to SUCCESS)
     if (failed == 0){
       // Update sync ID to the determined max ID
-      await syncDb.updateLastSyncId(deviceId, collectionId, maxId);
+      await syncDb.updateSyncResult(deviceId, collectionId, 'SUCCESS', maxId);
+    } else {
+      // In case of failures, do not advance last sync ID
+      await syncDb.updateSyncResult(deviceId, collectionId, 'FAILED', lastSyncId);
     }
     
     logger.info(`Sync completed: ${successful} successful, ${failed} failed, ${skipped} skipped operations`);
@@ -99,7 +112,6 @@ export async function syncCollection(deviceId, collectionId, mountpoint, dryRun 
     throw error;
   }
 }
-
 
 
 async function syncDeviceCollections(deviceId, mountpoint, deviceCollections, dryRun) {

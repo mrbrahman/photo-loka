@@ -9,17 +9,24 @@ export async function registerDevice(deviceId, deviceName, deviceDesc, collectio
   `, {deviceId, deviceName, deviceDesc, collectionId, backupPath, lastSyncId});
 }
 
-export async function getLastSyncId(deviceId, collectionId) {
+export async function getLastSyncDetails(deviceId, collectionId) {
   const result = await asyncGet(`
-    SELECT last_sync_id FROM sync_status WHERE device_id = @deviceId AND collection_id = @collectionId
+    SELECT last_sync_status, last_sync_id
+    FROM sync_status 
+    WHERE device_id = @deviceId 
+    AND collection_id = @collectionId
   `, {deviceId, collectionId});
   return result?.last_sync_id || 0;
 }
 
-export async function updateLastSyncId(deviceId, collectionId, syncId) {
+export async function updateSyncResult(deviceId, collectionId, syncStatus, syncId) {
   await asyncRun(`
-    UPDATE sync_status SET last_sync_id = @syncId WHERE device_id = @deviceId AND collection_id = @collectionId
-  `, {syncId, deviceId, collectionId});
+    UPDATE sync_status 
+    SET last_sync_id = @syncId, 
+      last_sync_status = @syncStatus
+    WHERE device_id = @deviceId 
+    AND collection_id = @collectionId
+  `, {syncId, deviceId, syncStatus, collectionId});
 }
 
 export async function getAllSyncRegistrations() {
