@@ -287,38 +287,39 @@ apiRouter.post('/stopNightlyIndexing', function(req,res){
 });
 
 // *****************************************
-// sync functions
+// backup functions
 // *****************************************
 
-apiRouter.post('/syncConnectedDevices', async function(req,res){
+apiRouter.post('/backupToConnectedDevices', async function(req,res){
   let dryRun = req.query.dryRun === 'true';
   try {
-    const results = await s.sync.syncConnectedDevices(dryRun);
+    const results = await s.backup.backupToConnectedDevices(dryRun);
     res.json(results);
   } catch (error) {
     res.status(500).json({error: error.message});
   }
 });
 
-apiRouter.post('/syncDevice/:deviceId', async function(req,res){
+apiRouter.post('/backupToDevice/:deviceId', async function(req,res){
   let dryRun = req.query.dryRun === 'true';
   let deviceId = req.params.deviceId;
   try {
-    const results = await s.sync.syncDevice(deviceId, dryRun);
+    const results = await s.backup.backupToDevice(deviceId, dryRun);
     res.json(results);
   } catch (error) {
     res.status(500).json({error: error.message});
   }
 });
 
-apiRouter.get('/getAllSyncRegistrations', async function(req,res){
+apiRouter.get('/getAllBackupRegistrations', async function(req,res){
   try {
-    const registrations = await s.sync.getAllSyncRegistrations();
+    const registrations = await s.backup.getAllBackupRegistrations();
     res.json(registrations);
   } catch (error) {
     res.status(500).json({error: error.message});
   }
 });
+
 
 
 // TODO

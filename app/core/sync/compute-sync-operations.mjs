@@ -68,7 +68,7 @@ function isListenPath(fullPath, listenPaths) {
   return false;
 }
 
-export async function computeSyncOperations(changes, listenPaths, collectionPaths, target) {
+export async function computeBackupOperations(changes, listenPaths, collectionPaths, target) {
   let effective = [];
   let pathChanges = new Map();
 

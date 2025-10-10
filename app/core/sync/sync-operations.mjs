@@ -4,17 +4,17 @@ import { createLogger } from '#utils/logger';
 
 const logger = createLogger(import.meta.url);
 
-export async function executeSyncOperations(operations) {
+export async function executeBackupOperations(operations) {
   const results = [];
   
   for (const op of operations) {
     try {
       const result = await executeSingleOperation(op);
       results.push({ ...op, success: true, result });
-      logger.info(`Sync operation completed: ${op.action} - ${op.path1 || 'null'} -> ${op.path2 || 'null'}`);
+      logger.info(`Backup operation completed: ${op.action} - ${op.path1 || 'null'} -> ${op.path2 || 'null'}`);
     } catch (error) {
       results.push({ ...op, success: false, error: error.message });
-      logger.error(`Sync operation failed: ${op.action} - ${error.message}`);
+      logger.error(`Backup operation failed: ${op.action} - ${error.message}`);
       break;
     }
   }
@@ -43,7 +43,7 @@ async function executeSingleOperation(operation) {
       return await dirTouch(operation.path1, operation.stats);
     
     default:
-      throw new Error(`Unknown sync operation: ${operation.action}`);
+      throw new Error(`Unknown backup operation: ${operation.action}`);
   }
 }
 
