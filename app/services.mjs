@@ -20,4 +20,4 @@ export * as shutdown    from '#infra/shutdown-manager';
 export * as watcher     from '#jobs/file-watcher-job';
 export * as jobs        from '#jobs/nightly-indexing-job';
 
-export * as backup      from '#sync/sync-manager';
+export * as backup      from '#backup/backup-manager';

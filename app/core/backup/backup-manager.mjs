@@ -1,7 +1,7 @@
 import path from 'path'
-import * as backupDb from './sync-db.mjs';
-import * as backupOps from './sync-operations.mjs';
-import { computeBackupOperations } from './compute-sync-operations.mjs';
+import * as backupDb from './backup-db.mjs';
+import * as backupOps from './backup-operations.mjs';
+import { computeBackupOperations } from './compute-backup-operations.mjs';
 import { getCollection } from '#collections/collection-manager';
 import { getConnectedDevices } from './device-detector.mjs';
 import { createLogger } from '#utils/logger';
