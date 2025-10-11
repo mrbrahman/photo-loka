@@ -27,15 +27,19 @@ Currently this project is very much a work-in-progress.
 
 ## Media Management
 - Support for existing folders and files: Read existing folder structure (specificed during collection creation) and index the files found (if any) under respective collections
-- Support for new files: Watch one or more folders for new files, and as new files become available, bring them into the respective collection and index them
+- Support for new files: 
+    * Immediate indexing - Watch one or more 'listen' folders for new files, and as new files become available, bring them into the respective collection and index them
+    * Delayed indexing - Schedule a daily 'cron' to watch the same 'listen' folders, to bring in files to the collection that are 'n' days stale
 - Rename albums (similar to renaming folders on a File Explorer program)
 - Select files and move them to a different album
 - Select files and trash them
+- Backup helper: A helper utility that *incrementally* backs-up all the files into the 'registered' backup drives
 
 ## Metadata management
 - Index media photos, videos and audio
   - Extract key exif data (metadata), and store in SQLite db
   - Thumbnail generation
+  - Compress video files into smaller webm files
   - Indexer has the ability to run and gather metadata for multiple files at the same time. See `updateIndexerConcurrency` below
 - Mark as favorite / stars (there is no favorite in exif, but there is a 'rating' field)
 - Optimize write of metadata to files by delaying the write. This enables grouping all the changes together and writing to file at one go
@@ -43,7 +47,7 @@ Currently this project is very much a work-in-progress.
 ## Enrichments
 - Lookup GPS location
     * First using geolocation api (that comes with exiftool)
-    * For US based addresses, use findNearestAdderss API (need a registered username)
+    * For US based addresses, use [findNearestAdderss](https://www.geonames.org/maps/us-reverse-geocoder.html#findNearestAddress) API (need a registered username)
 
 ## UI features
 - Display photos and videos on a responsive, progressive, scrollable grid
@@ -146,26 +150,26 @@ Currently this project is very much a work-in-progress.
   ```
 
   ```bash
-  curl -X POST -H 'Content-Type: application/json' -d @c.json "http://localhost:9000/createNewCollection"
+  curl -X POST -H 'Content-Type: application/json' -d @c.json "http://localhost:9000/api/createNewCollection"
   
   # Verify
-  curl -X GET 'http://localhost:9000/getAllCollections' | jq '.'
+  curl -X GET 'http://localhost:9000/api/getAllCollections' | jq '.'
   ```
 
   Start indexing (this will kick off indexer process in the background and return immediately)
   ```bash
-  curl -X POST 'http://localhost:9000/startIndexingFirstTime?collection_id=1'
+  curl -X POST 'http://localhost:9000/api/startIndexingFirstTime?collection_id=1'
   ```
   
   Monitor progress
   ```bash
-  curl -X GET 'http://localhost:9000/getIndexerStatus' | jq '.'
+  curl -X GET 'http://localhost:9000/api/getIndexerStatus' | jq '.'
   ```
 
   ```bash
   # If you notice your system resources are not fully utilized, you can increase indexer concurrency
   # Suggest to increase by 1 at a time, until you see resources getting fully utilized
-  $ curl -X PUT 'http://localhost:9000/updateIndexerConcurrency/2'
+  $ curl -X PUT 'http://localhost:9000/api/updateIndexerConcurrency/2'
 
   ```
 - Visit your rewind-replay page http://localhost:9000
