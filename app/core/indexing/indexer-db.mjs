@@ -1,5 +1,8 @@
-import { asyncGet, asyncAll, asyncRun } from './db-pool.mjs';
-import { db } from './sqlite-database.mjs'; // For transaction-based operations
+import { asyncGet, asyncAll, asyncRun } from '#db/db-pool';
+import { db } from '#db/sqlite-database'; // For transaction-based operations
+import { createLogger } from '#utils/logger';
+
+const logger = createLogger(import.meta.url);
 
 
 const deleteFromMetadataStatement = `
@@ -16,7 +19,8 @@ insert into metadata
   image_width, image_height, aspectratio,
   make, model, orientation, duration, 
   gps_lat, gps_long, gps_alt, geolocation_api_json, geo_address,
-  datetime_original, create_date, file_modify_date, file_date
+  datetime_original, create_date, file_modify_date, file_date,
+  indexed_dt
 )
 values
 (
@@ -26,7 +30,8 @@ values
   @image_width, @image_height, @aspectratio,
   @make, @model, @orientation, @duration, 
   @gps_lat, @gps_long, @gps_alt, @geolocation_api_json, @geo_address,
-  @datetime_original, @create_date, @file_modify_date, @file_date
+  @datetime_original, @create_date, @file_modify_date, @file_date,
+  datetime('now','localtime')
 )
 `;
 
@@ -124,9 +129,9 @@ const retriveMetadataStatement = `
 
 const fileAuditStatement = `
   insert into file_audit_log
-  (action, path1, path2)
+  (collection_id, action, path1, path2)
   values
-  (@action, @path1, @path2)
+  (@collection_id, @action, @path1, @path2)
 `;
 
 const getPendingExifUpdatesStatemet = `
@@ -167,39 +172,6 @@ export async function getIndexedFilesModifyTime(collection_id){
   `, collection_id);
 }
 
-export async function updateAlbum(collection_id, fromAlbum, toAlbum, updateFileName){
-  const sql = `
-    update metadata
-    set album = @toAlbum
-      ${updateFileName ? ", filename = replace(filename, @fromAlbum, @toAlbum)" : ''} 
-    where collection_id = @collection_id
-    and album = @fromAlbum
-  `;
-  
-  return await asyncRun(sql, {collection_id, fromAlbum, toAlbum});
-}
-
-export function updateAlbumForItems(uuid_arr, toAlbum, updateFileName){
-  // Use transaction for bulk operations - keep using direct db connection
-  let stmt = db.prepare(`
-    update metadata
-    set album = @toAlbum
-      ${updateFileName ? ", filename = replace(filename, album, @toAlbum)" : ''} 
-    where uuid = @uuid
-  `);
-
-  let trans = db.transaction(
-    function(uuid_arr, toAlbum, updateFileName){
-      for (let uuid of uuid_arr){
-        stmt.run({uuid, toAlbum, updateFileName});
-      }
-    }
-  )
-
-  trans(uuid_arr, toAlbum, updateFileName);
-}
-
-
 export async function getFileName(uuid){
   const result = await asyncGet(getFileNameStatement, {uuid});
   return result.filename;
@@ -214,7 +186,7 @@ export function updateRating(uuid_arr, newRating, fileModifyDate){
   let trans = db.transaction(
     function(uuid_arr, newRating, fileModifyDate){
       for (let uuid of uuid_arr){
-        console.log(`${uuid} ${newRating} ${fileModifyDate}`);
+        logger.info(`${uuid} ${newRating} ${fileModifyDate}`);
         updateRatingInDb.run({uuid, newRating, fileModifyDate});
       }
     }
@@ -224,7 +196,7 @@ export function updateRating(uuid_arr, newRating, fileModifyDate){
 }
 
 export async function trashItem(uuid, trashFilename){
-  console.log(`Updating to trash ${uuid} ${trashFilename}`);
+  logger.info(`Updating to trash ${uuid} ${trashFilename}`);
   return await asyncRun(updateToTrashStatement, {uuid, trashFilename});
 }
 
@@ -242,8 +214,8 @@ export async function scheduleExif(uuid_arr, new_exif_json){
   return uuid_arr.length;
 }
 
-export async function fileAudit(action, path1, path2=null){
-  return await asyncRun(fileAuditStatement, {action, path1, path2});
+export async function fileAudit(collection_id, action, path1, path2=null){
+  return await asyncRun(fileAuditStatement, {collection_id, action, path1, path2});
 }
 
 export async function getPendingExifUpdates(){

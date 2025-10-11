@@ -14,6 +14,9 @@
 // TODO: Should this return a promise?
 
 import {EventEmitter} from 'events';
+import { createLogger } from '#utils/logger';
+
+const logger = createLogger(import.meta.url);
 
 export function ParallelProcesses(){
   var maxConcurrency=1, processInInsertOrder=false, autoStart=true, emitter, pauseConditionFn;
@@ -76,14 +79,14 @@ export function ParallelProcesses(){
         
       item.execute()
         .then(returnValue=>{
-          // console.log('in then '+returnValue);
+          // logger.debug('in then '+returnValue);
           processingCnt--; completedCnt++;
           if(emitter){
             emitter.emit('end', taskInfo, returnValue)
           }
         })
         .catch(error=>{
-          console.error('caught error in parallel-processes:', error);
+          logger.error(`Error while processing task ${taskInfo}: ${error}`);
           processingCnt--; failedCnt++;
           if(emitter){
             emitter.emit('error', taskInfo, error);

@@ -3,10 +3,14 @@ import * as path from 'path';
 import express from 'express';
 import compression from 'compression';
 import morgan from 'morgan';
-import winston from 'winston';
+import { createLogger } from './app/utils/logger.mjs';
 
 import {config} from './app/config.mjs';
 import * as s from './app/services.mjs'
+
+const logger = createLogger(import.meta.url);
+
+
 
 const app = express();
 
@@ -21,33 +25,14 @@ app.use(express.static('public'));
 //   return !req.url.startsWith('/getThumbnail');
 // };
 
-const { format } = winston;
-const logger = winston.createLogger({
-  format: format.combine(
-    format.colorize(),
-    format.timestamp(),
-    format.printf((msg) => {
-      return `${msg.timestamp} [${msg.level}] ${msg.message}`;
-    })
-  ),
-  transports: [new winston.transports.Console({
-    // format: winston.format.combine(
-    //   winston.format((info) => {
-    //       // Apply the filter to check if the log should be recorded
-    //       // return requestFilter(info.req) ? info : null;
-    //       return info
-    //   })(),
-    //   winston.format.colorize()
-    // ),
-    // level: 'http'
-  })],
-});
+
 
 const morganMiddleware = morgan(
-  ':method :url :status :res[content-length] - :response-time ms',
+  ':method :url :status :response-time ms',
   {
+    skip: (req) => req.url.includes('/getThumbnail'),
     stream: {
-        write: (message) => logger.http(message.trim()),
+        write: (message) => logger.info(message.trim()),
     },
   }
 );
@@ -90,15 +75,15 @@ apiRouter.get('/getImage', async function(req,res){
   //   "Content-Disposition": `inline;filename="${filename.split(/\//).pop()}"`
   // });
 
-  // (await s.search.getImage(uuid, width, height)).pipe(res);
-  (await s.search.getImage(uuid, 1920, 1080)).pipe(res);
+  // (await s.thumbnails.getImage(uuid, width, height)).pipe(res);
+  (await s.thumbnails.getImage(uuid, 1920, 1080)).pipe(res);
 });
 
 
 apiRouter.get('/getVideo', async function(req,res){
   let uuid = req.query.uuid, height = +req.query.height, width = +req.query.width;
 
-  (await s.search.getVideo(uuid)).pipe(res);
+  (await s.videos.getVideo(uuid)).pipe(res);
 
 });
 
@@ -112,7 +97,7 @@ apiRouter.get('/getGpsCoordinates', async function(req,res){
 });
 
 apiRouter.get('/searchForExistingAlbums', async function(req,res){
-  res.json(await s.search.searchForExistingAlbums(req.query.searchStr, req.query.wantFullName))
+  res.json(await s.albums.searchForExistingAlbums(req.query.searchStr, req.query.wantFullName))
 });
 
 apiRouter.post('/searchByGpsCoordinates', async function(req,res){
@@ -144,15 +129,24 @@ apiRouter.get('/getAllCollections', async function(req,res){
 
 apiRouter.post('/startIndexingFirstTime', async function(req,res){
   let {collection_id} = req.query;
-  s.indexer.indexCollection(collection_id, true);
+  s.bulkIndexer.indexCollection(collection_id, true);
   res.sendStatus(200);
 });
 
 apiRouter.post('/indexCollection/:collection_id', function(req,res){
   let collection_id = req.params.collection_id;
-  s.indexer.indexCollection(collection_id);
+  s.bulkIndexer.indexCollection(collection_id);
   res.sendStatus(200);
 });
+
+apiRouter.post('/startStaleFileIndexing', function(req,res){
+  s.staleIndexer.enqueueStaleFiles();
+  res.sendStatus(200);
+});
+
+// *****************************************
+// indexer control functions
+// *****************************************
 
 apiRouter.get('/getIndexerStatus', function(req,res){
   res.json(s.indexer.indexerStatus());
@@ -183,12 +177,12 @@ apiRouter.put('/updateIndexerConcurrency/:concurrency', function(req,res,next){
 
 apiRouter.post('/refreshMetadataForCollection/:collection_id', function(req,res){
   let collection_id = +req.params.collection_id;
-  s.indexer.refreshMetadataForCollection(collection_id);
+  s.bulkIndexer.refreshMetadataForCollection(collection_id);
   res.sendStatus(200);
 });
 
 apiRouter.post('/refreshMetadataForItem/:uuid', async function(req,res){
-  await s.indexer.refreshMetadata(req.params.uuid);
+  await s.metadataUpdates.refreshMetadata(req.params.uuid);
   res.sendStatus(200);
 });
 
@@ -196,7 +190,7 @@ apiRouter.post('/refreshMetadataForItem/:uuid', async function(req,res){
 apiRouter.put('/updateRating', function(req,res){
   let {uuid_arr, newRating} = req.body;
   try{
-    s.indexer.updateRating(uuid_arr, newRating);
+    s.metadataUpdates.updateRating(uuid_arr, newRating);
   } catch(err){
     res.status(500).json({error: err.message});
     return;
@@ -205,12 +199,12 @@ apiRouter.put('/updateRating', function(req,res){
 });
 
 apiRouter.put('/refreshThumbs/:uuid', async function(req,res){
-  await s.indexer.refreshThumbs(req.params.uuid);
+  await s.thumbnails.refreshThumbs(req.params.uuid);
   res.sendStatus(200);
 })
 
 apiRouter.put('/compressVideo/:uuid', async function(req,res){
-  await s.indexer.compressVideo(req.params.uuid);
+  await s.videos.compressVideo(req.params.uuid);
   res.sendStatus(200);
 })
 
@@ -218,20 +212,20 @@ apiRouter.put('/compressVideo/:uuid', async function(req,res){
 // reverse geo encoding
 // *****************************************
 apiRouter.get('/getReverseGeoEncodingStatus', function(req,res){
-  res.json(s.reverseGeoEncoding.status());
+  res.json(s.geoEncoder.status());
 });
 
 apiRouter.post('/enqueueReverseGeoEncoding', function(req,res){
   let {uuid, gps_lat, gps_long} = req.body;
   if (uuid && gps_lat && gps_long){
-    s.reverseGeoEncoding.enqueue(uuid, gps_lat, gps_long);
+    s.geoEncoder.enqueue(uuid, gps_lat, gps_long);
   }
   res.sendStatus(200);
 });
 
 apiRouter.post('/enqueueManyReverseGeoEncoding', function(req,res){
   let entries = req.body;
-  s.reverseGeoEncoding.enqueueMany(entries);
+  s.geoEncoder.enqueueMany(entries);
   res.sendStatus(200);
 });
 
@@ -242,7 +236,7 @@ apiRouter.post('/updateAlbumName', async function(req,res){
   let {collection_id, currAlbumName, newAlbumName} = req.body;
 
   try {
-    let updates = await s.indexer.updateAlbum(collection_id, currAlbumName, newAlbumName);
+    let updates = await s.albums.updateAlbum(collection_id, currAlbumName, newAlbumName);
     res.json(updates);
   } catch (err) {
     res.status(500).json(err);
@@ -251,14 +245,14 @@ apiRouter.post('/updateAlbumName', async function(req,res){
 });
 
 apiRouter.delete('/trashItems', async function(req,res){
-  let {uuid_arr} = req.body;
-  await s.indexer.moveFileToTrash(uuid_arr);
+  let {collection_id, uuid_arr} = req.body;
+  await s.fileOps.moveFileToTrash(collection_id, uuid_arr);
   res.sendStatus(200);
 });
 
 apiRouter.put('/moveItems', async function(req,res){
   let {collection_id, uuid_arr, new_album_name} = req.body;
-  await s.indexer.moveItemsToAlbum(collection_id, uuid_arr, new_album_name);
+  await s.albums.moveItemsToAlbum(collection_id, uuid_arr, new_album_name);
   res.sendStatus(200);
 });
 
@@ -283,14 +277,49 @@ apiRouter.post('/stopAllWatchers', function(req,res){
 // *****************************************
 
 apiRouter.post('/startNightlyIndexing', function(req,res){
-  s.nightlyIndexing.startNightlyIndexing();
+  s.jobs.startNightlyIndexing();
   res.sendStatus(200);
 });
 
 apiRouter.post('/stopNightlyIndexing', function(req,res){
-  s.nightlyIndexing.stopNightlyIndexing();
+  s.jobs.stopNightlyIndexing();
   res.sendStatus(200);
 });
+
+// *****************************************
+// backup functions
+// *****************************************
+
+apiRouter.post('/backupToConnectedDevices', async function(req,res){
+  let dryRun = req.query.dryRun === 'true';
+  try {
+    const results = await s.backup.backupToConnectedDevices(dryRun);
+    res.json(results);
+  } catch (error) {
+    res.status(500).json({error: error.message});
+  }
+});
+
+apiRouter.post('/backupToDevice/:deviceId', async function(req,res){
+  let dryRun = req.query.dryRun === 'true';
+  let deviceId = req.params.deviceId;
+  try {
+    const results = await s.backup.backupToDevice(deviceId, dryRun);
+    res.json(results);
+  } catch (error) {
+    res.status(500).json({error: error.message});
+  }
+});
+
+apiRouter.get('/getAllBackupRegistrations', async function(req,res){
+  try {
+    const registrations = await s.backup.getAllBackupRegistrations();
+    res.json(registrations);
+  } catch (error) {
+    res.status(500).json({error: error.message});
+  }
+});
+
 
 
 // TODO
@@ -313,27 +342,32 @@ app.use('/api', apiRouter);
 // start server
 // *****************************************
 
+process.on('SIGUSR2', function(){
+  logger.info('***** Nodemon restart signal received **** ');
+  handleServerShutdown();
+});
+
 process.on('SIGINT', function(){
-  console.log('***** Interrupt signal received **** ');
+  logger.info('***** Interrupt signal received **** ');
   handleServerShutdown();
 });
 
 process.on('SIGTERM', function(){
-  console.log('***** Terminate signal received **** ');
+  logger.info('***** Terminate signal received **** ');
   handleServerShutdown();
 });
 
 const handleServerShutdown = async function(){
-  await s.housekeeping.shutdownCleanup();
+  await s.shutdown.shutdownCleanup();
 
   server.close(()=>{
-    console.log('app shutdown. Ending process... ');
+    logger.info('app shutdown. Ending process... ');
     process.exit(0);
   });
 }
 
 let server = app.listen(9000, async ()=>{
-  console.log("app started and listening in port 9000!");
+  logger.info("app started and listening in port 9000!");
   // Perform startup activities
-  await s.housekeeping.startUpActivities();
+  await s.startup.startUpActivities();
 });

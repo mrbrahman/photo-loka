@@ -1,8 +1,11 @@
 import * as fs from 'fs';
 import path from 'path';
 import Database from 'better-sqlite3';
+import { createLogger } from '#utils/logger';
 
-import {config} from '../config.mjs';
+import {config} from '#config';
+
+const logger = createLogger(import.meta.url);
 
 // TODO: configure this to run on worker threads (is it needed after PRAGMA statements below?)
 // https://github.com/JoshuaWise/better-sqlite3/blob/master/docs/threads.md
@@ -37,7 +40,7 @@ db.aggregate('json_patch_agg', {
 });
 
 function initialDbSetup() {
-  console.log("creating database ... ");
+  logger.info("creating database ... ");
 
   // collections table
   var stmt = db.prepare(`
@@ -70,7 +73,8 @@ function initialDbSetup() {
       geonames_rev_address_json UNINDEXED, geonames_encoding_status UNINDEXED, geonames_db_matched_uuid UNINDEXED,
       geo_address, 
       datetime_original UNINDEXED, create_date UNINDEXED, file_modify_date UNINDEXED, file_date UNINDEXED,
-      trashed, trashed_dt
+      trashed, trashed_dt,
+      indexed_dt, updated_dt
     );
   `);
   var info = stmt.run();
@@ -98,10 +102,19 @@ function initialDbSetup() {
   var stmt = db.prepare(`
     create table file_audit_log (
       id integer PRIMARY KEY AUTOINCREMENT,
+      collection_id integer,
       action string,
       path1 string,
       path2 string,
       action_tm date DEFAULT (datetime('now','localtime','subsecond'))
+    );
+  `)
+  var info = stmt.run();
+
+  var stmt = db.prepare(`
+    create table backup_status (
+      device_id, device_name, device_desc, collection_id, backup_path, 
+      last_backup_status, last_backup_id
     );
   `)
   var info = stmt.run();

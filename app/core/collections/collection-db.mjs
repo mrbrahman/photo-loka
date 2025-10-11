@@ -1,4 +1,7 @@
-import { asyncGet, asyncAll, asyncRun } from './db-pool.mjs';
+import { asyncGet, asyncAll, asyncRun } from '#db/db-pool';
+import { createLogger } from '#utils/logger';
+
+const logger = createLogger(import.meta.url);
 
 function transformEntryToDb(row){
   // make a copy of the object, don't change the original
@@ -58,5 +61,5 @@ export async function getDefaultCollection(){
 
 export function updateDefaultCollection(entries){
   // TODO
-  console.log("TODO :-)")
+  logger.warn("TODO :-)")
 }

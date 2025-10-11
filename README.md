@@ -92,7 +92,7 @@ Currently this project is very much a work-in-progress.
 
 - **Install necessary software**
   - [Node](https://nodejs.org/en/) (to run the server)
-  - [ffmpeg](https://ffmpeg.org/download.html) (for fluent-ffmpeg)
+  - [ffmpeg](https://ffmpeg.org/download.html) (for video operations: thumbnail extraction, compression)
   - On Linux, simply run 
     ```bash
     sudo apt install node ffmpeg
@@ -180,7 +180,6 @@ Currently this project is very much a work-in-progress.
 ## Supporting
 - Sqlite3 provided FTS5 for searches
 - sharp for image operations
-- fluent-ffmpeg for video operations
 - exiftool-vendored for metadata read / write
 - Use browser native features (HTML5) to play videos
 

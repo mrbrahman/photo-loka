@@ -1,7 +1,7 @@
-import { asyncGet, asyncRun } from './db-pool.mjs';
+import { asyncGet, asyncRun } from '#db/db-pool';
 import fs from 'fs';
 import path from 'path';
-import { config } from '../config.mjs';
+import { config } from '#config';
 
 const rateLimitFile = path.join(path.dirname(config.dbFile), 'rate_limit_state.json');
 

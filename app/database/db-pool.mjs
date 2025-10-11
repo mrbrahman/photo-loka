@@ -2,6 +2,9 @@ import {Worker} from 'worker_threads'
 import * as os from 'os';
 import { fileURLToPath } from 'url';
 import path from 'path';
+import { createLogger } from '#utils/logger';
+
+const logger = createLogger(import.meta.url);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -84,7 +87,7 @@ new Array(Math.min(os.availableParallelism(), 8)-1).fill(null).forEach(function 
       takeWork(); // Check if there's more work to do
     })
     .on('error', (err) => {
-      console.error(err);
+      logger.error(err);
       error = err;
     })
     .on('exit', (code) => {
@@ -93,7 +96,7 @@ new Array(Math.min(os.availableParallelism(), 8)-1).fill(null).forEach(function 
         job.reject(error || new Error('worker died'));
       }
       if (code !== 0) {
-        console.error(`worker exited with code ${code}`);
+        logger.error(`worker exited with code ${code}`);
         spawn(); // Worker died, so spawn a new one
       }
     });

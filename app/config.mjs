@@ -11,7 +11,7 @@ config.filesDeletedThreshold = 5;
 
 // nightly indexing
 config.enableNightlyIndexing = true;
-config.nightlyIndexingDelayDays = 30;
+config.staleDays = 30;
 
 // indexer
 config.maxIndexerConcurrency = 1;

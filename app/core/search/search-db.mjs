@@ -1,4 +1,7 @@
-import { asyncGet, asyncAll, asyncRun } from './db-pool.mjs';
+import { asyncGet, asyncAll, asyncRun } from '#db/db-pool';
+import { createLogger } from '#utils/logger';
+
+const logger = createLogger(import.meta.url);
 
 export const restrictSearchCols = ['album', 'keywords', 'faces', 'objects', 'mediatype', 'make', 'model', 'geo_address'];
 
@@ -108,13 +111,13 @@ export async function runSearch(collection_id, searchStr, trashed = false, group
 
   if(searchStr){
     let parsedCondition = converToFilterStr(searchStr);
-    console.log(parsedCondition);
+    logger.debug(parsedCondition);
 
     filters.push(parsedCondition)
   } else {
     limit = true;
   }
-  // console.log(filters)
+  // logger.debug(filters)
 
   const baseQuery = `
     select album,
@@ -153,7 +156,7 @@ export async function runSearch(collection_id, searchStr, trashed = false, group
     `;
   }
 
-  console.log(sql)
+  logger.debug(sql)
   
   let results = await asyncAll(sql);
   return groupByAlbum ? transformSearchResultsFromDb(results) : results.map(row => JSON.parse(row.item));
@@ -165,24 +168,6 @@ function transformSearchResultsFromDb(rows){
     row['id'] = row['album'].replace(/[\s&\/]/ig, '_');
     return row
   });
-}
-
-export async function searchForExistingAlbums(searchStr, wantFullName){
-  // sqlite substr is '1' based
-  // TODO: Remove hardcoding of 16 - get it from collection.apply_folder_pattern
-  // TODO: How to even more generalize it? For e.g. someone may want '<album name> YYYY-MM-DD'
-  
-  // note: wantFullName is string (from REST)
-  let sql = `
-    select ${wantFullName==="true"?"album":"trim(substr(album, 16))"} as similar, count(*) cnt
-    from metadata 
-    where metadata match '{album} : ("${searchStr}"*)'
-    and album not like '%TBD%'
-    group by 1
-    limit 10
-  `;
-
-  return await asyncAll(sql);
 }
 
 export async function getGpsCoordinates(){

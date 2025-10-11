@@ -97,3 +97,4 @@ export async function updateMetadata(file, updates){
 
   await exiftool.write(file, updates, ['-overwrite_original']);
 }
+

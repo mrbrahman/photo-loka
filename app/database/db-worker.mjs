@@ -2,7 +2,7 @@ import {parentPort} from 'worker_threads';
 
 import Database from 'better-sqlite3';
 
-import {config} from '../config.mjs';
+import {config} from '#config';
 const dbFile = config.dbFile;
 // Each worker will open a separate `sqlite3` connection
 const db = new Database(dbFile, {  }); // verbose: console.log

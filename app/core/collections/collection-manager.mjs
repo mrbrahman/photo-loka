@@ -1,8 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-import * as watcher from './watcher.mjs';
-import * as db from '../database/collection-db.mjs';
+import * as watcher from '#jobs/file-watcher-job';
+import * as db from './collection-db.mjs';
 
 export async function createNewCollection(record){
   if(!isValidDir(record.collection_path)){
