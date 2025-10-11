@@ -11,10 +11,10 @@ export async function executeBackupOperations(operations) {
     try {
       const result = await executeSingleOperation(op);
       results.push({ ...op, success: true, result });
-      logger.info(`Backup operation completed: ${op.action} - ${op.path1 || 'null'} -> ${op.path2 || 'null'}`);
+      logger.info(`Backup operation completed: ${op.id} ${op.action} - ${op.path1 || 'null'} -> ${op.path2 || 'null'}`);
     } catch (error) {
       results.push({ ...op, success: false, error: error.message });
-      logger.error(`Backup operation failed: ${op.action} - ${error.message}`);
+      logger.error(`Backup operation failed: ${op.id} ${op.action} - ${error.message}`);
       break;
     }
   }
