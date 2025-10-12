@@ -77,7 +77,7 @@ class PlAlbumName extends HTMLElement {
       
     })
     .catch(err=>{
-      if(err.code === "ENOTEMPTY"){
+      if(err.code === "FOLDER_EXISTS"){
         // directory already exists
         this.dispatchEvent(new CustomEvent('pl-rename-dir-not-empty', {
           detail: {

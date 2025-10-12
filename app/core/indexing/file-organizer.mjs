@@ -101,7 +101,13 @@ export async function placeFileInCollection(collection, filename, file_date, inP
 
 export async function renameFolder(collection_id, currAlbum, newAlbum){
   try {
-    fs.renameSync(currAlbum, newAlbum);
+    // Check if destination folder already exists
+    const exists = await fsPromises.access(newAlbum).then(() => true).catch(() => false);
+    if (exists) {
+      throw {code: 'FOLDER_EXISTS', message: 'Destination folder already exists'};
+    }
+    
+    await fsPromises.rename(currAlbum, newAlbum);
     await logChange(collection_id, 'move', currAlbum, newAlbum);
   } catch (err) {
     logger.error(err)
