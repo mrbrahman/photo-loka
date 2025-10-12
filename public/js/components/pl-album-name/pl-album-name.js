@@ -1,4 +1,4 @@
-import {notify, throttle} from './utils.mjs';
+import {notify, throttle} from '../../utils.mjs';
 
 class PlAlbumName extends HTMLElement {
 

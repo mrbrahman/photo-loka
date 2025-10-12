@@ -14,15 +14,15 @@ import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/compone
 
 import {notify, showProgressBar, hideProgressBar} from './utils.mjs';
 
-import './pl-thumb.js';
-import './pl-album.js';
-import './pl-album-name.js';
-import './pl-gallery.js';
-import './pl-gallery-controls.js';
-import './pl-slide.js';
-import './pl-slideshow.js';
-import './pl-map.js';
-import './pl-carousel.js';
+import './components/pl-thumb/pl-thumb.js';
+import './components/pl-album/pl-album.js';
+import './components/pl-album-name/pl-album-name.js';
+import './components/pl-gallery/pl-gallery.js';
+import './components/pl-gallery-controls/pl-gallery-controls.js';
+import './components/pl-slide/pl-slide.js';
+import './components/pl-slideshow/pl-slideshow.js';
+import './components/pl-map/pl-map.js';
+import './components/pl-carousel/pl-carousel.js';
 
 const router = new Navigo('/', {hash: true});
 
