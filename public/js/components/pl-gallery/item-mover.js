@@ -1,4 +1,5 @@
 import {notify} from '../../utils.mjs';
+import {userState} from '../../user-state.mjs';
 
 export class ItemMover {
   constructor(component) {
@@ -16,7 +17,7 @@ export class ItemMover {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          collection_id: 1,   // TODO: remove hardcoding
+          collection_id: userState.getCollectionId(),
           uuid_arr: this.component.itemsSelected.map(x=>x.data.id),
           new_album_name: targetAlbumName
         })

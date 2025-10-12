@@ -1,4 +1,5 @@
 import {notify, throttle} from '../../utils.mjs';
+import {userState} from '../../user-state.mjs';
 
 class PlAlbumName extends HTMLElement {
 
@@ -48,7 +49,7 @@ class PlAlbumName extends HTMLElement {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        collection_id: 1, // TODO: hardcoded for now, update this when "state" is implemented
+        collection_id: userState.getCollectionId(),
         currAlbumName: this.#albumName,
         newAlbumName: this.shadowRoot.getElementById('album-name').innerText
       })

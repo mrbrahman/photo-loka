@@ -1,3 +1,5 @@
+import {userState} from '../../user-state.mjs';
+
 export class MarkerHandler {
   constructor(component) {
     this.component = component;
@@ -68,7 +70,7 @@ export class MarkerHandler {
       const response = await fetch('/api/searchByGpsCoordinates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ collection_id: 1, coordinates })
+        body: JSON.stringify({ collection_id: userState.getCollectionId(), coordinates })
       });
       const data = await response.json();
       

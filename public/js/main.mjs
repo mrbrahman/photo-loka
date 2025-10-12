@@ -13,6 +13,7 @@ import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/compone
 import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/input/input.js';
 
 import {notify, showProgressBar, hideProgressBar} from './utils.mjs';
+import {userState} from './user-state.mjs';
 
 import './components/pl-thumb/pl-thumb.js';
 import './components/pl-album/pl-album.js';
@@ -27,8 +28,6 @@ import './components/pl-carousel/pl-carousel.js';
 const router = new Navigo('/', {hash: true});
 
 let state = {};
-
-state.collection_id = 1; // until UI is implemented
 
 // PWA install prompt handling
 let deferredPrompt;
@@ -106,7 +105,7 @@ document.getElementById('app').addEventListener('pl-map-item-click', async (evt)
     const response = await fetch('/api/search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({collection_id: state.collection_id, searchText: `uuid:${evt.detail.uuid}`})
+      body: JSON.stringify({collection_id: userState.getCollectionId(), searchText: `uuid:${evt.detail.uuid}`})
     });
     const result = await response.json();
     if (result.length > 0 && result[0].items.length > 0) {
@@ -167,7 +166,7 @@ router.on('/search/:searchText', function(p){
     headers: {
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({collection_id: state.collection_id, searchText: p.data.searchText})
+    body: JSON.stringify({collection_id: userState.getCollectionId(), searchText: p.data.searchText})
   })
   .then(res=>{
     if(!res.ok){
