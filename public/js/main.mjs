@@ -1,16 +1,16 @@
-import 'https://unpkg.com/navigo';
+import 'navigo';
 
 // cherry-pick shoelace components
-import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/icon/icon.js';
-import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/icon-button/icon-button.js';
-import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/rating/rating.js';
-import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/alert/alert.js';
-import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/dropdown/dropdown.js';
-import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/menu-item/menu-item.js';
-import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/menu/menu.js';
-import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/progress-bar/progress-bar.js'
-import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/dialog/dialog.js';
-import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/input/input.js';
+import '@shoelace/icon';
+import '@shoelace/icon-button';
+import '@shoelace/rating';
+import '@shoelace/alert';
+import '@shoelace/dropdown';
+import '@shoelace/menu-item';
+import '@shoelace/menu';
+import '@shoelace/progress-bar';
+import '@shoelace/dialog';
+import '@shoelace/input';
 
 import {notify, showProgressBar, hideProgressBar} from './utils.mjs';
 import {userState} from './user-state.mjs';
