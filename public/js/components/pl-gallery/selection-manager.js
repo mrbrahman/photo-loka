@@ -1,5 +1,5 @@
-import {notify} from '../../utils.mjs';
-import {userState} from '../../user-state.mjs';
+import {notify} from '#utils';
+import {userState} from '#user-state';
 
 export class SelectionManager {
   constructor(component) {

@@ -12,8 +12,8 @@ import '@shoelace/progress-bar';
 import '@shoelace/dialog';
 import '@shoelace/input';
 
-import {notify, showProgressBar, hideProgressBar} from './utils.mjs';
-import {userState} from './user-state.mjs';
+import {notify, showProgressBar, hideProgressBar} from '#utils';
+import {userState} from '#user-state';
 
 import './components/pl-thumb/pl-thumb.js';
 import './components/pl-album/pl-album.js';

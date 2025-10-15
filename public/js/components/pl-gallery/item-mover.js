@@ -1,4 +1,4 @@
-import {notify} from '../../utils.mjs';
+import {notify} from '#utils';
 import {userState} from '../../user-state.mjs';
 
 export class ItemMover {

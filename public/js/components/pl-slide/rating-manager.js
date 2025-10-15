@@ -1,4 +1,4 @@
-import {notify} from '../../utils.mjs';
+import {notify} from '#utils';
 
 export class RatingManager {
   constructor(component) {

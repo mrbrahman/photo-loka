@@ -1,4 +1,4 @@
-import {throttle} from '../../utils.mjs';
+import {throttle} from '#utils';
 
 export class ViewportManager {
   constructor(component) {

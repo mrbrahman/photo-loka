@@ -1,4 +1,4 @@
-import {notify} from '../../utils.mjs';
+import {notify} from '#utils';
 import { ImageLoader } from './image-loader.js';
 import { SelectionHandler } from './selection-handler.js';
 import { RatingHandler } from './rating-handler.js';

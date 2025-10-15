@@ -1,4 +1,4 @@
-import { notify } from '../../utils.mjs';
+import { notify } from '#utils';
 import { LayoutManager } from './layout-manager.js';
 import { NavigationController } from './navigation-controller.js';
 import { ThumbRenderer } from './thumb-renderer.js';
