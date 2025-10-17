@@ -5,7 +5,7 @@ const config = {};
 // set defaults
 
 // monitor files
-config.startFileWatcherAtStartup = false;  // immediate indexing
+config.startFileWatcherAtStartup = true;  // immediate indexing
 config.scanFilesForChangesAndIndexAtStartup = false;
 config.filesDeletedThreshold = 5;
 
