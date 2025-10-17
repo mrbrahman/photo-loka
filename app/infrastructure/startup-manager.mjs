@@ -5,7 +5,7 @@ import { createLogger } from '#utils/logger';
 import { getAllCollections } from '#collections/collection-manager';
 import { indexCollection } from '#indexing/collection-indexer';
 import { startWatchersForAllCollections } from '#jobs/file-watcher-job';
-import { startNightlyIndexing } from '#jobs/nightly-indexing-job';
+import { startScheduledIndexing } from '#jobs/scheduled-indexing-job';
 
 const logger = createLogger(import.meta.url);
 
@@ -30,6 +30,6 @@ export async function startUpActivities(){
     }
   }
 
-  // Start nightly indexing
-  startNightlyIndexing();
+  // Start scheduled indexing
+  startScheduledIndexing();
 }

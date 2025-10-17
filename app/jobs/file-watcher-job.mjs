@@ -10,7 +10,37 @@ import {shouldIgnoreFile} from '#utils/file-filters';
 
 const logger = createLogger(import.meta.url);
 
-// store an array of {collection_id: <id>, listen_path: <path>, watcher: <chokidar watcher>}
+/*
+ * Chokidar watcher config options for frontend (method: "immediate"):
+ * 
+ * Performance & Stability:
+ * - awaitWriteFinish: true | {stabilityThreshold: 2000, pollInterval: 100} - Wait for file writes to complete
+ * - ignoreInitial: true - Don't trigger events for existing files on startup
+ * - usePolling: true - Use polling instead of native events (for network drives)
+ * - interval: 1000 - Polling interval in ms (default: 100)
+ * 
+ * File Filtering:
+ * - depth: 3 - Limit directory traversal depth
+ * - ignored: /pattern/ - Additional ignore patterns
+ * 
+ * Example configs:
+ * {
+ *   "awaitWriteFinish": true,
+ *   "ignoreInitial": true,
+ *   "depth": 3
+ * }
+ * 
+ * {
+ *   "usePolling": true,
+ *   "interval": 1000,
+ *   "awaitWriteFinish": {
+ *     "stabilityThreshold": 2000,
+ *     "pollInterval": 100
+ *   }
+ * }
+ */
+
+// store an array of {collection_id: <id>, intake_path: <path>, watcher: <chokidar watcher>}
 var allWatchers = [];
 
 export async function startWatchersForAllCollections(){
@@ -22,9 +52,12 @@ export async function startWatchersForAllCollections(){
 }
 
 export function startWatcherForCollection(collection){
-  for(let p of collection.listen_paths){
-    let w = chokidar.watch(p, {
-      ignored: shouldIgnoreFile
+  for(let intakeConfig of collection.intake_configs){
+    if(intakeConfig.method !== 'immediate') continue;
+    
+    let w = chokidar.watch(intakeConfig.path, {
+      ignored: shouldIgnoreFile,
+      ...intakeConfig.config
     })
       .on('add', file=>{
         if(ignoreWatcherList[file] != undefined){
@@ -39,10 +72,10 @@ export function startWatcherForCollection(collection){
     
     allWatchers.push({
       collection_id: collection.collection_id, 
-      listen_path: p, 
+      intake_path: intakeConfig.path, 
       watcher: w
     });
-    logger.info(`watcher for collection_id: ${collection.collection_id} listen_path: ${p} is now setup`);
+    logger.info(`watcher for collection_id: ${collection.collection_id} intake_path: ${intakeConfig.path} is now setup`);
   }
 }
 
@@ -52,8 +85,8 @@ export function listAllWatchers(){
 
 export function stopAllWatchers(){
   allWatchers.map(async function(x){
-    logger.info(`closing watcher for collection_id: ${x.collection_id} listen_path: ${x.listen_path}`);
+    logger.info(`closing watcher for collection_id: ${x.collection_id} intake_path: ${x.intake_path}`);
     await x['watcher'].close();
-    logger.info(`watcher for ${x.listen_path} closed`);
+    logger.info(`watcher for ${x.intake_path} closed`);
   })
 }

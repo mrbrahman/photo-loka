@@ -10,7 +10,7 @@ config.scanFilesForChangesAndIndexAtStartup = false;
 config.filesDeletedThreshold = 5;
 
 // nightly indexing
-config.enableNightlyIndexing = true;
+config.enableScheduledIndexing = true;
 config.staleDays = 30;
 
 // indexer

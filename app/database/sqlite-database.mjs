@@ -50,7 +50,7 @@ function initialDbSetup() {
       collection_name text,
       collection_path text NOT NULL UNIQUE,
       album_type text,
-      listen_paths text,        -- stored as an array (JSON)
+      intake_configs text,      -- stored as an array of objects (JSON) with path, method, config
       apply_folder_pattern,     -- need to be 'dateformat' package compatible format
       trash_days integer DEFAULT 30,
 

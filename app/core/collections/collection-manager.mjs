@@ -9,9 +9,12 @@ export async function createNewCollection(record){
     throw `${record.collection_path} is not a valid path in collection path`
   }
 
-  for (let path of record.listen_paths){
-    if(!isValidDir(path)){
-      throw `${path} is not a valid path in listen path`
+  for (let intakeConfig of record.intake_configs){
+    if(!isValidDir(intakeConfig.path)){
+      throw `${intakeConfig.path} is not a valid path in intake config`
+    }
+    if(!['immediate', 'scheduled', 'on-demand'].includes(intakeConfig.method)){
+      throw `${intakeConfig.method} is not a valid method. Use 'immediate' or 'scheduled'`
     }
   }
 
@@ -36,6 +39,10 @@ export async function getDefaultCollection(){
 
 export async function getCollection(collection_id){
   return await db.getCollection(collection_id)
+}
+
+export async function getCollectionByIntakePath(dirPath){
+  return await db.getCollectionByIntakePath(dirPath)
 }
 
 export function isValidDir(path){

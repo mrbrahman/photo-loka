@@ -139,9 +139,14 @@ apiRouter.post('/indexCollection/:collection_id', function(req,res){
   res.sendStatus(200);
 });
 
-apiRouter.post('/startStaleFileIndexing', function(req,res){
-  s.staleIndexer.enqueueStaleFiles();
-  res.sendStatus(200);
+apiRouter.post('/startNewFileIndexing', async function(req,res){
+  let {collection_id, dir, staleDays} = req.body;
+  try {
+    await s.newFilesIndexer.startNewFileIndexing(collection_id, dir, staleDays);
+    res.sendStatus(200);
+  } catch (error) {
+    res.status(500).json({error: error.message});
+  }
 });
 
 // *****************************************
@@ -273,16 +278,16 @@ apiRouter.post('/stopAllWatchers', function(req,res){
 });
 
 // *****************************************
-// nightly indexing
+// scheduled indexing
 // *****************************************
 
-apiRouter.post('/startNightlyIndexing', function(req,res){
-  s.jobs.startNightlyIndexing();
+apiRouter.post('/startScheduledIndexing', function(req,res){
+  s.jobs.startScheduledIndexing();
   res.sendStatus(200);
 });
 
-apiRouter.post('/stopNightlyIndexing', function(req,res){
-  s.jobs.stopNightlyIndexing();
+apiRouter.post('/stopScheduledIndexing', function(req,res){
+  s.jobs.stopScheduledIndexing();
   res.sendStatus(200);
 });
 

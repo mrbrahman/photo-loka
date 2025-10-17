@@ -133,16 +133,78 @@ Currently this project is very much a work-in-progress.
 
 - **Setup Collection & Start Indexing**
 
-  Until the UI is available to create collections and auto-start indexing, use REST API. For e.g.
+  Until the UI is available to create collections and auto-start indexing, use REST API.
 
-  Create collection
+  Example for creating collection with real-time watcher
   ```bash
   cat > c.json <<EOF
   {
     "collection_name":"Test",
     "collection_path":"/home/mrbrahman/Projects/test-collection/",
     "album_type":"FOLDER_ALBUM",
-    "listen_paths":["/home/mrbrahman/Projects/test-collection-new-files/"],
+    "intake_configs":[
+      {
+        "path":"/home/mrbrahman/Projects/test-collection-new-files/",
+        "method":"immediate",
+        "config":{
+          "awaitWriteFinish":true,
+          "ignoreInitial":true
+        }
+      }
+    ],
+    "apply_folder_pattern":"yyyy/yyyy-mm-dd",
+    "default_collection":1
+  }
+  EOF
+  ```
+
+  Example for creating collection with scheduled cron indexing
+  ```bash
+  cat > c.json <<EOF
+  {
+    "collection_name":"Test",
+    "collection_path":"/home/mrbrahman/Projects/test-collection/",
+    "album_type":"FOLDER_ALBUM",
+    "intake_configs":[
+      {
+        "path":"/home/mrbrahman/Projects/bulk-import/",
+        "method":"scheduled",
+        "config":{
+          "schedule":"0 2 * * *",
+          "staleDays":2
+        }
+      }
+    ],
+    "apply_folder_pattern":"yyyy/yyyy-mm-dd",
+    "default_collection":1
+  }
+  EOF
+  ```
+
+  Example for creating collection with mixed watcher and cron paths
+  ```bash
+  cat > c.json <<EOF
+  {
+    "collection_name":"Test",
+    "collection_path":"/home/mrbrahman/Projects/test-collection/",
+    "album_type":"FOLDER_ALBUM",
+    "intake_configs":[
+      {
+        "path":"/home/mrbrahman/Projects/camera-import/",
+        "method":"immediate",
+        "config":{
+          "awaitWriteFinish":true
+        }
+      },
+      {
+        "path":"/network/shared-photos/",
+        "method":"scheduled",
+        "config":{
+          "schedule":"0 1 * * *",
+          "staleDays":1
+        }
+      }
+    ],
     "apply_folder_pattern":"yyyy/yyyy-mm-dd",
     "default_collection":1
   }
