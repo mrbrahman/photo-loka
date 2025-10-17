@@ -30,7 +30,10 @@ app.use(express.static('public'));
 const morganMiddleware = morgan(
   ':method :url :status :response-time ms',
   {
-    skip: (req) => req.url.includes('/getThumbnail'),
+    skip: (req) => 
+         req.url.includes('/getThumbnail')
+      || req.url.includes('/getImage')
+      || req.url.includes('/getVideo'),
     stream: {
         write: (message) => logger.info(message.trim()),
     },
