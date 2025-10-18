@@ -17,12 +17,17 @@ let indexerQueue = pp()
 export const indexerErrors = [];
 
 let indexerBatchStart;
+let indexrBatchStarted = false;
 
 indexerEvents.on('start_batch', ()=>{
-  indexerBatchStart = performance.now();
+  if(!indexrBatchStarted){
+    indexrBatchStarted = true;
+    indexerBatchStart = performance.now();
+  }
 });
 
 indexerEvents.on('all_done', ()=>{
+  indexrBatchStarted = false;
   logger.info(`Finished Indexer batch in ${fmtTime(performance.now()-indexerBatchStart)}`)
 });
 
