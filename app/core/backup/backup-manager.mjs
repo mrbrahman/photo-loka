@@ -48,7 +48,7 @@ export async function backupCollection(deviceId, collectionId, mountpoint, dryRu
       throw new Error(`Collection ${collectionId} not found`);
     }
     
-    const listenPaths = collection.listen_paths;
+    const listenPaths = collection.intake_configs.map(x => x.path);
     const collectionPaths = [collection.collection_path];
     
     logger.info(`Processing ${changes.length} changes from audit log`);
