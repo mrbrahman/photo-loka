@@ -9,10 +9,10 @@ const logger = createLogger(import.meta.url);
 class EmitterClass extends EventEmitter {};
 export const indexerEvents = new EmitterClass();
 
-let indexerQueue = pp()
-  .maxConcurrency(config.maxIndexerConcurrency)
-  .emitter(indexerEvents)
-;
+let indexerQueue = new pp({
+  maxConcurrency: config.maxIndexerConcurrency,
+  emitter: indexerEvents
+});
 
 export const indexerErrors = [];
 
@@ -47,7 +47,7 @@ export function resumeIndexer(){
 export function updateIndexerConcurrency(concurrency){
   let c = Number(concurrency)
   // update indexerQueue
-  indexerQueue.maxConcurrency(c);
+  indexerQueue.maxConcurrency = c;
 
   // update config
   config.maxIndexerConcurrency=c;

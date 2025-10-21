@@ -1,7 +1,7 @@
 import { ParallelProcesses } from '#utils/parallel-processes';
 import { performReverseGeoEncoding } from './geo-cache.mjs';
 
-const processor = ParallelProcesses();
+const processor = new ParallelProcesses();
 
 export function enqueue(uuid, gps_lat, gps_long) {
   processor.enqueue(performReverseGeoEncoding, [uuid, gps_lat, gps_long]);

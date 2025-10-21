@@ -6,9 +6,9 @@ import 'dotenv/config';
 
 const logger = createLogger(import.meta.url);
 
-const geonamesProcessor = ParallelProcesses();
+const geonamesProcessor = new ParallelProcesses();
 
-geonamesProcessor.pauseConditionFn(checkGeonamesRateLimit);
+geonamesProcessor.pauseConditionFn = checkGeonamesRateLimit;
 
 export async function performReverseGeoEncoding(uuid, gps_lat, gps_long) {
   logger.info(`Starting reverse geo-encoding for ${uuid} at ${gps_lat}, ${gps_long}`);

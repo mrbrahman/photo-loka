@@ -1,5 +1,5 @@
 /*
-  ParallelProcesses
+  ParallelProcesses Class
 
   Run processes (functions) in parallel using controlled concurrency,
   with the ability the change concurrency even as the processes are running!
@@ -11,161 +11,182 @@
  
 */
 
-// TODO: Should this return a promise?
-
-import {EventEmitter} from 'events';
+import { EventEmitter } from 'events';
 import { createLogger } from '#utils/logger';
 
 const logger = createLogger(import.meta.url);
 
-export function ParallelProcesses(){
-  var maxConcurrency=1, processInInsertOrder=false, autoStart=true, emitter, pauseConditionFn;
-  let queue=[], processingCnt=0, pendingCnt=0, completedCnt=0, failedCnt=0, paused=false;
-  
-  function my(){
-    // nothing much to do here
+export class ParallelProcesses {
+  #maxConcurrency = 1;
+  #processInInsertOrder = false;
+  #autoStart = true;
+  #emitter = null;
+  #pauseConditionFn = null;
+  #queue = [];
+  #processingCnt = 0;
+  #pendingCnt = 0;
+  #completedCnt = 0;
+  #failedCnt = 0;
+  #paused = false;
+
+  constructor(options = {}) {
+    this.#maxConcurrency = options.maxConcurrency || 1;
+    this.#processInInsertOrder = options.processInInsertOrder || false;
+    this.#autoStart = options.autoStart !== false;
+    if (options.emitter) this.#emitter = options.emitter;
+    if (options.pauseConditionFn) this.#pauseConditionFn = options.pauseConditionFn;
   }
 
-  // need to call this as: p.enqueue(fun, [arg1, arg2])
-  my.enqueue = function(func, args = []){
+  enqueue(func, args = []) {
     const task = {
       func,
       args,
       name: func.name || 'anonymous',
       execute: () => func.apply(null, args)
     };
-    queue.push(task);
-    pendingCnt++;
-    if(autoStart)
-      dequeue();
-    
-    return my;
+    this.#queue.push(task);
+    this.#pendingCnt++;
+    if (this.#autoStart) this.#dequeue();
+    return this;
   }
 
-  my.enqueueMany = function(tasks){
-    let noOfEntries = tasks.length;
+  enqueueMany(tasks) {
     const taskObjects = tasks.map(([func, args = []]) => ({
       func,
       args,
       name: func.name || 'anonymous',
       execute: () => func.apply(null, args)
     }));
-    queue.push(...taskObjects);
-    pendingCnt+=noOfEntries;
-    if(autoStart)
-      dequeue();
-
-    return my;
+    this.#queue.push(...taskObjects);
+    this.#pendingCnt += taskObjects.length;
+    if (this.#autoStart) this.#dequeue();
+    return this;
   }
 
-  // this one is not exposed
-  let dequeue = function(){
-    if(pauseConditionFn && !pauseConditionFn()){
-      paused = true;
+  #dequeue() {
+    if (this.#pauseConditionFn && !this.#pauseConditionFn()) {
+      this.#paused = true;
     }
-    if (!paused && processingCnt<maxConcurrency && queue.length>0){
-      if(processingCnt == 0){
-        if(emitter){
-          emitter.emit('start_batch');
-        }
+    if (!this.#paused && this.#processingCnt < this.#maxConcurrency && this.#queue.length > 0) {
+      if (this.#processingCnt === 0 && this.#emitter) {
+        this.#emitter.emit('start_batch');
       }
 
-      processingCnt++; pendingCnt--;
-      let item = processInInsertOrder ? queue.shift() : queue.pop();
+      this.#processingCnt++;
+      this.#pendingCnt--;
+      const item = this.#processInInsertOrder ? this.#queue.shift() : this.#queue.pop();
       const taskInfo = `${item.name}(${item.args.map(arg => JSON.stringify(arg)).join(', ')})`;
-      if(emitter){
-        emitter.emit('start', taskInfo)
+      
+      if (this.#emitter) {
+        this.#emitter.emit('start', taskInfo);
       }
-        
+
       item.execute()
-        .then(returnValue=>{
-          // logger.debug('in then '+returnValue);
-          processingCnt--; completedCnt++;
-          if(emitter){
-            emitter.emit('end', taskInfo, returnValue)
+        .then(returnValue => {
+          this.#processingCnt--;
+          this.#completedCnt++;
+          if (this.#emitter) {
+            this.#emitter.emit('end', taskInfo, returnValue);
           }
         })
-        .catch(error=>{
+        .catch(error => {
           logger.error(`Error while processing task ${taskInfo}: ${error}`);
-          processingCnt--; failedCnt++;
-          if(emitter){
-            emitter.emit('error', taskInfo, error);
+          this.#processingCnt--;
+          this.#failedCnt++;
+          if (this.#emitter) {
+            this.#emitter.emit('error', taskInfo, error);
           }
         })
-        .finally(()=>{
-          if(pendingCnt==0 && processingCnt==0 && emitter){
-            emitter.emit('all_done')
+        .finally(() => {
+          if (this.#pendingCnt === 0 && this.#processingCnt === 0 && this.#emitter) {
+            this.#emitter.emit('all_done');
           }
-          dequeue()
-        })
+          this.#dequeue();
+        });
     }
   }
 
-  my.start = function(){
-    for(let i=1; i<=(maxConcurrency); i++){
-      dequeue();
+  start() {
+    for (let i = 1; i <= this.#maxConcurrency; i++) {
+      this.#dequeue();
     }
+    return this;
   }
 
-  my.pause = function(){
-    paused = true;
+  pause() {
+    this.#paused = true;
+    return this;
   }
 
-  my.resume = function(){
-    paused = false;
-    my.start()
+  resume() {
+    this.#paused = false;
+    this.start();
+    return this;
   }
 
-  my.maxConcurrency = function(_){
-    if(arguments.length){
-      let currentMaxConcurrency = maxConcurrency;
-      if(_ > 0){
-        maxConcurrency = _;
-        if(maxConcurrency > currentMaxConcurrency){
-          // initiate additional dequeue
-          for(let i=1; i<=(maxConcurrency-currentMaxConcurrency); i++){
-            dequeue();
-          }
+  get maxConcurrency() {
+    return this.#maxConcurrency;
+  }
+
+  set maxConcurrency(value) {
+    if (value > 0) {
+      const currentMax = this.#maxConcurrency;
+      this.#maxConcurrency = value;
+      if (value > currentMax) {
+        for (let i = 1; i <= (value - currentMax); i++) {
+          this.#dequeue();
         }
       }
-
-      return my;
-      
-    } else {
-      return maxConcurrency;
     }
   }
 
-  my.processInInsertOrder = function(_){
-    return arguments.length ? (processInInsertOrder = _, my): processInInsertOrder;
+  get processInInsertOrder() {
+    return this.#processInInsertOrder;
   }
 
-  my.autoStart = function(_){
-    return arguments.length ? (autoStart = _, my): autoStart;
+  set processInInsertOrder(value) {
+    this.#processInInsertOrder = value;
+    return this;
   }
 
-  my.emitter = function(_){
-    if(arguments.length){
-      if(!_ instanceof EventEmitter){
-        throw 'Emitter parameter is not an instance of EventEmitter class!'
-      } else {
-        emitter = _;
-      }
-      return my;
-    } else {
-      return emitter ? true : false;
+  get autoStart() {
+    return this.#autoStart;
+  }
+
+  set autoStart(value) {
+    this.#autoStart = value;
+    return this;
+  }
+
+  get emitter() {
+    return this.#emitter ? true : false;
+  }
+
+  set emitter(value) {
+    if (!(value instanceof EventEmitter)) {
+      throw new Error('Emitter parameter is not an instance of EventEmitter class!');
     }
+    this.#emitter = value;
+    return this;
   }
 
-  my.pauseConditionFn = function(_){
-    return arguments.length ? (pauseConditionFn = _, my): pauseConditionFn;
+  get pauseConditionFn() {
+    return this.#pauseConditionFn;
   }
 
-  my.status = function(){
+  set pauseConditionFn(value) {
+    this.#pauseConditionFn = value;
+    return this;
+  }
+
+  status() {
     return {
-      processingCnt, pendingCnt, completedCnt, failedCnt, paused, maxConcurrency
-    }
+      processingCnt: this.#processingCnt,
+      pendingCnt: this.#pendingCnt,
+      completedCnt: this.#completedCnt,
+      failedCnt: this.#failedCnt,
+      paused: this.#paused,
+      maxConcurrency: this.#maxConcurrency
+    };
   }
-
-  return my;
 }
