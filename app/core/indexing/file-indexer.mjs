@@ -76,7 +76,7 @@ export async function indexFile(collection, sourceFileName, uuid, inPlace){
 
     // Step 5: video compression to help with streaming on browsers
     try{
-      if(p.mediatype == "video"){
+      if(p.mediatype == "video" && config.performVideoCompression){
         // Check for pre-compressed webm file
         const baseName = path.basename(sourceFileName, path.extname(sourceFileName));
         const sourceDir = path.dirname(sourceFileName);

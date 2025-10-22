@@ -16,6 +16,9 @@ config.staleDays = 0;
 // indexer
 config.maxIndexerConcurrency = 1;
 
+// video compression
+config.performVideoCompression = true;
+
 // dirs
 config.dataDir = 'data';
 config.thumbsDir = path.join(config.dataDir, 'thumbnails');
