@@ -24,7 +24,7 @@ export class ParallelProcesses {
   #autoStart = true;
   #emitter = null;
   #pauseConditionFn = null;
-  #queue = [];
+  #queues = { high: [], normal: [], low: [] };
   #processingCnt = 0;
   #pendingCnt = 0;
   #completedCnt = 0;
@@ -71,28 +71,30 @@ export class ParallelProcesses {
     return new ParallelProcesses(options, true);
   }
 
-  enqueue(func, args = []) {
+  enqueue(func, args = [], priority = 'normal') {
     const task = {
       func,
       args,
       name: func.name || 'anonymous',
       execute: () => func.apply(null, args)
     };
-    this.#queue.push(task);
+    this.#queues[priority].push(task);
     this.#pendingCnt++;
     if (this.#autoStart) this.#dequeue();
     return this;
   }
 
   enqueueMany(tasks) {
-    const taskObjects = tasks.map(([func, args = []]) => ({
-      func,
-      args,
-      name: func.name || 'anonymous',
-      execute: () => func.apply(null, args)
-    }));
-    this.#queue.push(...taskObjects);
-    this.#pendingCnt += taskObjects.length;
+    tasks.forEach(([func, args = [], priority = 'normal']) => {
+      const task = {
+        func,
+        args,
+        name: func.name || 'anonymous',
+        execute: () => func.apply(null, args)
+      };
+      this.#queues[priority].push(task);
+      this.#pendingCnt++;
+    });
     if (this.#autoStart) this.#dequeue();
     return this;
   }
@@ -102,14 +104,16 @@ export class ParallelProcesses {
       this.#paused = true;
     }
     const concurrencyLimit = this.#systemMonitor ? this.#currentConcurrency : this.#maxConcurrency;
-    if (!this.#paused && this.#processingCnt < concurrencyLimit && this.#queue.length > 0) {
+    const totalPending = this.#queues.high.length + this.#queues.normal.length + this.#queues.low.length;
+    if (!this.#paused && this.#processingCnt < concurrencyLimit && totalPending > 0) {
       if (this.#processingCnt === 0 && this.#emitter) {
         this.#emitter.emit('start_batch');
       }
 
       this.#processingCnt++;
       this.#pendingCnt--;
-      const item = this.#processInInsertOrder ? this.#queue.shift() : this.#queue.pop();
+      // Get next item from priority queues
+      const item = this.#getNextTask();
       const taskInfo = `${item.name}(${item.args.map(arg => JSON.stringify(arg)).join(', ')})`;
       
       if (this.#emitter) {
@@ -223,7 +227,8 @@ export class ParallelProcesses {
 
   #handleLoadRecommendation(recommendation) {
     const now = Date.now();
-    logger.trace(`Received load recommendation: ${recommendation.action} (queue: ${this.#queue.length}, processing: ${this.#processingCnt}, current: ${this.#currentConcurrency})`);
+    const totalPending = this.#queues.high.length + this.#queues.normal.length + this.#queues.low.length;
+    logger.trace(`Received load recommendation: ${recommendation.action} (queue: ${totalPending}, processing: ${this.#processingCnt}, current: ${this.#currentConcurrency})`);
     
     if (now - this.#lastConcurrencyCheck < this.#concurrencyCheckInterval) {
       logger.trace(`Skipping adjustment - too soon (${now - this.#lastConcurrencyCheck}ms < ${this.#concurrencyCheckInterval}ms)`);
@@ -242,7 +247,8 @@ export class ParallelProcesses {
         logger.trace(`REDUCE: ${oldConcurrency} ??? ${this.#currentConcurrency}`);
         break;
       case 'INCREASE':
-        if (this.#queue.length > 0) {
+        const totalPending = this.#queues.high.length + this.#queues.normal.length + this.#queues.low.length;
+        if (totalPending > 0) {
           this.#currentConcurrency = Math.min(this.#maxConcurrency, this.#currentConcurrency + 1);
           logger.trace(`INCREASE: ${oldConcurrency} ??? ${this.#currentConcurrency} (max: ${this.#maxConcurrency})`);
         } else {
@@ -292,6 +298,20 @@ export class ParallelProcesses {
     return this;
   }
 
+  #getNextTask() {
+    // Check queues in priority order
+    if (this.#queues.high.length > 0) {
+      return this.#processInInsertOrder ? this.#queues.high.shift() : this.#queues.high.pop();
+    }
+    if (this.#queues.normal.length > 0) {
+      return this.#processInInsertOrder ? this.#queues.normal.shift() : this.#queues.normal.pop();
+    }
+    if (this.#queues.low.length > 0) {
+      return this.#processInInsertOrder ? this.#queues.low.shift() : this.#queues.low.pop();
+    }
+    return null;
+  }
+
   status() {
     const systemMetrics = this.#systemMonitor ? this.#systemMonitor.getMetrics() : null;
     
@@ -304,6 +324,11 @@ export class ParallelProcesses {
       isDynamic: this.#systemMonitor !== null,
       maxConcurrency: this.#maxConcurrency,
       currentConcurrency: this.#currentConcurrency,
+      queueSizes: {
+        high: this.#queues.high.length,
+        normal: this.#queues.normal.length,
+        low: this.#queues.low.length
+      },
       systemMetrics
     };
   }
