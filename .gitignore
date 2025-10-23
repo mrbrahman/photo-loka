@@ -7,3 +7,4 @@ data
 local-test*
 .env
 
+*chat*.md
