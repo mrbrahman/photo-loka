@@ -1,16 +1,18 @@
 import {EventEmitter} from 'events';
-import { ParallelProcesses as pp } from '#utils/parallel-processes';
+import { ParallelProcesses } from '#utils/parallel-processes';
 import {config} from '#config';
 import { createLogger } from '#utils/logger';
 import { fmtTime } from '#utils/time-format';
+import * as systemMonitor from '#infra/system-monitor';
 
 const logger = createLogger(import.meta.url);
 
 class EmitterClass extends EventEmitter {};
 export const indexerEvents = new EmitterClass();
 
-let indexerQueue = new pp({
+let indexerQueue = ParallelProcesses.dynamic({
   maxConcurrency: config.maxIndexerConcurrency,
+  systemMonitor: systemMonitor,
   emitter: indexerEvents
 });
 

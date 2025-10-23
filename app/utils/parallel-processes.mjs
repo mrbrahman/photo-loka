@@ -11,6 +11,7 @@
  
 */
 
+import os from 'os';
 import { EventEmitter } from 'events';
 import { createLogger } from '#utils/logger';
 
@@ -18,6 +19,7 @@ const logger = createLogger(import.meta.url);
 
 export class ParallelProcesses {
   #maxConcurrency = 1;
+  #currentConcurrency = 1;
   #processInInsertOrder = false;
   #autoStart = true;
   #emitter = null;
@@ -28,13 +30,45 @@ export class ParallelProcesses {
   #completedCnt = 0;
   #failedCnt = 0;
   #paused = false;
+  #systemMonitor = null;
+  #lastConcurrencyCheck = 0;
+  #concurrencyCheckInterval = 3000;
 
-  constructor(options = {}) {
+  constructor(options = {}, isDynamic = false) {
     this.#maxConcurrency = options.maxConcurrency || 1;
     this.#processInInsertOrder = options.processInInsertOrder || false;
     this.#autoStart = options.autoStart !== false;
+    this.#concurrencyCheckInterval = options.concurrencyCheckInterval || 3000;
+    
     if (options.emitter) this.#emitter = options.emitter;
     if (options.pauseConditionFn) this.#pauseConditionFn = options.pauseConditionFn;
+    
+    // Dynamic concurrency mode
+    if (isDynamic) {
+      if (!options.systemMonitor) {
+        throw new Error('systemMonitor is required for dynamic concurrency mode');
+      }
+      this.#systemMonitor = options.systemMonitor;
+      this.#currentConcurrency = 1; // Always start at 1 for dynamic mode
+      
+      this.#systemMonitor.on('load-update', ({ recommendation }) => {
+        this.#handleLoadRecommendation(recommendation);
+      });
+    }
+  }
+
+
+  // Static factory methods
+  static simple(options = {}) {
+    return new ParallelProcesses(options, false);
+  }
+
+  static dynamic(options = {}) {
+    // If maxConcurrency not specified, use system limitations
+    if (!options.maxConcurrency) {
+      options.maxConcurrency = os.cpus().length * 2;
+    }
+    return new ParallelProcesses(options, true);
   }
 
   enqueue(func, args = []) {
@@ -67,7 +101,8 @@ export class ParallelProcesses {
     if (this.#pauseConditionFn && !this.#pauseConditionFn()) {
       this.#paused = true;
     }
-    if (!this.#paused && this.#processingCnt < this.#maxConcurrency && this.#queue.length > 0) {
+    const concurrencyLimit = this.#systemMonitor ? this.#currentConcurrency : this.#maxConcurrency;
+    if (!this.#paused && this.#processingCnt < concurrencyLimit && this.#queue.length > 0) {
       if (this.#processingCnt === 0 && this.#emitter) {
         this.#emitter.emit('start_batch');
       }
@@ -101,13 +136,14 @@ export class ParallelProcesses {
           if (this.#pendingCnt === 0 && this.#processingCnt === 0 && this.#emitter) {
             this.#emitter.emit('all_done');
           }
-          this.#dequeue();
+          setImmediate(() => this.#dequeue());
         });
     }
   }
 
   start() {
-    for (let i = 1; i <= this.#maxConcurrency; i++) {
+    const concurrencyLimit = this.#systemMonitor ? this.#currentConcurrency : this.#maxConcurrency;
+    for (let i = 1; i <= concurrencyLimit; i++) {
       this.#dequeue();
     }
     return this;
@@ -130,14 +166,20 @@ export class ParallelProcesses {
 
   set maxConcurrency(value) {
     if (value > 0) {
-      const currentMax = this.#maxConcurrency;
+      const oldConcurrency = this.#maxConcurrency;
       this.#maxConcurrency = value;
-      if (value > currentMax) {
-        for (let i = 1; i <= (value - currentMax); i++) {
+      
+      // In static mode, trigger dequeue if concurrency increased
+      if (!this.#systemMonitor && value > oldConcurrency) {
+        for (let i = 1; i <= (value - oldConcurrency); i++) {
           this.#dequeue();
         }
       }
     }
+  }
+
+  get currentConcurrency() {
+    return this.#currentConcurrency;
   }
 
   get processInInsertOrder() {
@@ -179,14 +221,90 @@ export class ParallelProcesses {
     return this;
   }
 
+  #handleLoadRecommendation(recommendation) {
+    const now = Date.now();
+    logger.trace(`Received load recommendation: ${recommendation.action} (queue: ${this.#queue.length}, processing: ${this.#processingCnt}, current: ${this.#currentConcurrency})`);
+    
+    if (now - this.#lastConcurrencyCheck < this.#concurrencyCheckInterval) {
+      logger.trace(`Skipping adjustment - too soon (${now - this.#lastConcurrencyCheck}ms < ${this.#concurrencyCheckInterval}ms)`);
+      return;
+    }
+    
+    const oldConcurrency = this.#currentConcurrency;
+    
+    switch (recommendation.action) {
+      case 'REDUCE_AGGRESSIVE':
+        this.#currentConcurrency = Math.max(1, Math.floor(this.#currentConcurrency * 0.5));
+        logger.trace(`REDUCE_AGGRESSIVE: ${oldConcurrency} ??? ${this.#currentConcurrency}`);
+        break;
+      case 'REDUCE':
+        this.#currentConcurrency = Math.max(1, this.#currentConcurrency - 1);
+        logger.trace(`REDUCE: ${oldConcurrency} ??? ${this.#currentConcurrency}`);
+        break;
+      case 'INCREASE':
+        if (this.#queue.length > 0) {
+          this.#currentConcurrency = Math.min(this.#maxConcurrency, this.#currentConcurrency + 1);
+          logger.trace(`INCREASE: ${oldConcurrency} ??? ${this.#currentConcurrency} (max: ${this.#maxConcurrency})`);
+        } else {
+          logger.trace(`INCREASE skipped - no pending tasks`);
+        }
+        break;
+      case 'MAINTAIN':
+        logger.trace(`MAINTAIN: keeping concurrency at ${this.#currentConcurrency}`);
+        break;
+    }
+    
+    if (oldConcurrency !== this.#currentConcurrency) {
+      logger.trace(`Concurrency adjusted: ${oldConcurrency} ??? ${this.#currentConcurrency} (${recommendation.action})`);
+      
+      if (this.#currentConcurrency > oldConcurrency) {
+        const additionalTasks = this.#currentConcurrency - oldConcurrency;
+        logger.trace(`Starting ${additionalTasks} additional tasks`);
+        for (let i = 1; i <= additionalTasks; i++) {
+          this.#dequeue();
+        }
+      }
+    }
+    
+    this.#lastConcurrencyCheck = now;
+  }
+
+
+
+
+
+  get systemMonitor() {
+    return this.#systemMonitor !== null;
+  }
+
+  set systemMonitor(monitor) {
+    if (this.#systemMonitor) {
+      this.#systemMonitor.removeAllListeners('load-update');
+    }
+    
+    this.#systemMonitor = monitor;
+    
+    if (monitor) {
+      monitor.on('load-update', ({ recommendation }) => {
+        this.#handleLoadRecommendation(recommendation);
+      });
+    }
+    return this;
+  }
+
   status() {
+    const systemMetrics = this.#systemMonitor ? this.#systemMonitor.getMetrics() : null;
+    
     return {
       processingCnt: this.#processingCnt,
       pendingCnt: this.#pendingCnt,
       completedCnt: this.#completedCnt,
       failedCnt: this.#failedCnt,
       paused: this.#paused,
-      maxConcurrency: this.#maxConcurrency
+      isDynamic: this.#systemMonitor !== null,
+      maxConcurrency: this.#maxConcurrency,
+      currentConcurrency: this.#currentConcurrency,
+      systemMetrics
     };
   }
 }

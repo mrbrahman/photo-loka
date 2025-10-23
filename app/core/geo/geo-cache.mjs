@@ -6,7 +6,7 @@ import 'dotenv/config';
 
 const logger = createLogger(import.meta.url);
 
-const geonamesProcessor = new ParallelProcesses();
+const geonamesProcessor = ParallelProcesses.simple();
 
 geonamesProcessor.pauseConditionFn = checkGeonamesRateLimit;
 

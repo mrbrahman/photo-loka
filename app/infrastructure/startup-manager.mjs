@@ -6,6 +6,7 @@ import { getAllCollections } from '#collections/collection-manager';
 import { indexCollection } from '#indexing/collection-indexer';
 import { startWatchersForAllCollections } from '#jobs/file-watcher-job';
 import { startScheduledIndexing } from '#jobs/scheduled-indexing-job';
+import * as systemMonitor from '#infra/system-monitor';
 
 const logger = createLogger(import.meta.url);
 
@@ -14,6 +15,9 @@ export async function startUpActivities(){
   if (!process.env.GEONAMES_USERNAME) {
     throw new Error('GEONAMES_USERNAME environment variable is required but not set');
   }
+
+  // Start system load monitoring
+  systemMonitor.start();
 
   // setup watch during start-up
   if(config.startFileWatcherAtStartup){
