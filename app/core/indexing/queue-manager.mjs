@@ -4,6 +4,7 @@ import {config} from '#config';
 import { createLogger } from '#utils/logger';
 import { fmtTime } from '#utils/time-format';
 import * as systemMonitor from '#infra/system-monitor';
+import os from 'os';
 
 const logger = createLogger(import.meta.url);
 
@@ -11,7 +12,7 @@ class EmitterClass extends EventEmitter {};
 export const indexerEvents = new EmitterClass();
 
 let indexerQueue = ParallelProcesses.dynamic({
-  maxConcurrency: config.maxIndexerConcurrency,
+  maxConcurrency: os.cpus().length-1,  // use all but one CPU core
   systemMonitor: systemMonitor,
   emitter: indexerEvents
 });
@@ -59,8 +60,8 @@ export function updateIndexerConcurrency(concurrency){
 
 export const indexerStatus = ()=>indexerQueue.status();
 
-export function addToIndexQueue(taskFn, args){
-  indexerQueue.enqueue(taskFn, args)
+export function addToIndexQueue(taskFn, args, priority='normal'){
+  indexerQueue.enqueue(taskFn, args, priority)
 }
 
 export function bulkAddToIndexQueue(tasks){

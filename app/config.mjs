@@ -13,9 +13,6 @@ config.filesDeletedThreshold = 5;
 config.enableScheduledIndexing = true;
 config.staleDays = 0;
 
-// indexer
-config.maxIndexerConcurrency = 1;
-
 // video compression
 config.performVideoCompression = true;
 

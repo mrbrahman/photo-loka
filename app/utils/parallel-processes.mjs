@@ -261,11 +261,11 @@ export class ParallelProcesses {
     }
     
     if (oldConcurrency !== this.#currentConcurrency) {
-      logger.trace(`Concurrency adjusted: ${oldConcurrency} ??? ${this.#currentConcurrency} (${recommendation.action})`);
+      logger.info(`Concurrency adjusted: ${oldConcurrency} ??? ${this.#currentConcurrency} (${recommendation.action})`);
       
       if (this.#currentConcurrency > oldConcurrency) {
         const additionalTasks = this.#currentConcurrency - oldConcurrency;
-        logger.trace(`Starting ${additionalTasks} additional tasks`);
+        logger.info(`Starting ${additionalTasks} additional tasks`);
         for (let i = 1; i <= additionalTasks; i++) {
           this.#dequeue();
         }

@@ -9,6 +9,7 @@ import * as thumbnailManager from '#media/thumbnail-manager';
 import * as videoProcessor from '#media/video-processor';
 import * as faceExtractor from '#media/face-extractor';
 import * as fileOps from './file-organizer.mjs';
+import { addToIndexQueue } from './queue-manager.mjs';
 
 import * as db from './indexer-db.mjs';
 import { enqueue as enqueueReverseGeoEncoding } from '#geo/geo-encoder';
@@ -93,7 +94,8 @@ export async function indexFile(collection, sourceFileName, uuid, inPlace){
           logger.info(`Moved pre-compressed webm: ${preCompressedWebm}`);
         } else {
           // perform video compression to help with streaming
-          await videoProcessor.compressVideo(p.uuid, p.filename);
+          // add to the 'low' priority indexing queue
+          addToIndexQueue(videoProcessor.compressVideo, [p.uuid, p.filename], 'low');
         }
       }
     } catch(error){

@@ -79,7 +79,7 @@ export function start() {
     const metrics = collectMetrics();
     updateHistory(metrics);
     const recommendation = analyzeLoad();
-    logger.trace(`Emitting load-update event with recommendation: ${recommendation.action}`);
+    logger.trace(`Emitting load-update event with recommendation: ${recommendation.action}\n`);
     emitter.emit('load-update', { metrics, recommendation });
   }, config.monitoringInterval);
   
