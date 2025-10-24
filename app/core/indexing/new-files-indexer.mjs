@@ -3,7 +3,7 @@ import { stat } from 'fs/promises';
 import { createLogger } from '#utils/logger';
 
 import { getCollection, getCollectionByIntakePath } from '#collections/collection-manager';
-import { bulkAddToIndexQueue, indexerStatus } from './queue-manager.mjs';
+import { bulkAddToIndexQueue } from './queue-manager.mjs';
 import { indexFile } from './file-indexer.mjs';
 import { shouldIgnoreFile } from '#utils/file-filters';
 import { config } from '#config';
@@ -49,14 +49,8 @@ export async function startNewFileIndexing(collection_id, dir, staleDays = null)
 }
 
 async function enqueueNewFiles(collection, dirPath, staleDays = null) {
-  logger.info(`Starting new file indexing for: ${dirPath}`);
+  logger.info(`Starting enqueueNewFiles for: ${dirPath}`);
 
-  // Skip if indexer is already running
-  if (indexerStatus.processingCnt > 0 || indexerStatus.pendingCnt > 0) {
-    logger.warn('Indexer is currently running. Skipping new file indexing.');
-    return;
-  }
-  
   const days = staleDays ?? config.staleDays;
   const cutoffDate = new Date(Date.now() - (days * 24 * 60 * 60 * 1000));
   
@@ -102,5 +96,3 @@ async function findPendingFiles(dirPath, cutoffDate) {
   
   return pendingFiles;
 }
-
-export { enqueueNewFiles };

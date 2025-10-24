@@ -1,14 +1,15 @@
 import { addJob, deleteJob } from '#infra/scheduler';
 import { config } from '#config';
-import { enqueueNewFiles } from '#indexing/new-files-indexer';
+import { startNewFileIndexing } from '#indexing/new-files-indexer';
 import { getAllCollections } from '#collections/collection-manager';
+import { indexerStatus } from '#indexing/queue-manager';
 import { createLogger } from '#utils/logger';
 
 const logger = createLogger(import.meta.url);
 
 let cronJobs = new Set();
 
-export async function startScheduledIndexing() {
+export async function scheduleCronJobs() {
   if (!config.enableScheduledIndexing) {
     logger.info('Scheduled indexing is disabled');
     return;
@@ -25,11 +26,30 @@ export async function startScheduledIndexing() {
         const jobName = `scheduled-indexing-${jobIndex++}`;
         
         cronJobs.add(jobName);
-        addJob(jobName, schedule, () => enqueueNewFiles(collection, intakeConfig.path, staleDays));
+        addJob(
+          jobName, 
+          schedule,
+          () => checkAndStartScheduledIndexing(collection.collection_id, intakeConfig.path, staleDays)
+        );
         logger.info(`Created scheduled job ${jobName} with schedule ${schedule} for path: ${intakeConfig.path}`);
       }
     }
   }
+}
+
+async function checkAndStartScheduledIndexing(collection_id, intakePath, staleDays) {
+  // For manually triggered indexing, we assume the user knows what they are doing,
+  // and won't schedule the same files multiple times.
+  // However, for scheduled indexing, in case the indexer is running, we do not know
+  // if that is a previously triggered scheduled job that is long running, or a manual job.
+
+  // Hence, in order to prevent the same files being lined up for indexing, we skip
+  // this run if the indexer is already found running.
+  if (indexerStatus.processingCnt > 0 || indexerStatus.pendingCnt > 0) {
+    logger.warn('Indexer is currently running. Skipping new file indexing.');
+    return;
+  }
+  await startNewFileIndexing(collection_id, intakePath, staleDays);
 }
 
 export function stopScheduledIndexing() {

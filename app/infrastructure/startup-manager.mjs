@@ -5,7 +5,7 @@ import { createLogger } from '#utils/logger';
 import { getAllCollections } from '#collections/collection-manager';
 import { indexCollection } from '#indexing/collection-indexer';
 import { startWatchersForAllCollections } from '#jobs/file-watcher-job';
-import { startScheduledIndexing } from '#jobs/scheduled-indexing-job';
+import { scheduleCronJobs } from '#jobs/scheduled-indexing-job';
 import * as systemMonitor from '#infra/system-monitor';
 
 const logger = createLogger(import.meta.url);
@@ -35,5 +35,5 @@ export async function startUpActivities(){
   }
 
   // Start scheduled indexing
-  startScheduledIndexing();
+  scheduleCronJobs();
 }
