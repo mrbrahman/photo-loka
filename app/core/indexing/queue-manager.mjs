@@ -12,7 +12,7 @@ class EmitterClass extends EventEmitter {};
 export const indexerEvents = new EmitterClass();
 
 let indexerQueue = ParallelProcesses.dynamic({
-  maxConcurrency: os.cpus().length-1,  // use all but one CPU core
+  maxConcurrency: config.maxConcurrency || os.cpus().length-1,  // use all but one CPU core
   systemMonitor: systemMonitor,
   emitter: indexerEvents
 });
