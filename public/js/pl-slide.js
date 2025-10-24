@@ -80,7 +80,7 @@ class PlSlide extends HTMLElement {
       },
       body: JSON.stringify({
         uuid_arr: [item.data.id],
-        newRating: evt.detail.newRating
+        newRating
       })
     })
     .then(res=>{
