@@ -77,7 +77,7 @@ export async function indexFile(collection, sourceFileName, uuid, inPlace){
 
     // Step 5: video compression to help with streaming on browsers
     try{
-      if(p.mediatype == "video" && config.performVideoCompression){
+      if(p.mediatype == "video"){
         // Check for pre-compressed webm file
         const baseName = path.basename(sourceFileName, path.extname(sourceFileName));
         const sourceDir = path.dirname(sourceFileName);
@@ -93,9 +93,13 @@ export async function indexFile(collection, sourceFileName, uuid, inPlace){
           await fileOps.moveItem(null, preCompressedWebm, thumbsDir, true);
           logger.info(`Moved pre-compressed webm: ${preCompressedWebm}`);
         } else {
-          // perform video compression to help with streaming
-          // add to the 'low' priority indexing queue
-          addToIndexQueue(videoProcessor.compressVideo, [p.uuid, p.filename], 'low');
+          if(config.performVideoCompression){
+            // perform video compression to help with streaming
+            // add to the 'low' priority indexing queue
+            addToIndexQueue(videoProcessor.compressVideo, [p.uuid, p.filename], 'low');
+          } else {
+            logger.info(`Skipping video compression as per config for file: ${p.uuid} ${p.filename}`);
+          }
         }
       }
     } catch(error){
