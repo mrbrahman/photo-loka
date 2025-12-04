@@ -134,10 +134,20 @@ export function resizeImage(filename, width, height){
 }
 
 export async function refreshThumbs(uuid){
+  logger.info(`Starting refreshThumbs for uuid : ${uuid}`);
+
+
   let meta = await db.retriveMetadata(uuid),
-    imageFileName = meta.filename, playImageOverlay = false;
+    filename = meta.filename, playImageOverlay = false;
+  let imageFileName = filename;
+
+  if(!fs.existsSync(filename)){
+    logger.error(`${filename} not found`)
+    return;
+  }
   
   if (meta.mediatype === 'video'){
+    logger.info(`refreshThumbs - Generating video thumbnail: ${uuid} ${filename}`);
     imageFileName = await generateVideoThumbnail(uuid, filename);
     playImageOverlay=true;
   }
