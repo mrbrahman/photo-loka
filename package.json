@@ -26,7 +26,7 @@
     "morgan": "^1.10.0",
     "node-addon-api": "^8.1.0",
     "node-cron": "^4.2.1",
-    "node-gyp": "^10.2.0",
+    "node-gyp": "^12.1.0",
     "sharp": "^0.33.4",
     "uuid": "^10.0.0",
     "winston": "^3.8.2"
@@ -38,12 +38,10 @@
   "imports": {
     "#config": "./app/config.mjs",
     "#services": "./app/services.mjs",
-
     "#utils/*": "./app/utils/*.mjs",
     "#db/*": "./app/database/*.mjs",
     "#infra/*": "./app/infrastructure/*.mjs",
     "#jobs/*": "./app/jobs/*.mjs",
-    
     "#albums/*": "./app/core/albums/*.mjs",
     "#collections/*": "./app/core/collections/*.mjs",
     "#geo/*": "./app/core/geo/*.mjs",
