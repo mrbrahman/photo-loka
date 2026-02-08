@@ -212,8 +212,12 @@ apiRouter.put('/refreshThumbs/:uuid', async function(req,res){
 })
 
 apiRouter.put('/compressVideo/:uuid', async function(req,res){
-  await s.videos.compressVideo(req.params.uuid);
-  res.sendStatus(200);
+  try{
+    await s.videos.compressVideo(req.params.uuid);
+    res.sendStatus(200);
+  } catch (err) {
+    res.status(500).json(err);
+  }
 })
 
 // *****************************************
