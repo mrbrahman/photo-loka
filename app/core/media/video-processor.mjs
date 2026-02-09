@@ -67,7 +67,7 @@ async function compressVideoWithFFMpeg(uuid, inputVideoPath) {
     let args = ['-i', inputVideoPath, '-c:v', config.videoEncoder];
     
     if (isVP8) {
-      args.push('-c:a', 'libvorbis', '-crf', '23', '-b:v', '1M', '-b:a', '128k');
+      args.push('-c:a', 'libvorbis', '-crf', '23', '-b:v', '1M', '-b:a', '128k', '-threads', '4');
     } else if (isVP9) {
       args.push('-c:a', 'libopus', '-crf', '30', '-b:v', '0', '-maxrate', '1M', '-bufsize', '2M', '-b:a', '128k');
     } else if (isHardware) {
