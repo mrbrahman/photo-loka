@@ -18,17 +18,11 @@ app.use(compression());
 app.use(express.json());
 app.use(express.static(path.join(import.meta.dirname, '../web')));
 
-// const requestFilter = (req) => {
-//   // Customize your condition here, for example:
-//   // Log only POST requests or requests to a specific path
-//   // return req.method === 'POST' || req.url.startsWith('/api/specific-path');
-//   return !req.url.startsWith('/getThumbnail');
-// };
-
-
+morgan.token('query', (req) => JSON.stringify(req.query));
+morgan.token('body', (req) => JSON.stringify(req.body));
 
 const morganMiddleware = morgan(
-  ':method :url :status :response-time ms',
+  ':method :url :status :response-time ms - q::query b::body',
   {
     skip: (req) => 
          req.url.includes('/getThumbnail')
@@ -39,6 +33,7 @@ const morganMiddleware = morgan(
     },
   }
 );
+
 
 app.use(morganMiddleware);
 
