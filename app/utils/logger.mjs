@@ -16,6 +16,12 @@ const colors = {
   reset: '\x1b[0m'
 };
 
+const timestamp = () => {
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${String(d.getMilliseconds()).padStart(3, '0')}`;
+};
+
 export function createLogger(fileUrl) {
   const filename = basename(new URL(fileUrl).pathname);
   const prefix = `[${filename}]`;
@@ -23,31 +29,31 @@ export function createLogger(fileUrl) {
   return {
     info: (...args) => {
       if (currentLevel >= LOG_LEVELS.info) {
-        const level = useColors ? `${colors.info}INFO${colors.reset}` : 'INFO';
+        const level = useColors ? `${timestamp()} ${colors.info}INFO${colors.reset}` : 'INFO';
         console.log(`${level}: ${prefix}`, ...args);
       }
     },
     error: (...args) => {
       if (currentLevel >= LOG_LEVELS.error) {
-        const level = useColors ? `${colors.error}ERROR${colors.reset}` : 'ERROR';
+        const level = useColors ? `${timestamp()} ${colors.error}ERROR${colors.reset}` : 'ERROR';
         console.error(`${level}: ${prefix}`, ...args);
       }
     },
     warn: (...args) => {
       if (currentLevel >= LOG_LEVELS.warn) {
-        const level = useColors ? `${colors.warn}WARN${colors.reset}` : 'WARN';
+        const level = useColors ? `${timestamp()} ${colors.warn}WARN${colors.reset}` : 'WARN';
         console.warn(`${level}: ${prefix}`, ...args);
       }
     },
     debug: (...args) => {
       if (currentLevel >= LOG_LEVELS.debug) {
-        const level = useColors ? `${colors.debug}DEBUG${colors.reset}` : 'DEBUG';
+        const level = useColors ? `${timestamp()} ${colors.debug}DEBUG${colors.reset}` : 'DEBUG';
         console.log(`${level}: ${prefix}`, ...args);
       }
     },
     trace: (...args) => {
       if (currentLevel >= LOG_LEVELS.trace) {
-        const level = useColors ? `${colors.trace}TRACE${colors.reset}` : 'TRACE';
+        const level = useColors ? `${timestamp()} ${colors.trace}TRACE${colors.reset}` : 'TRACE';
         console.log(`${level}: ${prefix}`, ...args);
       }
     }
