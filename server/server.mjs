@@ -16,7 +16,7 @@ const app = express();
 
 app.use(compression());
 app.use(express.json());
-app.use(express.static('public'));
+app.use(express.static(path.join(import.meta.dirname, '../web')));
 
 // const requestFilter = (req) => {
 //   // Customize your condition here, for example:
