@@ -1,6 +1,6 @@
 import { addJob, deleteJob } from '#infra/scheduler';
 import { config } from '#config';
-import { startNewFileIndexing } from '#indexing/intake-indexer';
+import { startIntakeFileIndexing } from '#indexing/intake-indexer';
 import { getAllCollections } from '#collections/collection-manager';
 import { indexerStatus } from '#indexing/queue-manager';
 import { createLogger } from '#utils/logger';
@@ -49,7 +49,7 @@ async function checkAndStartScheduledIndexing(collection_id, intakePath, staleDa
     logger.warn('Indexer is currently running. Skipping new file indexing.');
     return;
   }
-  await startNewFileIndexing(collection_id, intakePath, staleDays);
+  await startIntakeFileIndexing(collection_id, intakePath, staleDays);
 }
 
 export function stopScheduledIndexing() {

@@ -137,10 +137,10 @@ apiRouter.post('/indexCollection/:collection_id', function(req,res){
   res.sendStatus(200);
 });
 
-apiRouter.post('/startNewFileIndexing', async function(req,res){
+apiRouter.post('/startIntakeFileIndexing', async function(req,res){
   let {collection_id, dir, staleDays} = req.body;
   try {
-    await s.newFilesIndexer.startNewFileIndexing(collection_id, dir, staleDays);
+    await s.newFilesIndexer.startIntakeFileIndexing(collection_id, dir, staleDays);
     res.sendStatus(200);
   } catch (error) {
     res.status(500).json({error: error.message});

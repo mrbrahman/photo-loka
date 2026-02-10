@@ -10,7 +10,7 @@ import { config } from '#config';
 
 const logger = createLogger(import.meta.url);
 
-export async function startNewFileIndexing(collection_id, dir, staleDays = null) {
+export async function startIntakeFileIndexing(collection_id, dir, staleDays = null) {
   try {
     if (collection_id && dir) {
       // Run for specific dir in specific collection
