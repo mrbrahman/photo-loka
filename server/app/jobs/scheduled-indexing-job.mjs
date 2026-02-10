@@ -1,6 +1,6 @@
 import { addJob, deleteJob } from '#infra/scheduler';
 import { config } from '#config';
-import { startNewFileIndexing } from '#indexing/new-files-indexer';
+import { startNewFileIndexing } from '#indexing/intake-indexer';
 import { getAllCollections } from '#collections/collection-manager';
 import { indexerStatus } from '#indexing/queue-manager';
 import { createLogger } from '#utils/logger';

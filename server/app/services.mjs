@@ -1,7 +1,7 @@
 export * as collections from '#collections/collection-manager';
 export * as indexer     from '#indexing/queue-manager';
 export * as bulkIndexer from '#indexing/collection-indexer';
-export * as newFilesIndexer from '#indexing/new-files-indexer';
+export * as newFilesIndexer from '#indexing/intake-indexer';
 export * as metadataUpdates from '#indexing/metadata-updates';
 
 export * as albums      from '#albums/album-manager';
