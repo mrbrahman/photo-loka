@@ -49,7 +49,7 @@ function converToFilterStr(searchStr){
   let filterKeyVal = filterItems.map(x=>{
     let [first, ...rest] = x.split(':');
     if(rest.length>0){
-      return [first, rest.join(':')];
+      return [first.toLowerCase(), rest.join(':')];
     }
     else {
       return [first]
