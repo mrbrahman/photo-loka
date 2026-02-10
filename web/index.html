@@ -475,17 +475,20 @@
       }
       
       #slides > .active {
+	display: revert;
         transform: translate(0px, 0px);
       }
 
       #slides > .left {
         left: 0px;
         transform: translate(-120vw, 0px);
+	display: none;
       }
 
       #slides > .right {
         left: 0px;
         transform: translate(120vw, 0px);
+	display: none;
       }
 
       #navigation {
