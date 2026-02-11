@@ -3,6 +3,8 @@ import {notify} from './utils.mjs';
 class PlSlide extends HTMLElement {
   #albumname; #item; #screenWidth; #screenHeight; #play; #slideshowMode;
   #zoomLevel = 1; #maxZoom = 1; #startX = 0; #startY = 0; #translateX = 0; #translateY = 0;
+  #eventHandlers = [];
+  #classObserver;
 
   constructor() {
     super().attachShadow({mode: 'open'}); // sets "this" and "this.shadowRoot"
@@ -14,7 +16,7 @@ class PlSlide extends HTMLElement {
     );
     
     this.shadowRoot.getElementById('albumname').innerText = this.albumname || '';
-    this.shadowRoot.getElementById('rating').setAttribute('value', this.item.data.rating || 0);
+    this.shadowRoot.getElementById('rating').setAttribute('value', this.item?.data?.rating || 0);
     
     this.shadowRoot.getElementById('rating').addEventListener('sl-change', this.#handleRatingChanged);
 
@@ -23,15 +25,17 @@ class PlSlide extends HTMLElement {
     });
 
     this.#setupZoomControls();
+    this.#setupKeyboardControls();
+    this.#setupClassObserver();
 
-    if(this.item.data.type.startsWith('image')){
+    if(this.item?.data?.type?.startsWith('image')){
       let img = Object.assign(document.createElement('img'), {
         src: `/api/getImage?uuid=${this.item.data.id}&width=${this.#screenWidth}&height=${this.#screenHeight}`
       });
       img.classList.add(this.item.data.ar < this.#screenWidth/this.#screenHeight ? 'full-height' : 'full-width');
       
       img.onload = () => {
-        this.#maxZoom = Math.max(img.naturalWidth / img.offsetWidth, img.naturalHeight / img.offsetHeight);
+        this.#maxZoom = Math.max(img.naturalWidth / img.offsetWidth, img.naturalHeight / img.offsetHeight) * 1.5;
         this.#updateZoomButtons();
       };
       
@@ -85,7 +89,7 @@ class PlSlide extends HTMLElement {
     })
     .then(res=>{
       if(!res.ok){
-        throw `${res.status} ${res.statusText}`
+        throw `${res.status} ${res.statusText}`;
       }
     })
     // Update in backend successful, now update the UI
@@ -112,20 +116,27 @@ class PlSlide extends HTMLElement {
   }
 
   #playPauseMedia(){
-    if(this.item.data.type.startsWith("video")){
-      let media = this.shadowRoot.getElementById('media').firstElementChild;
-      if(this.play){
-        media.play();
-      } else {
-        media.pause();
+    if(this.item?.data?.type?.startsWith("video")){
+      let media = this.shadowRoot.getElementById('media')?.firstElementChild;
+      if(media){
+        if(this.play){
+          media.play();
+        } else {
+          media.pause();
+        }
       }
-    } else {
-      // ignore
     }
   }
 
   disconnectedCallback() {
-    //implementation
+    this.#eventHandlers.forEach(({element, event, handler, options}) => {
+      element.removeEventListener(event, handler, options);
+    });
+    this.#eventHandlers = [];
+    
+    if (this.#classObserver) {
+      this.#classObserver.disconnect();
+    }
   }
 
   attributeChangedCallback(name, oldVal, newVal) {
@@ -201,32 +212,114 @@ class PlSlide extends HTMLElement {
     zoomOut?.addEventListener('click', () => this.#zoomOut());
   }
 
+  #setupKeyboardControls() {
+    const handler = (e) => {
+      const img = this.shadowRoot.querySelector('#media img');
+      if (!img) return;
+
+      if (e.key === '+' || e.key === '=') {
+        e.preventDefault();
+        this.#zoomIn();
+      } else if (e.key === '-' || e.key === '_') {
+        e.preventDefault();
+        this.#zoomOut();
+      } else if (this.#zoomLevel > 1) {
+        const step = 50;
+        if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          this.#translateX += step;
+          this.#constrainPan(img);
+          this.#updateTransform(img);
+        } else if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          this.#translateX -= step;
+          this.#constrainPan(img);
+          this.#updateTransform(img);
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          this.#translateY += step;
+          this.#constrainPan(img);
+          this.#updateTransform(img);
+        } else if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          this.#translateY -= step;
+          this.#constrainPan(img);
+          this.#updateTransform(img);
+        }
+      }
+    };
+    document.addEventListener('keydown', handler);
+    this.#eventHandlers.push({element: document, event: 'keydown', handler});
+  }
+
+  #setupClassObserver() {
+    this.#classObserver = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+          const hasActive = this.classList.contains('active');
+          const hadActive = mutation.oldValue?.includes('active');
+          if (hadActive && !hasActive) {
+            this.#resetZoom();
+          }
+        }
+      });
+    });
+    this.#classObserver.observe(this, { attributes: true, attributeOldValue: true, attributeFilter: ['class'] });
+  }
+
   #setupImageZoom(img) {
-    // Touch events for mobile
     let initialDistance = 0;
     let initialZoom = 1;
     let isPinching = false;
     let isDragging = false;
+    let lastTapX = 0;
+    let lastTapY = 0;
+    let pinchCenterX = 0;
+    let pinchCenterY = 0;
+    let lastTap = 0;
+    let tapCount = 0;
     
-    img.addEventListener('touchstart', (e) => {
+    const touchStartHandler = (e) => {
       if (e.touches.length === 2) {
         e.preventDefault();
         isPinching = true;
+        isDragging = false;
         initialDistance = this.#getDistance(e.touches[0], e.touches[1]);
         initialZoom = this.#zoomLevel;
-      } else if (e.touches.length === 1 && this.#zoomLevel > 1) {
-        isDragging = true;
-        this.#startX = e.touches[0].clientX - this.#translateX;
-        this.#startY = e.touches[0].clientY - this.#translateY;
+        pinchCenterX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        pinchCenterY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      } else if (e.touches.length === 1) {
+        if (this.#zoomLevel > 1) {
+          isDragging = true;
+          this.#startX = e.touches[0].clientX - this.#translateX;
+          this.#startY = e.touches[0].clientY - this.#translateY;
+        }
+        
+        const currentTime = new Date().getTime();
+        const tapLength = currentTime - lastTap;
+        lastTapX = e.touches[0].clientX;
+        lastTapY = e.touches[0].clientY;
+        if (tapLength < 300 && tapLength > 0) {
+          tapCount++;
+          if (tapCount === 2) {
+            e.preventDefault();
+            this.#handleDoubleTap(lastTapX, lastTapY, img);
+            tapCount = 0;
+          }
+        } else {
+          tapCount = 1;
+        }
+        lastTap = currentTime;
       }
-    });
+    };
     
-    img.addEventListener('touchmove', (e) => {
+    const touchMoveHandler = (e) => {
       if (e.touches.length === 2 && isPinching) {
         e.preventDefault();
         const currentDistance = this.#getDistance(e.touches[0], e.touches[1]);
         const scale = currentDistance / initialDistance;
-        this.#setZoom(Math.min(this.#maxZoom, Math.max(1, initialZoom * scale)));
+        const newZoom = Math.min(this.#maxZoom, Math.max(1, initialZoom * scale));
+        this.#setZoomAtPoint(newZoom, pinchCenterX, pinchCenterY, img);
       } else if (e.touches.length === 1 && isDragging && this.#zoomLevel > 1) {
         e.preventDefault();
         this.#translateX = e.touches[0].clientX - this.#startX;
@@ -234,23 +327,28 @@ class PlSlide extends HTMLElement {
         this.#constrainPan(img);
         this.#updateTransform(img);
       }
-    });
+    };
     
-    img.addEventListener('touchend', (e) => {
-      if (e.touches.length === 0) {
+    const touchEndHandler = (e) => {
+      if (e.touches.length === 1 && isPinching) {
+        isPinching = false;
+        isDragging = true;
+        this.#startX = e.touches[0].clientX - this.#translateX;
+        this.#startY = e.touches[0].clientY - this.#translateY;
+      } else if (e.touches.length === 0) {
         isPinching = false;
         isDragging = false;
       }
-    });
+    };
     
-    // Mouse events for desktop
-    img.addEventListener('wheel', (e) => {
+    const wheelHandler = (e) => {
       e.preventDefault();
-      const delta = e.deltaY > 0 ? -0.1 : 0.1;
-      this.#setZoom(Math.min(this.#maxZoom, Math.max(1, this.#zoomLevel + delta)));
-    });
+      const delta = e.deltaY > 0 ? -0.2 : 0.2;
+      const newZoom = Math.min(this.#maxZoom, Math.max(1, this.#zoomLevel + delta));
+      this.#setZoomAtPoint(newZoom, e.clientX, e.clientY, img);
+    };
     
-    img.addEventListener('mousedown', (e) => {
+    const mouseDownHandler = (e) => {
       if (this.#zoomLevel > 1) {
         isDragging = true;
         this.#startX = e.clientX - this.#translateX;
@@ -258,9 +356,9 @@ class PlSlide extends HTMLElement {
         img.style.cursor = 'grabbing';
         e.preventDefault();
       }
-    });
+    };
     
-    img.addEventListener('mousemove', (e) => {
+    const mouseMoveHandler = (e) => {
       if (isDragging && this.#zoomLevel > 1) {
         this.#translateX = e.clientX - this.#startX;
         this.#translateY = e.clientY - this.#startY;
@@ -272,60 +370,93 @@ class PlSlide extends HTMLElement {
       } else {
         img.style.cursor = 'default';
       }
-    });
+    };
     
-    img.addEventListener('mouseup', () => {
+    const mouseUpHandler = () => {
       isDragging = false;
       if (this.#zoomLevel > 1) {
         img.style.cursor = 'grab';
+      } else {
+        img.style.cursor = 'default';
       }
-    });
+    };
     
-    img.addEventListener('mouseleave', () => {
+    const mouseLeaveHandler = () => {
       isDragging = false;
-    });
+    };
     
-    // Double click for desktop
-    img.addEventListener('dblclick', (e) => {
+    const dblClickHandler = (e) => {
       e.preventDefault();
-      this.#handleDoubleTap();
-    });
+      this.#handleDoubleTap(e.clientX, e.clientY, img);
+    };
     
-    // Double tap to zoom in/reset
-    let lastTap = 0;
-    let tapCount = 0;
-    img.addEventListener('touchstart', (e) => {
-      if (e.touches.length === 1) {
-        const currentTime = new Date().getTime();
-        const tapLength = currentTime - lastTap;
-        if (tapLength < 300 && tapLength > 0) {
-          tapCount++;
-          if (tapCount === 2) {
-            e.preventDefault();
-            this.#handleDoubleTap();
-            tapCount = 0;
-          }
-        } else {
-          tapCount = 1;
-        }
-        lastTap = currentTime;
-      }
-    });
-  }
-
-  #getDistance(touch1, touch2) {
-    return Math.sqrt(
-      Math.pow(touch2.clientX - touch1.clientX, 2) + 
-      Math.pow(touch2.clientY - touch1.clientY, 2)
+    img.addEventListener('touchstart', touchStartHandler, {passive: false});
+    img.addEventListener('touchmove', touchMoveHandler, {passive: false});
+    img.addEventListener('touchend', touchEndHandler, {passive: false});
+    img.addEventListener('wheel', wheelHandler, {passive: false});
+    img.addEventListener('mousedown', mouseDownHandler);
+    img.addEventListener('mousemove', mouseMoveHandler);
+    img.addEventListener('mouseup', mouseUpHandler);
+    img.addEventListener('mouseleave', mouseLeaveHandler);
+    img.addEventListener('dblclick', dblClickHandler);
+    
+    this.#eventHandlers.push(
+      {element: img, event: 'touchstart', handler: touchStartHandler, options: {passive: false}},
+      {element: img, event: 'touchmove', handler: touchMoveHandler, options: {passive: false}},
+      {element: img, event: 'touchend', handler: touchEndHandler, options: {passive: false}},
+      {element: img, event: 'wheel', handler: wheelHandler, options: {passive: false}},
+      {element: img, event: 'mousedown', handler: mouseDownHandler},
+      {element: img, event: 'mousemove', handler: mouseMoveHandler},
+      {element: img, event: 'mouseup', handler: mouseUpHandler},
+      {element: img, event: 'mouseleave', handler: mouseLeaveHandler},
+      {element: img, event: 'dblclick', handler: dblClickHandler}
     );
   }
 
+  #getDistance(touch1, touch2) {
+    const dx = touch2.clientX - touch1.clientX;
+    const dy = touch2.clientY - touch1.clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
   #zoomIn() {
-    this.#setZoom(Math.min(this.#maxZoom, this.#zoomLevel + 0.25));
+    const img = this.shadowRoot.querySelector('#media img');
+    if (img) {
+      const rect = img.getBoundingClientRect();
+      this.#setZoomAtPoint(Math.min(this.#maxZoom, this.#zoomLevel + 0.25), rect.left + rect.width / 2, rect.top + rect.height / 2, img, true);
+    }
   }
 
   #zoomOut() {
-    this.#setZoom(Math.max(1, this.#zoomLevel - 0.25));
+    const img = this.shadowRoot.querySelector('#media img');
+    if (img) {
+      const rect = img.getBoundingClientRect();
+      this.#setZoomAtPoint(Math.max(1, this.#zoomLevel - 0.25), rect.left + rect.width / 2, rect.top + rect.height / 2, img, true);
+    }
+  }
+
+  #setZoomAtPoint(newZoom, clientX, clientY, img, smooth = false) {
+    const rect = img.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    const relX = x / rect.width;
+    const relY = y / rect.height;
+    
+    const oldZoom = this.#zoomLevel;
+    this.#zoomLevel = newZoom;
+    
+    if (this.#zoomLevel === 1) {
+      this.#translateX = 0;
+      this.#translateY = 0;
+    } else {
+      const zoomRatio = this.#zoomLevel / oldZoom;
+      this.#translateX = (this.#translateX - (relX - 0.5) * rect.width) * zoomRatio + (relX - 0.5) * rect.width;
+      this.#translateY = (this.#translateY - (relY - 0.5) * rect.height) * zoomRatio + (relY - 0.5) * rect.height;
+      this.#constrainPan(img);
+    }
+    
+    this.#updateTransform(img, smooth);
+    this.#updateZoomButtons();
   }
 
   #setZoom(newZoom, smooth = false) {
@@ -335,6 +466,8 @@ class PlSlide extends HTMLElement {
       if (this.#zoomLevel === 1) {
         this.#translateX = 0;
         this.#translateY = 0;
+      } else {
+        this.#constrainPan(img);
       }
       this.#updateTransform(img, smooth);
       this.#updateZoomButtons();
@@ -383,12 +516,12 @@ class PlSlide extends HTMLElement {
     this.#translateY = Math.max(-maxTranslateY, Math.min(maxTranslateY, this.#translateY));
   }
 
-  #handleDoubleTap() {
+  #handleDoubleTap(clientX, clientY, img) {
     if (this.#zoomLevel >= this.#maxZoom) {
       this.#resetZoom(true);
     } else {
       const nextZoom = Math.min(this.#maxZoom, this.#zoomLevel * 2);
-      this.#setZoom(nextZoom, true);
+      this.#setZoomAtPoint(nextZoom, clientX, clientY, img, true);
     }
   }
 
