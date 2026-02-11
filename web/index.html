@@ -440,6 +440,7 @@
         background-color: black;
         width: 100vw;
         height: 100svh;
+        overflow: hidden;
       }
 
       sl-icon-button {
@@ -476,20 +477,20 @@
       }
       
       #slides > .active {
-	display: revert;
         transform: translate(0px, 0px);
+        visibility: visible;
       }
 
       #slides > .left {
         left: 0px;
         transform: translate(-120vw, 0px);
-	display: none;
+        visiblity: hidden;
       }
 
       #slides > .right {
         left: 0px;
         transform: translate(120vw, 0px);
-	display: none;
+        visibility: hidden;
       }
 
       #navigation {
