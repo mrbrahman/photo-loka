@@ -1,7 +1,7 @@
 import {notify} from './utils.mjs';
 
 class PlSlide extends HTMLElement {
-  #albumname; #item; #screenWidth; #screenHeight; #play; #slideshowMode;
+  #albumname; #item; #play; #slideshowMode;
   #zoomLevel = 1; #maxZoom = 1; #startX = 0; #startY = 0; #translateX = 0; #translateY = 0;
   #eventHandlers = [];
   #classObserver;
@@ -30,9 +30,8 @@ class PlSlide extends HTMLElement {
 
     if(this.item?.data?.type?.startsWith('image')){
       let img = Object.assign(document.createElement('img'), {
-        src: `/api/getImage?uuid=${this.item.data.id}&width=${this.#screenWidth}&height=${this.#screenHeight}`
+        src: `/api/getImage?uuid=${this.item.data.id}`
       });
-      img.classList.add(this.item.data.ar < this.#screenWidth/this.#screenHeight ? 'full-height' : 'full-width');
       
       img.onload = () => {
         this.#maxZoom = Math.max(img.naturalWidth / img.offsetWidth, img.naturalHeight / img.offsetHeight) * 1.5;
@@ -44,8 +43,6 @@ class PlSlide extends HTMLElement {
 
     } else if (this.item.data.type.startsWith('video')){
       let video = Object.assign(document.createElement('video'), {
-        width: this.#screenWidth,
-        height: this.#screenHeight,
         controls: true,
         muted: false,
         preload: 'metadata'
@@ -159,21 +156,6 @@ class PlSlide extends HTMLElement {
   }
   get item(){
     return this.#item;
-  }
-
-  set screenDimensions([w,h]){
-    this.#screenWidth = w;
-    this.#screenHeight = h;
-
-    if(this.isConnected){
-      let m = this.shadowRoot.getElementById('media').firstElementChild
-      // TODO: update img URL (to fetch new image with updated dimensions)
-      // m.width = w;
-      // m.height = h;
-    }
-  }
-  get screenDimensions(){
-    return [this.#screenWidth, this.#screenHeight]
   }
 
   set play(_){
@@ -506,8 +488,8 @@ class PlSlide extends HTMLElement {
   #constrainPan(img) {
     const scaledWidth = img.offsetWidth * this.#zoomLevel;
     const scaledHeight = img.offsetHeight * this.#zoomLevel;
-    const containerWidth = this.#screenWidth;
-    const containerHeight = this.#screenHeight;
+    const containerWidth = document.documentElement.clientWidth;
+    const containerHeight = document.documentElement.clientHeight;
     
     const maxTranslateX = Math.max(0, (scaledWidth - containerWidth) / 2);
     const maxTranslateY = Math.max(0, (scaledHeight - containerHeight) / 2);

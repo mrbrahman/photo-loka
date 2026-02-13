@@ -1,6 +1,6 @@
 class PlSlideshow extends HTMLElement {
   #data=[]; #src; #startFrom; #buffer=1; #loop=false;
-  #startIdx=[0,0]; #screenWidth; #screenHeight; #slideshowMode=false; #intervalId; #slideDuration=3;
+  #startIdx=[0,0]; #slideshowMode=false; #intervalId; #slideDuration=3;
 
   // TODO
   // slideshow pause button, exit button
@@ -28,9 +28,6 @@ class PlSlideshow extends HTMLElement {
     if(this.startFrom){
       this.#startIdx = this.#getIndexOfK(this.data, this.startFrom);
     }
-
-    this.#screenHeight = document.documentElement.clientHeight;
-    this.#screenWidth  = document.documentElement.clientWidth;
 
     console.log(`startIdx: ${this.#startIdx}`);
     // console.log(`height: ${this.#screenHeight} width: ${this.#screenWidth}`);
@@ -263,8 +260,7 @@ class PlSlideshow extends HTMLElement {
   #createSlide(idx){
     let slide = Object.assign(document.createElement('pl-slide'), {
       albumname: this.data[idx[0]].album,
-      item: this.data[idx[0]].items[idx[1]],
-      screenDimensions: [this.#screenWidth, this.#screenHeight]
+      item: this.data[idx[0]].items[idx[1]]
     });
 
     slide.dataset.type = this.data[idx[0]].items[idx[1]].data.type;

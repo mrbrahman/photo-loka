@@ -484,7 +484,7 @@
       #slides > .left {
         left: 0px;
         transform: translate(-120vw, 0px);
-        visiblity: hidden;
+        visibility: hidden;
       }
 
       #slides > .right {
@@ -535,18 +535,9 @@
         align-items: center;
       }
 
-      #media img {
+      #media :is(img, video) {
         max-width: 100vw;
         max-height: 100svh;
-      }
-
-      #media img.full-height {
-        width: auto;
-        height: 100svh;
-      }
-      #media img.full-width {
-        width: 100vw;
-        height: auto;
       }
 
       #zoom-controls {
