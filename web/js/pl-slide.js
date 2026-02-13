@@ -4,12 +4,16 @@ class PlSlide extends HTMLElement {
   #albumname; #item; #play; #slideshowMode;
   #zoomLevel = 1; #maxZoom = 1; #startX = 0; #startY = 0; #translateX = 0; #translateY = 0;
   #eventHandlers = [];
-  #classObserver;
 
   constructor() {
     super().attachShadow({mode: 'open'}); // sets "this" and "this.shadowRoot"
   }
-  
+
+  static get observedAttributes() {
+    return ['data-pos'];
+  }
+
+
   connectedCallback() {
     this.shadowRoot.appendChild(
       document.getElementById(this.nodeName).content.cloneNode(true)
@@ -26,7 +30,6 @@ class PlSlide extends HTMLElement {
 
     this.#setupZoomControls();
     this.#setupKeyboardControls();
-    this.#setupClassObserver();
 
     if(this.item?.data?.type?.startsWith('image')){
       let img = Object.assign(document.createElement('img'), {
@@ -131,13 +134,13 @@ class PlSlide extends HTMLElement {
     });
     this.#eventHandlers = [];
     
-    if (this.#classObserver) {
-      this.#classObserver.disconnect();
-    }
   }
 
   attributeChangedCallback(name, oldVal, newVal) {
-    //implementation
+    if(name === 'data-pos'){
+      // When the slide is no longer active, resetZoom
+      if(oldVal == "0" && newVal != "0") this.#resetZoom();
+    }
   }
 
   adoptedCallback() {
@@ -232,21 +235,6 @@ class PlSlide extends HTMLElement {
     };
     document.addEventListener('keydown', handler);
     this.#eventHandlers.push({element: document, event: 'keydown', handler});
-  }
-
-  #setupClassObserver() {
-    this.#classObserver = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
-          const hasActive = this.classList.contains('active');
-          const hadActive = mutation.oldValue?.includes('active');
-          if (hadActive && !hasActive) {
-            this.#resetZoom();
-          }
-        }
-      });
-    });
-    this.#classObserver.observe(this, { attributes: true, attributeOldValue: true, attributeFilter: ['class'] });
   }
 
   #setupImageZoom(img) {
