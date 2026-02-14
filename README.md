@@ -2,7 +2,7 @@
 
 Rewind-Replay is (planned to be) a no frills, self-hosted photos app that helps in organizing and more importantly searching your photos.
 
-![Screenshot](public/assets/Screen-Sizes.jpg)
+![Screenshot](web/assets/Screen-Sizes.jpg)
 
 Currently this project is very much a work-in-progress.
 
@@ -29,11 +29,11 @@ Currently this project is very much a work-in-progress.
 - Support for existing folders and files: Read existing folder structure (specificed during collection creation) and index the files found (if any) under respective collections
 - Support for new files: 
     * Immediate indexing - Watch one or more 'listen' folders for new files, and as new files become available, bring them into the respective collection and index them
-    * Delayed indexing - Schedule a daily 'cron' to watch the same 'listen' folders, to bring in files to the collection that are 'n' days stale
+    * Delayed indexing - Schedule a daily 'cron' to watch the setup 'intake' folders, to bring in files to the collection that are 'x' days stale
 - Rename albums (similar to renaming folders on a File Explorer program)
 - Select files and move them to a different album
 - Select files and trash them
-- Backup helper: A helper utility that *incrementally* backs-up all the files into the 'registered' backup drives
+- Backup helper: A helper utility that *incrementally* backs-up all the files into the 'registered' backup drives. See [Backup helper](#backup-helper) section for more information
 
 ## Metadata management
 - Index media photos, videos and audio
@@ -73,6 +73,20 @@ Currently this project is very much a work-in-progress.
           - `raw:"strftime('%W',file_date)=strftime('%W',date()) and strftime('%Y',file_date) != strftime('%Y',date())"` (all 'past' photos of current week)
     7. "raw" can be clubbled with other filters, if needed
 
+## Backup helper
+
+This module helps take backup of the collections to external drives.
+
+When the folders are renamed, backup utilities like `rsync` see them as file-deletions and file-additions. That's a waste of resources especially on large video files. A simple thing could be to just perform `mv` operation on the target backups as well.
+
+That's exactly what this setup aims to help with.
+
+- Register backup device(s) (with UUID of the device)
+- All file opertions on a collection are noted in a table
+- When it is time to backup to a specific device, all 'delta' operations are determined and applied to the set of files eligible for backup.
+- The 'last_backup_id' is noted for each backup.
+
+TODO - sync timestamps on +2 level folders
 
 # Features TODO
 **Near future**
@@ -110,7 +124,7 @@ Currently this project is very much a work-in-progress.
 
 - **Install node dependencies**
   ```bash
-  cd rewind-replay
+  cd rewind-replay/server
   npm install
   ```
 
@@ -128,6 +142,7 @@ Currently this project is very much a work-in-progress.
 
 - **Start server**
   ```bash
+  cd rewind-replay/server
   node server.mjs
   ```
 
