@@ -134,6 +134,6 @@ async function getItemsForFrame(frame_id){
   if (!frame) {
     return [];
   }
-  return await search.search(frame.collection_id, frame.search_str, false, false);
+  return await search.search(frame.collection_id, frame.search_str, false, false, frame.display_order);
 }
 
