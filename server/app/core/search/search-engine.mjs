@@ -1,8 +1,8 @@
 import {getDefaultCollection} from '#collections/collection-manager';
 import * as db from './search-db.mjs';
 
-export async function search(collection_id, searchStr){
-  return await db.runSearch(collection_id, searchStr);
+export async function search(collection_id, searchStr, trashed = false, groupByAlbum = true){
+  return await db.runSearch(collection_id, searchStr, trashed, groupByAlbum);
 }
 
 export async function getAllFromCollection(collection_id){

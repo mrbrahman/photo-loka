@@ -118,4 +118,26 @@ function initialDbSetup() {
     );
   `)
   var info = stmt.run();
+
+  var stmt = db.prepare(`
+    create table frames (
+      frame_id integer PRIMARY KEY AUTOINCREMENT,
+      frame_ip_addr varchar not null,
+      frame_name varchar not null,
+      collection_id integer,        -- collection to search for items to show in frame, null to show across collections
+      search_str varchar not null,  -- valid search input
+      display_order varchar,        -- (date) ASC, (date) DESC, RANDOM
+      daily_pause_range varchar,       -- time range in which frame needs to be paused every day, stored as "HH:mm-HH:mm" in 24 hr format
+      -- pause_schedule varchar,       -- crontab format
+      -- resume_schedule varchar,      -- crontab format
+      reset_schedule varchar        -- crontab format
+      
+      -- let these 2 be in the app
+      -- in case of app restarts, they will be reset, which should be fine
+
+      --items varchar,                -- array of items based on search grabbed as of the time of reset
+      --last_idx int,                 -- last index of item being shown in frame
+    );
+  `)
+  var info = stmt.run();
 }

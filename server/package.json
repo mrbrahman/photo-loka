@@ -46,6 +46,7 @@
     "#collections/*": "./app/core/collections/*.mjs",
     "#geo/*": "./app/core/geo/*.mjs",
     "#indexing/*": "./app/core/indexing/*.mjs",
+    "#frame/*": "./app/core/frame/*.mjs",
     "#media/*": "./app/core/media/*.mjs",
     "#overlays/*": "./app/core/media/overlays/*",
     "#search/*": "./app/core/search/*.mjs",

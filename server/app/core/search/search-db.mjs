@@ -101,7 +101,18 @@ function converToFilterStr(searchStr){
 
 }
 
-export async function runSearch(collection_id, searchStr, trashed = false, groupByAlbum = true) {
+function orderByClause(inp) {
+  const defaultClause = 'order by album desc, datetime(file_date)';
+  if(!inp) return defaultClause;
+
+  if(inp.toLowerCase() === 'asc') return 'order by datetime(file_date) asc';
+  if(inp.toLowerCase() === 'desc') return 'order by datetime(file_date) desc';
+  if(inp.toLowerCase() === 'random') return 'order by random()';
+
+  return defaultClause;
+}
+
+export async function runSearch(collection_id, searchStr, trashed = false, groupByAlbum = true, orderBy = null){
   let filters = [], limit = false;
   
   filters.push(`coalesce(trashed, false) = ${trashed}`);
@@ -125,7 +136,7 @@ export async function runSearch(collection_id, searchStr, trashed = false, group
       json_object(
         'data', 
           json_object(
-            'ar', aspectratio,
+            'ar', round(aspectratio, 2),
             'id', uuid,
             'type', mediatype,
             'rating', coalesce(rating,0)
@@ -134,7 +145,7 @@ export async function runSearch(collection_id, searchStr, trashed = false, group
     from metadata
     where ${filters.join(' and ')}
     and mediatype in ('image', 'video')  -- TODO: add audio
-    order by album desc, datetime(file_date)
+    ${orderByClause(orderBy)}
   `;
 
   let sql;

@@ -15,6 +15,8 @@ export * as fileOps     from '#indexing/file-organizer';
 
 export * as geoEncoder  from '#geo/geo-encoder';
 
+export * as frame        from '#frame/frame-manager';
+
 export * as startup     from '#infra/startup-manager';
 export * as shutdown    from '#infra/shutdown-manager';
 export * as watcher     from '#jobs/file-watcher-job';

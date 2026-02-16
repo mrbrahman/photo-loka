@@ -42,6 +42,8 @@ app.use(morganMiddleware);
 // *****************************************
 const apiRouter = express.Router();
 
+const frameRouter = express.Router();
+
 // TODO: validate request parameters in all relevant functions?
 
 // *****************************************
@@ -264,7 +266,43 @@ apiRouter.put('/moveItems', async function(req,res){
 });
 
 // *****************************************
-// wathers
+// frame management
+// *****************************************
+
+apiRouter.post('/createNewFrame', async function(req,res){
+  let entry = req.body;
+  try {
+    let frame_id = await s.frame.createNewFrame(entry);
+    res.json(frame_id);
+  } catch (error) {
+    res.status(500).json({error: error.message});
+  }
+});
+
+
+frameRouter.get('/getNext', function(req,res){
+  let ip = req.ip;
+  try {
+    let item = s.frame.getNextItem(ip);
+    res.json(item);
+  } catch (error) {
+    res.status(500).json({error: error.message});
+  }
+});
+
+
+frameRouter.get('/getPrev', function(req,res){
+  let ip = req.ip;
+  try {
+    let item = s.frame.getPrevItem(ip);
+    res.json(item);
+  } catch (error) {
+    res.status(500).json({error: error.message});
+  }
+});
+
+// *****************************************
+// watchers
 // *****************************************
 
 // TODO Implement start and stop for individual collection
@@ -343,6 +381,9 @@ apiRouter.get('/getAllBackupRegistrations', async function(req,res){
 
 // Mount the API router at /api
 app.use('/api', apiRouter);
+
+// Mount the frame router at /frame
+app.use('/frame', frameRouter);
 
 
 // *****************************************

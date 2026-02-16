@@ -6,6 +6,7 @@ import { getAllCollections } from '#collections/collection-manager';
 import { indexCollection } from '#indexing/collection-indexer';
 import { startWatchersForAllCollections } from '#jobs/file-watcher-job';
 import { scheduleCronJobs } from '#jobs/scheduled-indexing-job';
+import { loadAllFrames } from '#frame/frame-manager';
 import * as systemMonitor from '#infra/system-monitor';
 
 const logger = createLogger(import.meta.url);
@@ -36,4 +37,7 @@ export async function startUpActivities(){
 
   // Start scheduled indexing
   scheduleCronJobs();
+
+  // Load all frames
+  loadAllFrames()
 }
