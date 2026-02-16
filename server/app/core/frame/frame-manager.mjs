@@ -76,7 +76,7 @@ export function getPrevItem(frame_ip_addr){
   // TODO
 
   // decrement the index and return the item
-  if (frame.curr_idx == -1){
+  if (frame.curr_idx == -1 || frame.curr_idx == 0) {
     frame.curr_idx = frame.items.length
   }
   return frame.items[--frame.curr_idx];

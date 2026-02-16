@@ -161,7 +161,7 @@ export async function runSearch(collection_id, searchStr, trashed = false, group
   } else {
     sql = `
       with t as (${baseQuery})
-      select item
+      select *
       from t
       ${limit ? 'limit 300' : ''}
     `;
@@ -170,13 +170,20 @@ export async function runSearch(collection_id, searchStr, trashed = false, group
   logger.debug(sql)
   
   let results = await asyncAll(sql);
-  return groupByAlbum ? transformSearchResultsFromDb(results) : results.map(row => JSON.parse(row.item));
+  return groupByAlbum ? transform1(results) : transform2(results) // .map(row => {album: row.album, item: JSON.parse(row.item)})
 }
 
-function transformSearchResultsFromDb(rows){
+function transform1(rows){
   return rows.map(row=>{
     row['items'] = JSON.parse(row['items']);
     row['id'] = row['album'].replace(/[\s&\/]/ig, '_');
+    return row
+  });
+}
+
+function transform2(rows){
+  return rows.map(row=>{
+    row['item'] = JSON.parse(row['item']);
     return row
   });
 }
