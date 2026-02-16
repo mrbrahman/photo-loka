@@ -25,9 +25,11 @@ const morganMiddleware = morgan(
   ':method :url :status :response-time ms - q::query b::body',
   {
     skip: (req) => 
-         req.url.includes('/getThumbnail')
-      || req.url.includes('/getImage')
-      || req.url.includes('/getVideo'),
+         req.url.includes('/getThumbnail'),
+      // || req.url.includes('/getImage')
+      // || req.url.includes('/getVideo')
+      // || req.url.includes('/getNext')
+      // || req.url.includes('/getPrev'),
     stream: {
         write: (message) => logger.info(message.trim()),
     },
@@ -281,7 +283,7 @@ apiRouter.post('/createNewFrame', async function(req,res){
 
 
 frameRouter.get('/getNext', function(req,res){
-  let ip = req.ip;
+  const ip = req.ip.startsWith('::ffff:') ? req.ip.substring(7) : req.ip;
   try {
     let item = s.frame.getNextItem(ip);
     res.json(item);
