@@ -31,6 +31,15 @@ class PlSlide extends HTMLElement {
     this.#setupZoomControls();
     this.#setupKeyboardControls();
 
+    if(this.#slideshowMode){
+      this.shadowRoot.getElementById('albumname').classList.add('hidden');
+      this.shadowRoot.getElementById('actions').classList.add('hidden');
+
+    } else {
+      this.shadowRoot.getElementById('albumname').classList.remove('hidden');
+      this.shadowRoot.getElementById('actions').classList.remove('hidden');
+    }
+
     if(this.item?.data?.type?.startsWith('image')){
       let img = Object.assign(document.createElement('img'), {
         src: `/api/getImage?uuid=${this.item.data.id}`
@@ -39,6 +48,7 @@ class PlSlide extends HTMLElement {
       img.onload = () => {
         this.#maxZoom = Math.max(img.naturalWidth / img.offsetWidth, img.naturalHeight / img.offsetHeight) * 1.5;
         this.#updateZoomButtons();
+        this.dispatchEvent(new Event('pl-slide-ready', {composed: true, bubbles: true}));
       };
       
       this.#setupImageZoom(img);
@@ -58,6 +68,10 @@ class PlSlide extends HTMLElement {
 
       let txt = 'Cannot play video';
       video.append(src, txt);
+
+      video.addEventListener('canplay', ()=>{
+        this.dispatchEvent(new Event('pl-slide-ready', {composed: true, bubbles: true}));
+      });
 
       this.shadowRoot.getElementById('media').appendChild(video);
       video.addEventListener('ended', ()=>{
