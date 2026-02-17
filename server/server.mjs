@@ -282,24 +282,24 @@ apiRouter.post('/createNewFrame', async function(req,res){
 });
 
 
-frameRouter.get('/getNext', function(req,res){
+frameRouter.get('/getNext', function(req,res,next){
   const ip = req.ip.startsWith('::ffff:') ? req.ip.substring(7) : req.ip;
   try {
     let item = s.frame.getNextItem(ip);
     res.json(item);
   } catch (error) {
-    res.status(500).json({error: error.message});
+    next(error);
   }
 });
 
 
-frameRouter.get('/getPrev', function(req,res){
-  let ip = req.ip;
+frameRouter.get('/getPrev', function(req,res,next){
+  const ip = req.ip.startsWith('::ffff:') ? req.ip.substring(7) : req.ip;
   try {
     let item = s.frame.getPrevItem(ip);
     res.json(item);
   } catch (error) {
-    res.status(500).json({error: error.message});
+    next(error);
   }
 });
 
@@ -386,6 +386,16 @@ app.use('/api', apiRouter);
 
 // Mount the frame router at /frame
 app.use('/frame', frameRouter);
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  const status = err.status || 500;
+  const error = err.error || {
+    code: 'UNKNOWN_ERROR',
+    message: err.message || 'An unexpected error occurred'
+  };
+  res.status(status).json({error});
+});
 
 
 // *****************************************
