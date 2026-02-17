@@ -11,10 +11,29 @@ import './pl-slide.js';
 let paused = false;
 let itemTimer = null;
 
+async function fetchNextItem() {
+  const res = await fetch('/frame/getNext');
+  const output = await res.json();
+  
+  if (!res.ok) {
+    throw new Error(output.error.message || `Server error: ${res.status}`);
+  }
+  
+  return output;
+}
+
+function showError(message) {
+  const errorDiv = document.createElement('div');
+  errorDiv.textContent = message;
+  errorDiv.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.8); color: white; padding: 20px; border-radius: 8px; z-index: 9999;';
+  document.body.appendChild(errorDiv);
+}
+
 function loop(){
   if (paused) return;
   
-  fetch('/frame/getNext').then(response => response.json()).then(data => {
+  fetchNextItem()
+  .then(data => {
     // Create new slide, initially hidden
     let slide = Object.assign(document.createElement('pl-slide'), {
       albumname: data.album,
@@ -52,6 +71,10 @@ function loop(){
     if(data.item.data.type.startsWith('video')){
       slide.play = true;
     }
+  })
+  .catch(err => {
+    console.error('Failed to fetch next item:', err);
+    showError(err.message);
   });
 }
 
