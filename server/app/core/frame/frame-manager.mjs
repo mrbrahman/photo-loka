@@ -39,6 +39,7 @@ export async function loadAllFrames() {
       pauseEndTime: null,
       manualPaused: false
     };
+    logger.info(`Data for frame ${frame.frame_ip_addr} loaded with ${items.length} items`);
   }
 
   logger.info(`Data for ${frames.length} frame(s) loaded`);
