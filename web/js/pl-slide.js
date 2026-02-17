@@ -68,19 +68,39 @@ class PlSlide extends HTMLElement {
 
       let txt = 'Cannot play video';
       video.append(src, txt);
-
+      
       video.addEventListener('canplay', ()=>{
-        this.dispatchEvent(new Event('pl-slide-ready', {composed: true, bubbles: true}));
+        this.dispatchEvent(new Event('pl-slide-ready', {once: true}));
       });
 
       video.addEventListener('ended', ()=>{
-        this.dispatchEvent(new Event('pl-slideshow-video-ended', {composed: true, bubbles: true}));
+        this.dispatchEvent(new Event('pl-slideshow-video-ended', {once: true}));
       });
+
+      window.addEventListener('blur', this.#pauseVideoOnBlur);
+      this.#eventHandlers.push({element: window, event: 'blur', handler: this.#pauseVideoOnBlur});
+
+      window.addEventListener('focus', this.#playVideoOnFocus);
+      this.#eventHandlers.push({element: window, event: 'focus', handler: this.#playVideoOnFocus});
 
       this.shadowRoot.getElementById('media').appendChild(video);
       
     } else {
       this.shadowRoot.getElementById('media').innerHTML = `<div>${this.item.data.type} TBD</div>`
+    }
+  }
+
+  #pauseVideoOnBlur = () => {
+    let video = this.shadowRoot.getElementById('media')?.querySelector('video');
+    if(video){
+      video.pause();
+    }
+  }
+
+  #playVideoOnFocus = () => {
+    let video = this.shadowRoot.getElementById('media')?.querySelector('video');
+    if(video && this.play){
+      video.play();
     }
   }
 

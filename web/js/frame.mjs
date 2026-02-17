@@ -62,11 +62,11 @@ window.addEventListener('blur', () => {
     clearTimeout(itemTimer);
     itemTimer = null;
   }
-  // Pause video if playing
-  let currentSlide = document.querySelector('pl-slide[data-visible]');
-  if(currentSlide?.dataset.type.startsWith('video')) {
-    currentSlide.play = false;
-  }
+  // // Pause video if playing
+  // let currentSlide = document.querySelector('pl-slide[data-visible]');
+  // if(currentSlide?.dataset.type.startsWith('video')) {
+  //   currentSlide.play = false;
+  // }
 });
 
 // Resume when window gains focus
@@ -75,10 +75,10 @@ window.addEventListener('focus', () => {
     paused = false;
     let currentSlide = document.querySelector('pl-slide[data-visible]');
     if (currentSlide) {
-      // Resume video if it was playing
-      if(currentSlide.dataset.type.startsWith('video')) {
-        currentSlide.play = true;
-      }
+      // // Resume video if it was playing
+      // if(currentSlide.dataset.type.startsWith('video')) {
+      //   currentSlide.play = true;
+      // }
       // For images, restart the timer
       if (currentSlide.item?.data?.type?.startsWith('image')) {
         itemTimer = setTimeout(loop, 4000);
