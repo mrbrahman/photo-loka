@@ -65,7 +65,7 @@ window.addEventListener('blur', () => {
   // Pause video if playing
   let currentSlide = document.querySelector('pl-slide[data-visible]');
   if(currentSlide?.dataset.type.startsWith('video')) {
-    // currentSlide.play = false;
+    currentSlide.play = false;
   }
 });
 
