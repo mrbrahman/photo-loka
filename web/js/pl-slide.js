@@ -73,11 +73,12 @@ class PlSlide extends HTMLElement {
         this.dispatchEvent(new Event('pl-slide-ready', {composed: true, bubbles: true}));
       });
 
-      this.shadowRoot.getElementById('media').appendChild(video);
       video.addEventListener('ended', ()=>{
         this.dispatchEvent(new Event('pl-slideshow-video-ended', {composed: true, bubbles: true}));
-      })
+      });
 
+      this.shadowRoot.getElementById('media').appendChild(video);
+      
     } else {
       this.shadowRoot.getElementById('media').innerHTML = `<div>${this.item.data.type} TBD</div>`
     }
