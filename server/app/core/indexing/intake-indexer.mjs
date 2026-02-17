@@ -1,6 +1,7 @@
 import {fdir} from 'fdir';
 import { stat } from 'fs/promises';
 import { createLogger } from '#utils/logger';
+import { AppError } from '#utils/app-error';
 
 import { getCollection, getCollectionByIntakePath } from '#collections/collection-manager';
 import { bulkAddToIndexQueue } from './queue-manager.mjs';
@@ -39,7 +40,7 @@ export async function startIntakeFileIndexing(collection_id, dir, staleDays = nu
         }
       }
     } else {
-      throw 'Either collection_id or dir must be provided';
+      throw new AppError('Either collection_id or dir must be provided', 'ValidationError', 'MISSING_PARAMETER', 400);
     }
     
   } catch (error) {

@@ -5,6 +5,7 @@ import { computeBackupOperations } from './compute-backup-operations.mjs';
 import { getCollection } from '#collections/collection-manager';
 import { getConnectedDevices } from './device-detector.mjs';
 import { createLogger } from '#utils/logger';
+import { AppError } from '#utils/app-error';
 
 const logger = createLogger(import.meta.url);
 
@@ -28,7 +29,7 @@ export async function backupCollection(deviceId, collectionId, mountpoint, dryRu
     // Get last backup details
     const {lastBackupStatus, lastBackupId} = await backupDb.getLastBackupDetails(deviceId, collectionId);
     if (lastBackupStatus != 'SUCCESS') {
-      throw new Error(`Previous backup for device ${deviceId}, collection ${collectionId} failed. Please resolve the issue and update the status to proceed.`);
+      throw new AppError(`Previous backup for device ${deviceId}, collection ${collectionId} failed. Please resolve the issue and update the status to proceed.`, 'BackupError', 'BACKUP_FAILED', 400);
     }
     
     logger.info(`Last backup ID for device ${deviceId}, collection ${collectionId} is ${lastBackupId}`);
@@ -45,7 +46,7 @@ export async function backupCollection(deviceId, collectionId, mountpoint, dryRu
     // Get collection details
     const collection = await getCollection(collectionId);
     if (!collection) {
-      throw new Error(`Collection ${collectionId} not found`);
+      throw new AppError(`Collection ${collectionId} not found`, 'NotFoundError', 'COLLECTION_NOT_FOUND', 404);
     }
     
     const listenPaths = collection.intake_configs.map(x => x.path);
@@ -56,7 +57,7 @@ export async function backupCollection(deviceId, collectionId, mountpoint, dryRu
     // Get device backup path
     const device = await backupDb.getDevice(deviceId, collectionId);
     if (!device) {
-      throw new Error(`Device ${deviceId} for collection ${collectionId} not found`);
+      throw new AppError(`Device ${deviceId} for collection ${collectionId} not found`, 'NotFoundError', 'DEVICE_NOT_FOUND', 404);
     }
     
     // Compute effective backup operations
@@ -138,13 +139,13 @@ export async function backupToDevice(deviceId, dryRun = false) {
   const connectedDevice = connectedDevices.find(d => d.uuid === deviceId);
   
   if (!connectedDevice) {
-    throw new Error(`Device ${deviceId} not connected`);
+    throw new AppError(`Device ${deviceId} not connected`, 'NotFoundError', 'DEVICE_NOT_CONNECTED', 404);
   }
   
   const deviceCollections = await backupDb.getDeviceRegistrations(deviceId);
   
   if (deviceCollections.length === 0) {
-    throw new Error(`Device ${deviceId} not registered for any collections`);
+    throw new AppError(`Device ${deviceId} not registered for any collections`, 'NotFoundError', 'DEVICE_NOT_REGISTERED', 404);
   }
   
   logger.info(`Found device: ${deviceCollections[0].device_name} (${deviceId}) with ${deviceCollections.length} collections`);

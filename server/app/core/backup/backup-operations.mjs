@@ -1,6 +1,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { createLogger } from '#utils/logger';
+import { AppError } from '#utils/app-error';
 
 const logger = createLogger(import.meta.url);
 
@@ -43,7 +44,7 @@ async function executeSingleOperation(operation) {
       return await dirTouch(operation.path1, operation.stats);
     
     default:
-      throw new Error(`Unknown backup operation: ${operation.action}`);
+      throw new AppError(`Unknown backup operation: ${operation.action}`, 'BackupOperationError', 'UNKNOWN_OPERATION', 500);
   }
 }
 

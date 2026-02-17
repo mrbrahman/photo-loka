@@ -4,6 +4,7 @@ import * as path from 'path';
 import { fdir } from 'fdir';
 import { createLogger } from '#utils/logger';
 import { fmtTime } from '#utils/time-format';
+import { AppError } from '#utils/app-error';
 
 import dateformat from 'dateformat';
 
@@ -104,14 +105,14 @@ export async function renameFolder(collection_id, currAlbum, newAlbum){
     // Check if destination folder already exists
     const exists = await fsPromises.access(newAlbum).then(() => true).catch(() => false);
     if (exists) {
-      throw {code: 'FOLDER_EXISTS', message: 'Destination folder already exists'};
+      throw new AppError('Destination folder already exists', 'ConflictError', 'FOLDER_EXISTS', 409);
     }
     
     await fsPromises.rename(currAlbum, newAlbum);
     await logChange(collection_id, 'move', currAlbum, newAlbum);
   } catch (err) {
     logger.error(err)
-    throw {code: err.code, message: err.message};
+    throw new AppError(err.message, 'FileSystemError', err.code || 'RENAME_FAILED', 500);
   }
 }
 
@@ -132,7 +133,7 @@ export async function moveItem(collection_id, src, dest, silent = false){
     // workaround found at https://stackoverflow.com/questions/43206198/what-does-the-exdev-cross-device-link-not-permitted-error-mean
     
     if(err.code !== 'EXDEV'){
-      throw `Error while move: ${err.code} ${err.message}`;
+      throw new AppError(`Error while move: ${err.code} ${err.message}`, 'FileSystemError', err.code || 'MOVE_FAILED', 500);
     }
     await fsPromises.cp(src, dest, {preserveTimestamps: true, errorOnExist: true});
     fs.unlinkSync(src);

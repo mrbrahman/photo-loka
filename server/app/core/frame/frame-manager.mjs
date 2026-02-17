@@ -2,6 +2,7 @@ import * as db from './frame-db.mjs';
 import * as search from '#search/search-engine';
 
 import { createLogger } from '#utils/logger';
+import { AppError } from '#utils/app-error';
 
 const logger = createLogger(import.meta.url);
 
@@ -48,12 +49,12 @@ export async function loadAllFrames() {
 
 export function getNextItem(frame_ip_addr){
   if (!frameItems[frame_ip_addr]) {
-    throw {error: {code: 'NO_FRAME_SETUP', message: `No frame setup for IP address: ${frame_ip_addr}`}, status: 404};
+    throw new AppError(`No frame setup for IP address: ${frame_ip_addr}`, 'NotFoundError', 'NO_FRAME_SETUP', 404);
   }
 
   let frame = frameItems[frame_ip_addr];
   if (frame.manualPaused) {
-    throw {error: {code: 'FRAME_PAUSED', message: 'Frame is manually paused'}, status: 423};
+    throw new AppError('Frame is manually paused', 'FramePausedError', 'FRAME_PAUSED', 423);
   }
 
   // check if frame is in auto pause window
@@ -65,12 +66,12 @@ export function getNextItem(frame_ip_addr){
 
 export function getPrevItem(frame_ip_addr){
   if (!frameItems[frame_ip_addr]) {
-    throw {error: {code: 'NO_FRAME_SETUP', message: `No frame setup for IP address: ${frame_ip_addr}`}, status: 404};
+    throw new AppError(`No frame setup for IP address: ${frame_ip_addr}`, 'NotFoundError', 'NO_FRAME_SETUP', 404);
   }
   
   let frame = frameItems[frame_ip_addr];
   if (frame.manualPaused) {
-    throw {error: {code: 'FRAME_PAUSED', message: 'Frame is manually paused'}, status: 423};
+    throw new AppError('Frame is manually paused', 'FramePausedError', 'FRAME_PAUSED', 423);
   }
 
   // check if frame is in auto pause window

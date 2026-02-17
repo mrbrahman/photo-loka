@@ -3,24 +3,25 @@ import * as path from 'path';
 
 import * as watcher from '#jobs/file-watcher-job';
 import * as db from './collection-db.mjs';
+import { AppError } from '#utils/app-error';
 
 export async function createNewCollection(record){
   if(!isValidDir(record.collection_path)){
-    throw `${record.collection_path} is not a valid path in collection path`
+    throw new AppError(`${record.collection_path} is not a valid path in collection path`, 'ValidationError', 'INVALID_PATH', 400);
   }
 
   for (let intakeConfig of record.intake_configs){
     if(!isValidDir(intakeConfig.path)){
-      throw `${intakeConfig.path} is not a valid path in intake config`
+      throw new AppError(`${intakeConfig.path} is not a valid path in intake config`, 'ValidationError', 'INVALID_PATH', 400);
     }
     if(!['immediate', 'scheduled', 'on-demand'].includes(intakeConfig.method)){
-      throw `${intakeConfig.method} is not a valid method. Use 'immediate' or 'scheduled'`
+      throw new AppError(`${intakeConfig.method} is not a valid method. Use 'immediate' or 'scheduled'`, 'ValidationError', 'INVALID_METHOD', 400);
     }
   }
 
   let albumTypes = ['FOLDER_ALBUM','VIRTUAL_ALBUM']
   if(albumTypes.indexOf(record.album_type)<0){
-    throw `${record.album_type} is invalid album type. Valid values are: ${albumTypes.join(', ')}`
+    throw new AppError(`${record.album_type} is invalid album type. Valid values are: ${albumTypes.join(', ')}`, 'ValidationError', 'INVALID_ALBUM_TYPE', 400);
   }
   
   let id = await db.createNewCollection(record);

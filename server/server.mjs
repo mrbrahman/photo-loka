@@ -141,13 +141,13 @@ apiRouter.post('/indexCollection/:collection_id', function(req,res){
   res.sendStatus(200);
 });
 
-apiRouter.post('/startIntakeFileIndexing', async function(req,res){
+apiRouter.post('/startIntakeFileIndexing', async function(req,res,next){
   let {collection_id, dir, staleDays} = req.body;
   try {
     await s.newFilesIndexer.startIntakeFileIndexing(collection_id, dir, staleDays);
     res.sendStatus(200);
   } catch (error) {
-    res.status(500).json({error: error.message});
+    next(error);
   }
 });
 
@@ -194,15 +194,14 @@ apiRouter.post('/refreshMetadataForItem/:uuid', async function(req,res){
 });
 
 
-apiRouter.put('/updateRating', function(req,res){
+apiRouter.put('/updateRating', function(req,res,next){
   let {uuid_arr, newRating} = req.body;
   try{
     s.metadataUpdates.updateRating(uuid_arr, newRating);
+    res.sendStatus(200);
   } catch(err){
-    res.status(500).json({error: err.message});
-    return;
+    next(err);
   }
-  res.sendStatus(200);
 });
 
 apiRouter.put('/refreshThumbs/:uuid', async function(req,res){
@@ -210,12 +209,12 @@ apiRouter.put('/refreshThumbs/:uuid', async function(req,res){
   res.sendStatus(200);
 })
 
-apiRouter.put('/compressVideo/:uuid', async function(req,res){
+apiRouter.put('/compressVideo/:uuid', async function(req,res,next){
   try{
     await s.videos.compressVideo(req.params.uuid);
     res.sendStatus(200);
   } catch (err) {
-    res.status(500).json(err);
+    next(err);
   }
 })
 
@@ -243,14 +242,14 @@ apiRouter.post('/enqueueManyReverseGeoEncoding', function(req,res){
 // *****************************************
 // album organization
 // *****************************************
-apiRouter.post('/updateAlbumName', async function(req,res){
+apiRouter.post('/updateAlbumName', async function(req,res,next){
   let {collection_id, currAlbumName, newAlbumName} = req.body;
 
   try {
     let updates = await s.albums.updateAlbum(collection_id, currAlbumName, newAlbumName);
     res.json(updates);
   } catch (err) {
-    res.status(500).json(err);
+    next(err);
   }
 
 });
@@ -271,13 +270,13 @@ apiRouter.put('/moveItems', async function(req,res){
 // frame management
 // *****************************************
 
-apiRouter.post('/createNewFrame', async function(req,res){
+apiRouter.post('/createNewFrame', async function(req,res,next){
   let entry = req.body;
   try {
     let frame_id = await s.frame.createNewFrame(entry);
     res.json(frame_id);
   } catch (error) {
-    res.status(500).json({error: error.message});
+    next(error);
   }
 });
 
@@ -337,33 +336,33 @@ apiRouter.post('/stopScheduledIndexing', function(req,res){
 // backup functions
 // *****************************************
 
-apiRouter.post('/backupToConnectedDevices', async function(req,res){
+apiRouter.post('/backupToConnectedDevices', async function(req,res,next){
   let dryRun = req.query.dryRun === 'true';
   try {
     const results = await s.backup.backupToConnectedDevices(dryRun);
     res.json(results);
   } catch (error) {
-    res.status(500).json({error: error.message});
+    next(error);
   }
 });
 
-apiRouter.post('/backupToDevice/:deviceId', async function(req,res){
+apiRouter.post('/backupToDevice/:deviceId', async function(req,res,next){
   let dryRun = req.query.dryRun === 'true';
   let deviceId = req.params.deviceId;
   try {
     const results = await s.backup.backupToDevice(deviceId, dryRun);
     res.json(results);
   } catch (error) {
-    res.status(500).json({error: error.message});
+    next(error);
   }
 });
 
-apiRouter.get('/getAllBackupRegistrations', async function(req,res){
+apiRouter.get('/getAllBackupRegistrations', async function(req,res,next){
   try {
     const registrations = await s.backup.getAllBackupRegistrations();
     res.json(registrations);
   } catch (error) {
-    res.status(500).json({error: error.message});
+    next(error);
   }
 });
 
@@ -389,12 +388,21 @@ app.use('/frame', frameRouter);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  const status = err.status || 500;
-  const error = err.error || {
-    code: 'UNKNOWN_ERROR',
-    message: err.message || 'An unexpected error occurred'
-  };
-  res.status(status).json({error});
+  if (err.name === 'AppError') {
+    res.status(err.statusCode).json({
+      error: {
+        code: err.code,
+        message: err.message
+      }
+    });
+  } else {
+    res.status(500).json({
+      error: {
+        code: 'UNKNOWN_ERROR',
+        message: err.message || 'An unexpected error occurred'
+      }
+    });
+  }
 });
 
 
