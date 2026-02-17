@@ -8,7 +8,12 @@ import './pl-slide.js';
 // request full screen
 // document.documentElement.requestFullscreen();
 
+let paused = false;
+let itemTimer = null;
+
 function loop(){
+  if (paused) return;
+  
   fetch('/frame/getNext').then(response => response.json()).then(data => {
     // Create new slide, initially hidden
     let slide = Object.assign(document.createElement('pl-slide'), {
@@ -17,6 +22,8 @@ function loop(){
       slideshowMode: true
     });
     slide.style.opacity = '0';
+
+    slide.dataset.type = data.item.data.type;
 
     slide.addEventListener('pl-slide-ready', () => {
       // Fade out and remove old slide
@@ -31,18 +38,57 @@ function loop(){
       slide.style.transition = 'opacity 0.5s';
       slide.style.opacity = '1';
 
-      // For images, advance after 3 seconds
+      // For images, advance after 4 seconds
       if (data.item.data.type.startsWith('image')) {
-        setTimeout(loop, 3000);
-      }
+        itemTimer = setTimeout(loop, 4000);
+      } else if (data.item.data.type.startsWith('video')) {
+        // For videos, advance when video ends
+        slide.addEventListener('pl-slideshow-video-ended', loop, { once: true });
+      } 
     }, { once: true });
 
-    // For videos, advance when video ends
-    slide.addEventListener('pl-slideshow-video-ended', loop, { once: true });
 
     document.body.appendChild(slide);
+    if(data.item.data.type.startsWith('video')){
+      slide.play = true;
+    }
   });
 }
+
+// Pause when window loses focus
+window.addEventListener('blur', () => {
+  paused = true;
+  if (itemTimer) {
+    clearTimeout(itemTimer);
+    itemTimer = null;
+  }
+  // Pause video if playing
+  let currentSlide = document.querySelector('pl-slide[data-visible]');
+  if(currentSlide?.dataset.type.startsWith('video')) {
+    // currentSlide.play = false;
+  }
+});
+
+// Resume when window gains focus
+window.addEventListener('focus', () => {
+  if (paused) {
+    paused = false;
+    let currentSlide = document.querySelector('pl-slide[data-visible]');
+    if (currentSlide) {
+      // Resume video if it was playing
+      if(currentSlide.dataset.type.startsWith('video')) {
+        currentSlide.play = true;
+      }
+      // For images, restart the timer
+      if (currentSlide.item?.data?.type?.startsWith('image')) {
+        itemTimer = setTimeout(loop, 4000);
+      }
+    } else {
+      // No current slide, start fresh
+      loop();
+    }
+  }
+});
 
 loop();
 
