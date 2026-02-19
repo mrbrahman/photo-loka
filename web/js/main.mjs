@@ -55,20 +55,13 @@ searchBox.addEventListener("keyup", function (e) {
  }
 });
 
-// full list: https://en.wikipedia.org/wiki/Percent-encoding#Percent-encoding_reserved_characters
-function escapeURL(str){
-  return str
-    .replaceAll('%', '%25')
-    .replaceAll('*', '%2A')
-}
-
 function performSearch(){
   let searchText = document.getElementById("nav-search-box").value;
   if(!searchText){
     alert("Enter search text");
     return;
   }
-  router.navigate(`/search/${escapeURL(searchText)}`)
+  router.navigate(`/search/${encodeURIComponent(searchText)}`)
 }
 
 
