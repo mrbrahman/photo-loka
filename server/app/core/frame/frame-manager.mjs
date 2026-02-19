@@ -8,12 +8,22 @@ const logger = createLogger(import.meta.url);
 
 const frameItems = {};
 
-export async function createNewFrame(entry){
-  let frame_id = await db.createNewFrame(entry);
-  
-  let items = await getItemsForFrame(frame_id);
+export async function loadAllFrames() {
+  logger.info("Loading data for all frames...")
 
-  // store the items for the frame id
+  let frames = await getAllFrames();
+  for (let frame of frames){
+    reloadItemsForFrame(frame);
+  }
+
+  logger.info(`Data for ${frames.length} frame(s) loaded`);
+}
+
+export async function createNewFrame(entry){
+  let frame_ip_addr = await db.createNewFrame(entry);
+  
+  let items = await getItemsForFrame(frame_ip_addr);
+
   frameItems[entry.frame_ip_addr] = {
     items: items,
     curr_idx: -1,
@@ -22,28 +32,20 @@ export async function createNewFrame(entry){
     manualPaused: false
   };
 
-  return frame_id;
+  return frame_ip_addr;
 }
 
-export async function loadAllFrames() {
-  logger.info("Loading data for all frames...")
+export async function reloadItemsForFrame(frame){
+  let items = await getItemsForFrame(frame.frame_ip_addr);
 
-  let frames = await getAllFrames();
-  for (let frame of frames){
-    let items = await getItemsForFrame(frame.frame_id);
-
-    // store the items for the frame id
-    frameItems[frame.frame_ip_addr] = {
-      items: items,
-      curr_idx: -1,
-      autoPaused: false,
-      pauseEndTime: null,
-      manualPaused: false
-    };
-    logger.info(`Data for frame ${frame.frame_ip_addr} loaded with ${items.length} items`);
-  }
-
-  logger.info(`Data for ${frames.length} frame(s) loaded`);
+  frameItems[frame.frame_ip_addr] = {
+    items: items,
+    curr_idx: -1,
+    autoPaused: false,
+    pauseEndTime: null,
+    manualPaused: false
+  };
+  logger.info(`Data for frame ${frame.frame_ip_addr} loaded with ${items.length} items`);
 }
 
 
@@ -119,20 +121,20 @@ export async function getAllFrames(){
   return await db.getAllFrames();
 }
 
-export async function getFrame(frame_id){
-  return await db.getFrame(frame_id);
+export async function getFrame(frame_ip_addr){
+  return await db.getFrame(frame_ip_addr);
 }
 
-export async function updateFrame(frame_id, entry){
-  return await db.updateFrame(frame_id, entry);
+export async function updateFrame(frame_ip_addr, entry){
+  return await db.updateFrame(frame_ip_addr, entry);
 }
 
-export async function deleteFrame(frame_id){
-  return await db.deleteFrame(frame_id);
+export async function deleteFrame(frame_ip_addr){
+  return await db.deleteFrame(frame_ip_addr);
 }
 
-async function getItemsForFrame(frame_id){
-  const frame = await getFrame(frame_id);
+async function getItemsForFrame(frame_ip_addr){
+  const frame = await getFrame(frame_ip_addr);
   if (!frame) {
     return [];
   }

@@ -121,8 +121,7 @@ function initialDbSetup() {
 
   var stmt = db.prepare(`
     create table frames (
-      frame_id integer PRIMARY KEY AUTOINCREMENT,
-      frame_ip_addr varchar not null,
+      frame_ip_addr varchar PRIMARY KEY,
       frame_name varchar not null,
       collection_id integer,        -- collection to search for items to show in frame, null to show across collections
       search_str varchar not null,  -- valid search input

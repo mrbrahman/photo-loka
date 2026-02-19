@@ -273,8 +273,8 @@ apiRouter.put('/moveItems', async function(req,res){
 apiRouter.post('/createNewFrame', async function(req,res,next){
   let entry = req.body;
   try {
-    let frame_id = await s.frame.createNewFrame(entry);
-    res.json(frame_id);
+    let frame_ip_addr = await s.frame.createNewFrame(entry);
+    res.json(frame_ip_addr);
   } catch (error) {
     next(error);
   }
@@ -283,6 +283,40 @@ apiRouter.post('/createNewFrame', async function(req,res,next){
 apiRouter.post('/loadAllFrames', async function(req,res,next){
   try {
     await s.frame.loadAllFrames();
+    res.sendStatus(200);
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.get('/getAllFrames', async function(req,res,next){
+  try {
+    res.json(await s.frame.getAllFrames());
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.get('/getFrame/:frame_ip_addr', async function(req,res,next){
+  try {
+    res.json(await s.frame.getFrame(req.params.frame_ip_addr));
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.put('/updateFrame/:frame_ip_addr', async function(req,res,next){
+  try {
+    await s.frame.updateFrame(req.params.frame_ip_addr, req.body);
+    res.sendStatus(200);
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.delete('/deleteFrame/:frame_ip_addr', async function(req,res,next){
+  try {
+    await s.frame.deleteFrame(req.params.frame_ip_addr);
     res.sendStatus(200);
   } catch (error) {
     next(error);
