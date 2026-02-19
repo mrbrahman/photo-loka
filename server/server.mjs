@@ -280,6 +280,15 @@ apiRouter.post('/createNewFrame', async function(req,res,next){
   }
 });
 
+apiRouter.post('/loadAllFrames', async function(req,res,next){
+  try {
+    await s.frame.loadAllFrames();
+    res.sendStatus(200);
+  } catch (error) {
+    next(error);
+  }
+});
+
 
 frameRouter.get('/getNext', function(req,res,next){
   const ip = req.ip.startsWith('::ffff:') ? req.ip.substring(7) : req.ip;
