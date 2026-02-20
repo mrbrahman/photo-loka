@@ -27,6 +27,10 @@
    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
   <style>
+    :root {
+      --sl-font-sans: 'Lato', sans-serif;
+    }
+
     body, h1, h2, h3, h4, h5, h6 {
       font-family: Lato,-apple-system,system-ui,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
     }
@@ -714,6 +718,168 @@
     </div>
   </template>
 
+  <template id="PL-FRAME-ITEM">
+    <style>
+      :host {
+        display: block;
+        font-family: 'Lato', sans-serif;
+      }
+      sl-input::part(input)::placeholder {
+        color: var(--sl-color-neutral-400);
+        opacity: 1;
+      }
+      .frame-row {
+        margin-bottom: 0.75rem;
+        border: 1px solid var(--sl-color-neutral-200);
+        border-radius: var(--sl-border-radius-medium);
+        background: white;
+      }
+      .row-summary {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        width: 100%;
+        padding-right: 1rem;
+      }
+      .info-group {
+        text-align: left;
+      }
+      .title {
+        font-weight: bold;
+        font-size: 1.125rem;
+        color: var(--sl-color-neutral-900);
+      }
+      .subtitle {
+        font-family: Consolas, var(--sl-font-mono);
+        font-size: 0.875rem;
+        color: var(--sl-color-neutral-500);
+      }
+      .edit-form {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 1rem;
+        padding: 1rem;
+        border-top: 1px solid var(--sl-color-neutral-100);
+      }
+      @media (min-width: 500px) {
+        .edit-form {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+      .full-width {
+        grid-column: 1 / -1;
+      }
+      .preview-section {
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--sl-color-neutral-200);
+      }
+      .preview-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+      }
+      .preview-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+        gap: 0.5rem;
+      }
+      .preview-item {
+        aspect-ratio: 1;
+        background: var(--sl-color-neutral-200);
+        border-radius: 4px;
+        overflow: hidden;
+      }
+      .preview-item img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+    </style>
+    <sl-details class="frame-row">
+      <div slot="summary" class="row-summary">
+        <div class="info-group">
+          <div class="title" id="title-display"></div>
+          <div class="subtitle" id="ip-display"></div>
+        </div>
+        <sl-badge id="status-badge" pill></sl-badge>
+      </div>
+
+      <form class="edit-form" id="form">
+        <sl-input id="name" name="frame_name" label="Frame Name" size="small" required></sl-input>
+        <sl-input id="ip" name="frame_ip_addr" label="IP Address" size="small" required></sl-input>
+        
+        <sl-select id="collection" name="collection_id" label="Collection" size="small">
+          <sl-option value="">All Collections</sl-option>
+          <sl-option value="1">Family Pics</sl-option>
+        </sl-select>
+        
+        <sl-select id="order" name="display_order" label="Display Order" size="small">
+          <sl-option value="ASC">Date (Oldest First)</sl-option>
+          <sl-option value="DESC">Date (Newest First)</sl-option>
+          <sl-option value="RANDOM">Random</sl-option>
+        </sl-select>
+        
+        <sl-input id="search" name="search_str" label="Search Query" size="small" class="full-width" required></sl-input>
+        
+        <sl-input id="pause" name="daily_pause_range" label="Daily Pause (HH:mm-HH:mm)" size="small" placeholder="22:00-06:00"></sl-input>
+        <sl-input id="cron" name="reset_schedule" label="Reset Schedule (Cron)" size="small" placeholder="0 0 * * *"></sl-input>
+
+        <div class="preview-section full-width">
+          <div class="preview-header">
+            <h4 style="margin: 0;">Preview</h4>
+            <sl-button size="small" type="button" id="load-preview-btn">
+              Load Preview
+            </sl-button>
+          </div>
+          <div id="preview-grid" style="display: none;"></div>
+        </div>
+
+        <div class="full-width" style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.5rem;">
+          <sl-button size="small" variant="danger" outline type="button" id="delete-btn">Delete</sl-button>
+          <sl-button size="small" variant="primary" type="submit" id="save-btn">Save Changes</sl-button>
+        </div>
+      </form>
+    </sl-details>
+  </template>
+
+  <template id="PL-FRAME-MANAGER">
+    <style>
+      :host {
+        font-family: 'Lato', sans-serif;
+        display: block;
+        background: var(--sl-color-neutral-50);
+        min-height: 100%;
+        overflow-y: auto;
+      }
+      .app-container {
+        max-width: 650px;
+        margin: 0 auto;
+        padding: 1rem;
+      }
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+      }
+      #frames-list {
+        display: flex;
+        flex-direction: column;
+      }
+    </style>
+    <div class="app-container">
+      <div class="header">
+        <h2 style="margin:0">Display Frames</h2>
+        <sl-button variant="primary" size="medium" id="new-frame-btn">
+          <sl-icon slot="prefix" name="plus-lg"></sl-icon> New Frame
+        </sl-button>
+      </div>
+      <div id="frames-list"></div>
+    </div>
+  </template>
+
 </head>
 <body>
   <div id="app">
@@ -737,6 +903,10 @@
 
       <a class="nav-item" href="/map" data-navigo>
         <sl-icon-button name="geo-alt-fill" label="Map View"></sl-icon-button>
+      </a>
+      
+      <a class="nav-item" href="/frames" data-navigo>
+        <sl-icon-button name="display" label="Frames"></sl-icon-button>
       </a>
       
       <sl-icon-button class="nav-item" id="nav-settings" name="gear" label="Settings"></sl-icon-button>

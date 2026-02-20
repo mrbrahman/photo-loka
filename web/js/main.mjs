@@ -11,6 +11,11 @@ import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/compone
 import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/progress-bar/progress-bar.js'
 import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/dialog/dialog.js';
 import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/input/input.js';
+import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/button/button.js';
+import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/select/select.js';
+import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/option/option.js';
+import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/details/details.js';
+import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/badge/badge.js';
 
 import {notify, showProgressBar, hideProgressBar} from './utils.mjs';
 
@@ -23,6 +28,8 @@ import './pl-slide.js';
 import './pl-slideshow.js';
 import './pl-map.js';
 import './pl-carousel.js';
+import './pl-frame-item.js';
+import './pl-frame-manager.js';
 
 const router = new Navigo('/', {hash: true});
 
@@ -69,6 +76,8 @@ function showGallery(data){
   state.galleryData = data;
   // window.galleryData = data;
   let c = document.getElementById('main-content');
+  c.style.overflowY = 'hidden';
+  
   if(data.length == 0){
     c.innerHTML = "No results found";
     return;
@@ -184,7 +193,17 @@ router.on('/map', function(){
   let mapComponent = document.createElement('pl-map');
   
   c.innerHTML = "";
+  c.style.overflowY = 'hidden';
   c.appendChild(mapComponent);
+});
+
+router.on('/frames', function(){
+  let c = document.getElementById('main-content');
+  let framesManager = document.createElement('pl-frame-manager');
+  
+  c.innerHTML = "";
+  c.style.overflowY = 'auto';
+  c.appendChild(framesManager);
 });
 
 router.on('/slideshow/:startFrom', function(p){
