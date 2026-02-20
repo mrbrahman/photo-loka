@@ -8,6 +8,10 @@ const logger = createLogger(import.meta.url);
 
 const frameItems = {};
 
+export async function getAllFrames(){
+  return await db.getAllFrames();
+}
+
 export async function loadAllFrames() {
   logger.info("Loading data for all frames...")
 
