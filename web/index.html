@@ -17,16 +17,23 @@
   <!-- <script type="module" src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/shoelace.js" ></script> -->
   <script data-shoelace="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/"></script>
 
-  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&family=Roboto:wght@400;700&display=block" rel="stylesheet">
 
   <!-- For some reason (leaflet bug?) need leaflet.css outside of the pl-map to display the 
        marker icons (marker-icon-2x.png) properly 
   -->
-   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
+  <script src="js/main.mjs" type="module"></script>
+  
   <style>
+    :not(:defined) {
+      visibility: hidden;
+      opacity: 0;
+    }
+
     :root {
       --sl-font-sans: 'Lato', sans-serif;
     }
@@ -921,8 +928,6 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <!-- Leaflet MarkerCluster JavaScript -->
   <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
-  
-  <script src="js/main.mjs" type="module"></script>
   
   <script>
     if ('serviceWorker' in navigator) {
