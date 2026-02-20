@@ -11,7 +11,7 @@ const frameItems = {};
 export async function loadAllFrames() {
   logger.info("Loading data for all frames...")
 
-  let frames = await getAllFrames();
+  let frames = await db.getAllFrames();
   for (let frame of frames){
     reloadItemsForFrame(frame);
   }
@@ -20,9 +20,9 @@ export async function loadAllFrames() {
 }
 
 export async function createNewFrame(entry){
-  let frame_ip_addr = await db.createNewFrame(entry);
+  let frame_id = await db.createNewFrame(entry);
   
-  let items = await getItemsForFrame(frame_ip_addr);
+  let items = await getItemsForFrame(entry);
 
   frameItems[entry.frame_ip_addr] = {
     items: items,
@@ -32,11 +32,19 @@ export async function createNewFrame(entry){
     manualPaused: false
   };
 
-  return frame_ip_addr;
+  return frame_id;
+}
+
+export async function updateFrame(frame_id, entry){
+  return await db.updateFrame(frame_id, entry);
+}
+
+export async function deleteFrame(frame_id){
+  return await db.deleteFrame(frame_id);
 }
 
 export async function reloadItemsForFrame(frame){
-  let items = await getItemsForFrame(frame.frame_ip_addr);
+  let items = await getItemsForFrame(frame);
 
   frameItems[frame.frame_ip_addr] = {
     items: items,
@@ -117,27 +125,7 @@ function inPauseWindow(rangeStr, currentTime = new Date()) {
 }
 
 
-export async function getAllFrames(){
-  return await db.getAllFrames();
-}
-
-export async function getFrame(frame_ip_addr){
-  return await db.getFrame(frame_ip_addr);
-}
-
-export async function updateFrame(frame_ip_addr, entry){
-  return await db.updateFrame(frame_ip_addr, entry);
-}
-
-export async function deleteFrame(frame_ip_addr){
-  return await db.deleteFrame(frame_ip_addr);
-}
-
-async function getItemsForFrame(frame_ip_addr){
-  const frame = await getFrame(frame_ip_addr);
-  if (!frame) {
-    return [];
-  }
+async function getItemsForFrame(frame){
   return await search.search(frame.collection_id, frame.search_str, false, false, frame.display_order);
 }
 

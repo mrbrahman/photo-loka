@@ -12,41 +12,35 @@ values
 
 export async function createNewFrame(entry){
   const info = await asyncRun(insertIntoFramesStatement, entry);
-  return entry.frame_ip_addr;
+  return info.lastInsertRowid;
 }
 
 export async function getAllFrames(){
   const output = await asyncAll(`
-    select frame_ip_addr, frame_name, collection_id, search_str, display_order, reset_schedule
+    select frame_id, frame_ip_addr, frame_name, collection_id, search_str, display_order, reset_schedule
     from frames
   `);
   return output;
 }
 
-export async function getFrame(frame_ip_addr){
-  const output = await asyncGet(`
-    select frame_ip_addr, frame_name, collection_id, search_str, display_order, reset_schedule
-    from frames where frame_ip_addr = ?
-  `, frame_ip_addr);
-  return output;
-}
-
-export async function updateFrame(frame_ip_addr, entry){
+export async function updateFrame(frame_id, entry){
   const info = await asyncRun(`
     update frames
-    set frame_name = @frame_name,
+    set 
+      frame_ip_addr = @frame_ip_addr,
+      frame_name = @frame_name,
       collection_id = @collection_id,
       search_str = @search_str,
       display_order = @display_order,
       reset_schedule = @reset_schedule
-    where frame_ip_addr = @frame_ip_addr
-  `, Object.assign({}, entry, {frame_ip_addr}));
+    where frame_id = @frame_id
+  `, Object.assign({}, entry, {frame_id}));
   return info.changes;
 }
 
-export async function deleteFrame(frame_ip_addr){
+export async function deleteFrame(frame_id){
   const info = await asyncRun(`
-    delete from frames where frame_ip_addr = ?
-  `, frame_ip_addr);
+    delete from frames where frame_id = ?
+  `, frame_id);
   return info.changes;
 }
