@@ -77,11 +77,8 @@ class PlSlide extends HTMLElement {
         this.dispatchEvent(new Event('pl-slideshow-video-ended', {once: true}));
       });
 
-      window.addEventListener('blur', this.#pauseVideoOnBlur);
-      this.#eventHandlers.push({element: window, event: 'blur', handler: this.#pauseVideoOnBlur});
-
-      window.addEventListener('focus', this.#playVideoOnFocus);
-      this.#eventHandlers.push({element: window, event: 'focus', handler: this.#playVideoOnFocus});
+      document.addEventListener('visibilitychange', this.#handleVisibilityChange);
+      this.#eventHandlers.push({element: document, event: 'visibilitychange', handler: this.#handleVisibilityChange});
 
       this.shadowRoot.getElementById('media').appendChild(video);
       
@@ -90,17 +87,15 @@ class PlSlide extends HTMLElement {
     }
   }
 
-  #pauseVideoOnBlur = () => {
+  #handleVisibilityChange = () => {
     let video = this.shadowRoot.getElementById('media')?.querySelector('video');
     if(video){
-      video.pause();
-    }
-  }
-
-  #playVideoOnFocus = () => {
-    let video = this.shadowRoot.getElementById('media')?.querySelector('video');
-    if(video && this.play){
-      video.play();
+      if (document.hidden) {
+        video.pause();
+      }
+      else {
+        video.play();
+      }
     }
   }
 
