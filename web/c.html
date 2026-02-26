@@ -1,0 +1,104 @@
+<!-- Shoelace CDN Assets -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/themes/light.css" />
+<script type="module" src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/shoelace.js" ></script>
+
+<script>
+class FrameManager extends HTMLElement {
+  constructor() {
+    super();
+    // 1. Attach Shadow DOM for encapsulation
+    this.attachShadow({ mode: 'open' });
+    
+    // 2. Define internal state
+    this.frames = [
+      { id: 1, name: "Hallway Tablet", ip: "192.168.1.102", search: "nature", order: "RANDOM", pause: "23:00-06:00", cron: "0 0 * * *" },
+      { id: 2, name: "Office Frame", ip: "192.168.1.110", search: "space", order: "ASC", pause: "", cron: "" }
+    ];
+  }
+
+  // Lifecycle hook: runs when tag is added to the page
+  connectedCallback() {
+    this.render();
+  }
+
+  render() {
+    // 3. Inject Shoelace CSS into the Shadow DOM
+    this.shadowRoot.innerHTML = `
+      <link rel="stylesheet" href="https://cdn.jsdelivr.net" />
+      <style>
+        :host { display: block; font-family: var(--sl-font-sans); padding: 1rem; }
+        .container { max-width: 650px; margin: 0 auto; }
+        .header { display: flex; justify-content: space-between; margin-bottom: 1rem; }
+        .frame-row { margin-bottom: 0.75rem; border: 1px solid var(--sl-color-neutral-200); border-radius: 8px; overflow: hidden; background: white; }
+        .edit-form { display: grid; grid-template-columns: 1fr; gap: 1rem; padding: 1rem; }
+        @media (min-width: 500px) { .edit-form { grid-template-columns: 1fr 1fr; } }
+      </style>
+      
+      <div class="container">
+        <div class="header">
+          <h2>Display Frames</h2>
+          <sl-button id="add-btn" variant="primary" size="small">+ Add</sl-button>
+        </div>
+        <div id="list"></div>
+      </div>
+    `;
+
+    this.renderList();
+    this.shadowRoot.querySelector('#add-btn').onclick = () => this.addNewRow();
+  }
+
+  renderList() {
+    const list = this.shadowRoot.querySelector('#list');
+    list.innerHTML = this.frames.map(f => `
+      <sl-details class="frame-row">
+        <div slot="summary" style="display:flex; justify-content:space-between; width:100%; padding-right:1rem;">
+          <div><strong>${f.name}</strong> <br><small>${f.ip}</small></div>
+          <sl-badge variant="success" pill>Live</sl-badge>
+        </div>
+        <form class="edit-form" data-id="${f.id}">
+          <sl-input name="name" label="Name" value="${f.name}" size="small"></sl-input>
+          <sl-input name="ip" label="IP" value="${f.ip}" size="small"></sl-input>
+          <!-- Search Input -->
+          <sl-input name="search" label="Search String" class="full-width" help-text="Previewing images for this search..."></sl-input>
+
+          <!-- Image Preview Gallery (Horizontal Scroll) -->
+          <div class="preview-gallery full-width" style="display: flex; gap: 0.5rem; overflow-x: auto; padding: 0.5rem 0; scroll-snap-type: x mandatory;">
+          <div style="flex: 0 0 100px; height: 100px; background: #eee; border-radius: 4px; scroll-snap-align: start;">
+              <img src="https://via.placeholder.com" style="width:100%; height:100%; object-fit: cover; border-radius: 4px;">
+          </div>
+          <!-- Repeat for 4-5 images -->
+          </div>
+
+          <sl-button type="submit" variant="primary" size="small" style="grid-column: 1 / -1">Save</sl-button>
+        </form>
+      </sl-details>
+    `).join('');
+
+    // Attach form listeners
+    this.shadowRoot.querySelectorAll('form').forEach(form => {
+      form.onsubmit = (e) => this.handleSave(e);
+    });
+  }
+
+  addNewRow() {
+    const newFrame = { id: Date.now(), name: "New Frame", ip: "0.0.0.0" };
+    this.frames.unshift(newFrame);
+    this.renderList();
+  }
+
+  handleSave(e) {
+    e.preventDefault();
+    const id = e.target.dataset.id;
+    const formData = new FormData(e.target);
+    console.log(`Saving ID ${id} to SQLite...`, Object.fromEntries(formData));
+    // In production, use fetch() here
+  }
+}
+
+// 4. Register the Custom Element
+customElements.define('frame-manager', FrameManager);
+</script>
+
+<body>
+    <frame-manager></frame-manager>
+</body>

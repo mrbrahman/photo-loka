@@ -1,0 +1,62 @@
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/themes/light.css" />
+<script type="module" src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/shoelace.js" ></script>
+
+
+<style>
+  body { font-family: var(--sl-font-sans); padding: 2rem; background: var(--sl-color-neutral-50); }
+  .frame-container { max-width: 800px; margin: 0 auto; }
+  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+  .frame-card { margin-bottom: 1rem; cursor: pointer; }
+  .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem; }
+</style>
+
+<div class="frame-container">
+  <div class="header">
+    <h1 style="font-size: var(--sl-font-size-x-large); font-weight: var(--sl-font-weight-bold);">Photo Frames</h1>
+    <sl-button variant="primary" onclick="openDrawer('new')">
+      <sl-icon slot="prefix" name="plus-lg"></sl-icon> Add Frame
+    </sl-button>
+  </div>
+
+  <!-- Example Row/Card -->
+  <sl-card class="frame-card" onclick="openDrawer('edit', 1)">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <div>
+        <strong style="display: block; font-size: var(--sl-font-size-medium);">Kitchen Tablet</strong>
+        <small style="color: var(--sl-color-neutral-500); font-family: var(--sl-font-mono);">192.168.1.12</small>
+      </div>
+      <sl-badge variant="success" pill>Active</sl-badge>
+    </div>
+  </sl-card>
+
+  <!-- Side Drawer for Creating/Editing -->
+  <sl-drawer label="Edit Frame" placement="bottom" class="drawer-edit" style="--size: 70%;">
+    <form class="meta-grid">
+      <sl-input label="Frame Name" name="frame_name" help-text="Give your frame a nickname" required></sl-input>
+      <sl-input label="IP Address" name="frame_ip_addr" placeholder="0.0.0.0" required></sl-input>
+      
+      <sl-input label="Search String" name="search_str" style="grid-column: span 2;"></sl-input>
+      
+      <sl-select label="Display Order" value="RANDOM">
+        <sl-option value="ASC">Date (ASC)</sl-option>
+        <sl-option value="DESC">Date (DESC)</sl-option>
+        <sl-option value="RANDOM">Random</sl-option>
+      </sl-select>
+
+      <sl-input label="Daily Pause (HH:mm-HH:mm)" name="daily_pause_range" placeholder="22:00-07:00"></sl-input>
+      
+      <sl-input label="Reset Schedule (Cron)" name="reset_schedule" style="grid-column: span 2;"></sl-input>
+    </form>
+
+    <sl-button slot="footer" variant="primary" onclick="document.querySelector('.drawer-edit').hide()">Save Frame</sl-button>
+    <sl-button slot="footer" variant="danger" outline onclick="confirmDelete()">Delete</sl-button>
+  </sl-drawer>
+</div>
+
+<script>
+  function openDrawer(mode, id) {
+    const drawer = document.querySelector('.drawer-edit');
+    drawer.label = mode === 'new' ? 'New Frame' : 'Edit Frame';
+    drawer.show();
+  }
+</script>

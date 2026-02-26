@@ -4,6 +4,7 @@ import express from 'express';
 import compression from 'compression';
 import morgan from 'morgan';
 import { createLogger } from './app/utils/logger.mjs';
+import { AppError } from './app/utils/app-error.mjs';
 
 import {config} from './app/config.mjs';
 import * as s from './app/services.mjs'
@@ -53,8 +54,12 @@ const frameRouter = express.Router();
 // *****************************************
 
 // TODO: rename this
-apiRouter.get('/getAll', async function(req,res){
-  res.json(await s.search.getAllFromDefaultCollection());
+apiRouter.get('/getAll', async function(req,res,next){
+  try {
+    res.json(await s.search.getAllFromDefaultCollection());
+  } catch (error) {
+    next(error);
+  }
 });
 
 apiRouter.get('/getThumbnail', function(req,res){
@@ -188,9 +193,13 @@ apiRouter.post('/refreshMetadataForCollection/:collection_id', function(req,res)
   res.sendStatus(200);
 });
 
-apiRouter.post('/refreshMetadataForItem/:uuid', async function(req,res){
-  await s.metadataUpdates.refreshMetadata(req.params.uuid);
-  res.sendStatus(200);
+apiRouter.post('/refreshMetadataForItem/:uuid', async function(req,res,next){
+  try {
+    await s.metadataUpdates.refreshMetadata(req.params.uuid);
+    res.sendStatus(200);
+  } catch (error) {
+    next(error);
+  }
 });
 
 
@@ -204,10 +213,14 @@ apiRouter.put('/updateRating', function(req,res,next){
   }
 });
 
-apiRouter.put('/refreshThumbs/:uuid', async function(req,res){
-  await s.thumbnails.refreshThumbs(req.params.uuid);
-  res.sendStatus(200);
-})
+apiRouter.put('/refreshThumbs/:uuid', async function(req,res,next){
+  try {
+    await s.thumbnails.refreshThumbs(req.params.uuid);
+    res.sendStatus(200);
+  } catch (error) {
+    next(error);
+  }
+});
 
 apiRouter.put('/compressVideo/:uuid', async function(req,res,next){
   try{
@@ -254,16 +267,24 @@ apiRouter.post('/updateAlbumName', async function(req,res,next){
 
 });
 
-apiRouter.delete('/trashItems', async function(req,res){
-  let {collection_id, uuid_arr} = req.body;
-  await s.fileOps.moveFileToTrash(collection_id, uuid_arr);
-  res.sendStatus(200);
+apiRouter.delete('/trashItems', async function(req,res,next){
+  try {
+    let {collection_id, uuid_arr} = req.body;
+    await s.fileOps.moveFileToTrash(collection_id, uuid_arr);
+    res.sendStatus(200);
+  } catch (error) {
+    next(error);
+  }
 });
 
-apiRouter.put('/moveItems', async function(req,res){
-  let {collection_id, uuid_arr, new_album_name} = req.body;
-  await s.albums.moveItemsToAlbum(collection_id, uuid_arr, new_album_name);
-  res.sendStatus(200);
+apiRouter.put('/moveItems', async function(req,res,next){
+  try {
+    let {collection_id, uuid_arr, new_album_name} = req.body;
+    await s.albums.moveItemsToAlbum(collection_id, uuid_arr, new_album_name);
+    res.sendStatus(200);
+  } catch (error) {
+    next(error);
+  }
 });
 
 // *****************************************
@@ -309,6 +330,24 @@ apiRouter.put('/updateFrame/:frame_id', async function(req,res,next){
 apiRouter.delete('/deleteFrame/:frame_id', async function(req,res,next){
   try {
     await s.frame.deleteFrame(req.params.frame_id);
+    res.sendStatus(200);
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.post('/pauseFrame/:frame_id', async function(req,res,next){
+  try {
+    await s.frame.pauseFrame(req.params.frame_id, req.body.pauseEndOverride);
+    res.sendStatus(200);
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.post('/resumeFrame/:frame_id', async function(req,res,next){
+  try {
+    await s.frame.resumeFrame(req.params.frame_id);
     res.sendStatus(200);
   } catch (error) {
     next(error);
@@ -423,12 +462,10 @@ app.use('/frame', frameRouter);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  if (err.name === 'AppError') {
-    res.status(err.statusCode).json({
-      error: {
-        code: err.code,
-        message: err.message
-      }
+  logger.error('Error:', err);
+  if (err instanceof AppError) {
+    res.status(err.statusCode || 500).json({
+      error: { code: err.code, message: err.message, info: err.info }
     });
   } else {
     res.status(500).json({

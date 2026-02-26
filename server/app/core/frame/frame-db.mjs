@@ -5,9 +5,9 @@ const logger = createLogger(import.meta.url);
 
 const insertIntoFramesStatement = `
 insert into frames
-(  frame_ip_addr, frame_name, collection_id, search_str, display_order, reset_schedule )
+(  frame_ip_addr, frame_name, collection_id, search_str, display_order, daily_pause_range, reset_schedule )
 values
-(  @frame_ip_addr, @frame_name, @collection_id, @search_str, @display_order, @reset_schedule )
+(  @frame_ip_addr, @frame_name, @collection_id, @search_str, @display_order, @daily_pause_range, @reset_schedule )
 `;
 
 export async function createNewFrame(entry){
@@ -17,9 +17,18 @@ export async function createNewFrame(entry){
 
 export async function getAllFrames(){
   const output = await asyncAll(`
-    select frame_id, frame_ip_addr, frame_name, collection_id, search_str, display_order, reset_schedule
+    select frame_id, frame_ip_addr, frame_name, collection_id, search_str, display_order, daily_pause_range, reset_schedule
     from frames
   `);
+  return output;
+}
+
+export async function getFrameById(frame_id){
+  const output = await asyncGet(`
+    select frame_id, frame_ip_addr, frame_name, collection_id, search_str, display_order, daily_pause_range, reset_schedule
+    from frames
+    where frame_id = ?
+  `, frame_id);
   return output;
 }
 
@@ -32,6 +41,7 @@ export async function updateFrame(frame_id, entry){
       collection_id = @collection_id,
       search_str = @search_str,
       display_order = @display_order,
+      daily_pause_range = @daily_pause_range,
       reset_schedule = @reset_schedule
     where frame_id = @frame_id
   `, Object.assign({}, entry, {frame_id}));

@@ -19,8 +19,10 @@ class PlFrameManager extends HTMLElement {
   async #loadFrames() {
     try {
       const response = await fetch('/api/getAllFrames');
-      if (!response.ok) throw new Error('Failed to load frames');
-      
+      if (!response.ok) {
+        let errorResponse = await response.json();
+        throw new Error('Failed to load frame');
+      }
       this.#frames = await response.json();
       this.#renderFrames();
     } catch (error) {

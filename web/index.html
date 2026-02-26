@@ -751,6 +751,11 @@
       .info-group {
         text-align: left;
       }
+      .status-group {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
       .title {
         font-weight: bold;
         font-size: 1.125rem;
@@ -810,7 +815,11 @@
           <div class="title" id="title-display"></div>
           <div class="subtitle" id="ip-display"></div>
         </div>
-        <sl-badge id="status-badge" pill></sl-badge>
+        <div class="status-group">
+          <sl-badge id="status-badge" pill></sl-badge>
+          <sl-icon-button id="pause-btn" name="pause-circle" label="Pause" style="display: none;"></sl-icon-button>
+          <sl-icon-button id="resume-btn" name="play-circle" label="Resume" style="display: none;"></sl-icon-button>
+        </div>
       </div>
 
       <form class="edit-form" id="form">
@@ -848,6 +857,13 @@
           <sl-button size="small" variant="primary" type="submit" id="save-btn">Save Changes</sl-button>
         </div>
       </form>
+
+      <sl-dialog id="pause-dialog" label="Pause Frame">
+        <p id="pause-dialog-text"></p>
+        <sl-button slot="footer" variant="default" id="pause-no">No</sl-button>
+        <sl-button slot="footer" variant="primary" id="pause-yes">Yes</sl-button>
+      </sl-dialog>
+    </sl-details>
     </sl-details>
   </template>
 

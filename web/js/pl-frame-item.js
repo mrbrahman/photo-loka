@@ -1,4 +1,4 @@
-import { notify } from './utils.mjs';
+import { notify, showConfirmDialog } from './utils.mjs';
 import { serialize } from 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/utilities/form.js';
 
 class PlFrameItem extends HTMLElement {
@@ -29,12 +29,36 @@ class PlFrameItem extends HTMLElement {
   }
 
   #updateDisplay() {
-    const { frame_name, frame_ip_addr, collection_id, search_str, display_order, daily_pause_range, reset_schedule } = this.#data;
+    const { frame_name, frame_ip_addr, collection_id, search_str, display_order, daily_pause_range, reset_schedule, autoPause, manualPause } = this.#data;
     
     this.shadowRoot.getElementById('title-display').textContent = frame_name || 'Unnamed Frame';
     this.shadowRoot.getElementById('ip-display').textContent = frame_ip_addr || '0.0.0.0';
-    this.shadowRoot.getElementById('status-badge').variant = frame_ip_addr ? 'success' : 'neutral';
-    this.shadowRoot.getElementById('status-badge').textContent = frame_ip_addr ? 'Active' : 'Pending';
+    
+    const statusBadge = this.shadowRoot.getElementById('status-badge');
+    const pauseBtn = this.shadowRoot.getElementById('pause-btn');
+    const resumeBtn = this.shadowRoot.getElementById('resume-btn');
+    
+    if (!frame_ip_addr) {
+      statusBadge.variant = 'neutral';
+      statusBadge.textContent = 'Pending';
+      pauseBtn.style.display = 'none';
+      resumeBtn.style.display = 'none';
+    } else if (manualPause.paused) {
+      statusBadge.variant = 'warning';
+      statusBadge.textContent = `Paused (${manualPause.resumeAtSchedule ? "auto-resume" : "manual-resume"})`;
+      pauseBtn.style.display = 'none';
+      resumeBtn.style.display = 'inline-block';
+    } else if (autoPause.paused) {
+      statusBadge.variant = 'warning';
+      statusBadge.textContent = 'Paused (auto)';
+      pauseBtn.style.display = 'none';
+      resumeBtn.style.display = 'inline-block';
+    } else {
+      statusBadge.variant = 'success';
+      statusBadge.textContent = 'Active';
+      pauseBtn.style.display = 'inline-block';
+      resumeBtn.style.display = 'none';
+    }
     
     this.shadowRoot.getElementById('name').value = frame_name || '';
     this.shadowRoot.getElementById('ip').value = frame_ip_addr || '';
@@ -167,6 +191,68 @@ class PlFrameItem extends HTMLElement {
         console.error(error);
       }
     });
+
+    this.shadowRoot.getElementById('pause-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      
+      if (this.#data.daily_pause_range) {
+        showConfirmDialog(
+          'Pause Frame', 
+          `Should the pause end at the scheduled time (${this.#data.daily_pause_range})?`,
+          'Yes (auto-resume)',
+          'No (manual-resume)'
+        )
+        .then(resumeAtSchedule => {
+          if(resumeAtSchedule) this.#pauseFrame(resumeAtSchedule === 1 ? true : false);
+        })
+        .catch((err) => {
+          notify('Dialog error', 'danger');
+        });
+
+      } else {
+        this.#pauseFrame(false);
+      }
+    });
+
+    this.shadowRoot.getElementById('resume-btn').addEventListener('click', async (e) => {
+      e.stopPropagation();
+      
+      try {
+        const response = await fetch(`/api/resumeFrame/${this.#data.frame_id}`, {
+          method: 'POST'
+        });
+        
+        if (!response.ok) throw new Error('Resume failed');
+        
+        this.#data.manualPause.paused = false;
+        this.#data.manualPause.resumeAtSchedule = null;
+        this.#updateDisplay();
+        notify('Frame resumed', 'success');
+      } catch (error) {
+        notify('Failed to resume frame', 'danger');
+        console.error(error);
+      }
+    });
+  }
+
+  async #pauseFrame(resumeAtSchedule) {
+    try {
+      const response = await fetch(`/api/pauseFrame/${this.#data.frame_id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resumeAtSchedule })
+      });
+      
+      if (!response.ok) throw new Error('Pause failed');
+      
+      this.#data.manualPause.paused = true;
+      this.#data.manualPause.resumeAtSchedule = resumeAtSchedule;
+      this.#updateDisplay();  // TODO: just update the relevant parts instead of re-rendering everything
+      notify('Frame paused', 'success');
+    } catch (error) {
+      notify('Failed to pause frame', 'danger');
+      console.error(error);
+    }
   }
 }
 

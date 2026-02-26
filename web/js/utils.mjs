@@ -80,3 +80,28 @@ export function hideProgressBar(timeout=500){
     document.getElementById("progress-bar").toggleAttribute("indeterminate");
   }, timeout)
 }
+
+export function showConfirmDialog(title, message, btn1Text='OK', btn2Text='Cancel'){
+  return new Promise((resolve) => {
+    const dialog = document.createElement('sl-dialog');
+    dialog.label = title;
+    dialog.innerHTML = `
+      ${message}
+      <sl-button slot="footer" variant="primary" id="ok">${btn1Text}</sl-button>
+      <sl-button slot="footer" id="cancel">${btn2Text}</sl-button>
+    `;
+
+    document.body.append(dialog);
+    dialog.show();
+
+    // Resolve true on OK, false on Cancel/Close
+    dialog.querySelector('#ok').onclick = () => { dialog.hide(); resolve(1); };
+    dialog.querySelector('#cancel').onclick = () => { dialog.hide(); resolve(2); };
+    
+    // Cleanup: remove from DOM after it finishes hiding
+    dialog.addEventListener('sl-after-hide', () => {
+      dialog.remove();
+      resolve(false); // In case it was closed without clicking buttons
+    });
+  });
+};
