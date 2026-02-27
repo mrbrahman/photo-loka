@@ -15,7 +15,6 @@ const logger = createLogger(import.meta.url);
 
 const app = express();
 
-app.use(compression());
 app.use(express.json());
 app.use(express.static(path.join(import.meta.dirname, '../web')));
 
@@ -54,7 +53,7 @@ const frameRouter = express.Router();
 // *****************************************
 
 // TODO: rename this
-apiRouter.get('/getAll', async function(req,res,next){
+apiRouter.get('/getAll', compression(), async function(req,res,next){
   try {
     res.json(await s.search.getAllFromDefaultCollection());
   } catch (error) {
@@ -94,12 +93,12 @@ apiRouter.get('/getVideo', async function(req,res){
 
 });
 
-apiRouter.post('/search', async function(req,res){
+apiRouter.post('/search', compression(), async function(req,res){
   let {collection_id, searchText} = req.body;
   res.json(await s.search.search(collection_id, searchText));
 });
 
-apiRouter.get('/getGpsCoordinates', async function(req,res){
+apiRouter.get('/getGpsCoordinates', compression(), async function(req,res){
   res.json(await s.search.getGpsCoordinates());
 });
 
@@ -376,6 +375,40 @@ frameRouter.get('/getPrev', function(req,res,next){
   }
 });
 
+// SSE endpoint for frame notifications
+const frameSSEClients = new Map();
+
+frameRouter.get('/events', function(req,res){
+  const ip = req.ip.startsWith('::ffff:') ? req.ip.substring(7) : req.ip;
+  
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  
+  // Send initial connection message
+  res.write(`data: ${JSON.stringify({ type: 'connected' })}\n\n`);
+  
+  frameSSEClients.set(ip, res);
+  logger.info(`SSE client connected: ${ip}`);
+  
+  req.on('close', () => {
+    frameSSEClients.delete(ip);
+    logger.info(`SSE client disconnected: ${ip}`);
+  });
+});
+
+// Listen to frame events and notify via SSE
+s.frame.frameEvents.on('frame-resumed', ({frame_ip_addr}) => {
+  const client = frameSSEClients.get(frame_ip_addr);
+  if (client) {
+    client.write(`data: ${JSON.stringify({ type: 'resume' })}\n\n`);
+    logger.info(`Sent resume event to frame: ${frame_ip_addr}`);
+  } else {
+    logger.warn(`No SSE client found for frame: ${frame_ip_addr}`);
+  }
+});
+
 // *****************************************
 // watchers
 // *****************************************
@@ -498,6 +531,13 @@ process.on('SIGTERM', function(){
 });
 
 const handleServerShutdown = async function(){
+  // Close all SSE connections
+  logger.info(`Closing ${frameSSEClients.size} SSE connection(s)...`);
+  for (const [ip, client] of frameSSEClients.entries()) {
+    client.end();
+  }
+  frameSSEClients.clear();
+  
   await s.shutdown.shutdownCleanup();
 
   server.close(()=>{

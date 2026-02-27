@@ -1,3 +1,4 @@
+import {EventEmitter} from 'events';
 import * as db from './frame-db.mjs';
 import * as search from '#search/search-engine';
 
@@ -5,6 +6,9 @@ import { createLogger } from '#utils/logger';
 import { AppError } from '#utils/app-error';
 
 const logger = createLogger(import.meta.url);
+
+class EmitterClass extends EventEmitter {};
+export const frameEvents = new EmitterClass();
 
 // This is an object storing frame states with the frame IP address as the key. Each entry has the following structure:
 // frame_ip_addr: {
@@ -19,7 +23,15 @@ export async function loadAllFrames() {
   logger.info("Loading data for all frames...")
 
   let frames = await db.getAllFrames();
+
   for (let frame of frames){
+    // initialize frame in case not set (during server startup)
+    if (!(frame.frame_ip_addr in allFrames)){
+      allFrames[frame.frame_ip_addr] = {
+        autoPause: {paused: false, pauseEndTime: null},  // TODO
+        manualPause: {paused: false, resumeAtSchedule: null}
+      }
+    }
     await reloadItemsForFrame(frame);
   }
 
@@ -100,24 +112,18 @@ export async function resumeFrame(frame_id) {
   frameState.manualPause.paused = false;
   frameState.manualPause.resumeAtSchedule = null;
   
+  // Emit event for SSE notification
+  frameEvents.emit('frame-resumed', { frame_ip_addr: frame.frame_ip_addr });
+  
   logger.info(`Frame ${frame.frame_ip_addr} resumed`);
 }
 
 export async function reloadItemsForFrame(frame){
   let items = await getItemsForFrame(frame);
 
-  allFrames[frame.frame_ip_addr] = {
-    items: items,
-    curr_idx: -1,
-    autoPause: {
-      paused: false,
-      pauseEndTime: null
-    },
-    manualPause: {
-      paused: false,
-      resumeAtSchedule: null
-    }
-  };
+  allFrames[frame.frame_ip_addr].items = items;
+  allFrames[frame.frame_ip_addr].curr_idx = -1;
+  
   logger.info(`Data for frame ${frame.frame_ip_addr} loaded with ${items.length} items`);
 }
 
@@ -187,4 +193,3 @@ function inPauseWindow(rangeStr, currentTime = new Date()) {
 async function getItemsForFrame(frame){
   return await search.search(frame.collection_id, frame.search_str, false, false, frame.display_order);
 }
-
