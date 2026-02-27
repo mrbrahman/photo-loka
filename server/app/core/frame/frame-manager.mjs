@@ -129,7 +129,7 @@ export function getNextItem(frame_ip_addr){
 
   let frame = allFrames[frame_ip_addr];
   if (frame.manualPause.paused || frame.autoPause.paused) {
-    throw new AppError('Frame is paused', 'FramePausedError', 'FRAME_PAUSED', 423, { pauseEndTime: frame.pauseEndTime });
+    throw new AppError('Frame is paused', 'FramePausedError', 'FRAME_PAUSED', 423)
   }
 
   // increment the index and return the item
