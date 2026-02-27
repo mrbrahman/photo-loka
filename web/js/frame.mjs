@@ -5,12 +5,15 @@ import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/compone
 
 import './pl-slide.js';
 
+const IMAGE_DISPLAY_DURATION = 7000;
+
 // request full screen
 // document.documentElement.requestFullscreen();
 
 let paused = false;
 let itemTimer = null;
 let errorDiv = null;
+let eventSource = null;
 
 async function fetchNextItem() {
   const res = await fetch('/frame/getNext');
@@ -40,6 +43,45 @@ function clearError() {
     errorDiv.remove();
     errorDiv = null;
   }
+}
+
+function setupSSE() {
+  eventSource = new EventSource('/frame/events');
+  
+  eventSource.onopen = () => {
+    console.log('SSE connection opened');
+    // If we were paused due to server being down, resume
+    if (paused) {
+      console.log('Server reconnected, resuming slideshow');
+      paused = false;
+      clearError();
+      loop();
+    }
+  };
+  
+  eventSource.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    
+    if (data.type === 'resume') {
+      console.log('Resume signal received from server');
+      if (paused) {
+        paused = false;
+        clearError();
+        loop();
+      }
+    }
+  };
+  
+  eventSource.onerror = (err) => {
+    // Browser automatically reconnects, just log once
+    if (eventSource.readyState === EventSource.CONNECTING) {
+      console.log('SSE reconnecting...');
+    } else if (eventSource.readyState === EventSource.CLOSED) {
+      console.error('SSE connection closed, will retry...');
+      eventSource.close();
+      setTimeout(setupSSE, 3000);
+    }
+  };
 }
 
 function loop(){
@@ -74,7 +116,7 @@ function loop(){
 
       // For images, advance after 4 seconds
       if (data.item.data.type.startsWith('image')) {
-        itemTimer = setTimeout(loop, 4000);
+        itemTimer = setTimeout(loop, IMAGE_DISPLAY_DURATION);
       } else if (data.item.data.type.startsWith('video')) {
         // For videos, advance when video ends
         slide.addEventListener('pl-slideshow-video-ended', loop, { once: true });
@@ -89,6 +131,7 @@ function loop(){
   })
   .catch(err => {
     console.error('Failed to fetch next item:', err);
+    paused = true;
     showError(err.message || 'Something went wrong while fetching the next item.');
   });
 }
@@ -109,7 +152,7 @@ document.addEventListener('visibilitychange', () => {
     if (currentSlide) {
       // For images, restart the timer
       if (currentSlide.item?.data?.type?.startsWith('image')) {
-        itemTimer = setTimeout(loop, 4000);
+        itemTimer = setTimeout(loop, IMAGE_DISPLAY_DURATION);
       }
     } else {
       // No current slide, start fresh
@@ -119,5 +162,6 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
+setupSSE();
 loop();
 
