@@ -10,12 +10,17 @@ import './pl-slide.js';
 
 let paused = false;
 let itemTimer = null;
+let errorDiv = null;
 
 async function fetchNextItem() {
   const res = await fetch('/frame/getNext');
   const output = await res.json();
   
   if (!res.ok) {
+    if (res.status === 423) {
+      const error = { message: output.error.message};
+      throw error;
+    }
     throw new Error(output.error.message || `Server error: ${res.status}`);
   }
   
@@ -23,14 +28,24 @@ async function fetchNextItem() {
 }
 
 function showError(message) {
-  const errorDiv = document.createElement('div');
+  clearError();
+  errorDiv = document.createElement('div');
   errorDiv.textContent = message;
   errorDiv.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.8); color: white; padding: 20px; border-radius: 8px; z-index: 9999;';
   document.body.appendChild(errorDiv);
 }
 
+function clearError() {
+  if (errorDiv) {
+    errorDiv.remove();
+    errorDiv = null;
+  }
+}
+
 function loop(){
   if (paused) return;
+  
+  clearError();
   
   fetchNextItem()
   .then(data => {
@@ -74,40 +89,31 @@ function loop(){
   })
   .catch(err => {
     console.error('Failed to fetch next item:', err);
-    showError(err.message);
+    showError(err.message || 'Something went wrong while fetching the next item.');
   });
 }
 
-// Pause when window loses focus
-window.addEventListener('blur', () => {
-  paused = true;
-  if (itemTimer) {
-    clearTimeout(itemTimer);
-    itemTimer = null;
-  }
-  // // Pause video if playing
-  // let currentSlide = document.querySelector('pl-slide[data-visible]');
-  // if(currentSlide?.dataset.type.startsWith('video')) {
-  //   currentSlide.play = false;
-  // }
-});
+// Pause when page becomes hidden
+document.addEventListener('visibilitychange', () => {
+  // console.log(`${(new Date()).toTimeString()} Visibility changed: ${document.hidden ? 'hidden' : 'visible'}`);
+  if (document.hidden) {
+    paused = true;
+    if (itemTimer) {
+      clearTimeout(itemTimer);
+      itemTimer = null;
+    }
 
-// Resume when window gains focus
-window.addEventListener('focus', () => {
-  if (paused) {
+  } else if (paused) {
     paused = false;
     let currentSlide = document.querySelector('pl-slide[data-visible]');
     if (currentSlide) {
-      // // Resume video if it was playing
-      // if(currentSlide.dataset.type.startsWith('video')) {
-      //   currentSlide.play = true;
-      // }
       // For images, restart the timer
       if (currentSlide.item?.data?.type?.startsWith('image')) {
         itemTimer = setTimeout(loop, 4000);
       }
     } else {
       // No current slide, start fresh
+      // Would the flow ever come here?
       loop();
     }
   }
