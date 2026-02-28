@@ -28,15 +28,15 @@ class PlSlide extends HTMLElement {
       this.dispatchEvent(new Event('pl-start-slideshow', {composed: true, bubbles: true}));
     });
 
-    this.#setupZoomControls();
+    // this.#setupZoomControls();
     this.#setupKeyboardControls();
 
     if(this.#slideshowMode){
-      this.shadowRoot.getElementById('albumname').classList.add('hidden');
+      // this.shadowRoot.getElementById('albumname').classList.add('hidden');
       this.shadowRoot.getElementById('actions').classList.add('hidden');
 
     } else {
-      this.shadowRoot.getElementById('albumname').classList.remove('hidden');
+      // this.shadowRoot.getElementById('albumname').classList.remove('hidden');
       this.shadowRoot.getElementById('actions').classList.remove('hidden');
     }
 
@@ -207,11 +207,11 @@ class PlSlide extends HTMLElement {
     }
     
     if(this.#slideshowMode){
-      this.shadowRoot.getElementById('albumname').classList.add('hidden');
+      // this.shadowRoot.getElementById('albumname').classList.add('hidden');
       this.shadowRoot.getElementById('actions').classList.add('hidden');
 
     } else {
-      this.shadowRoot.getElementById('albumname').classList.remove('hidden');
+      // this.shadowRoot.getElementById('albumname').classList.remove('hidden');
       this.shadowRoot.getElementById('actions').classList.remove('hidden');
     }
   }
