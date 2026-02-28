@@ -1,23 +1,49 @@
 import {notify} from './utils.mjs';
 
+import sheet from "./styles/pl-slide.css" with { type: "css" };
+
+// const html = (strings, ...values) => String.raw({ raw: strings }, ...values);
+
 class PlSlide extends HTMLElement {
   #albumname; #item; #play; #slideshowMode;
   #zoomLevel = 1; #maxZoom = 1; #startX = 0; #startY = 0; #translateX = 0; #translateY = 0;
   #eventHandlers = [];
 
+  static #template = document.createElement('template');
+  static {
+    this.#template.innerHTML = `
+      <div id="container">
+        <div id="media"></div>
+        <div id="albumname"></div>
+        <div id="zoom-controls">
+          <sl-icon-button id="zoom-in" name="plus-lg"></sl-icon-button>
+          <sl-icon-button id="zoom-out" name="dash-lg"></sl-icon-button>
+        </div>
+        <div id="actions">
+          <sl-rating id="rating"></sl-rating>
+          <sl-icon-button id="info" name="info-circle" disabled></sl-icon-button>
+          <sl-dropdown>
+            <sl-icon-button slot="trigger" name="three-dots-vertical"></sl-icon-button>
+            <sl-menu>
+              <sl-menu-item id="start-slideshow">Slideshow</sl-menu-item>
+            </sl-menu>
+          </sl-dropdown>
+        </div>
+      </div>
+    `;
+  }
+
   constructor() {
     super().attachShadow({mode: 'open'}); // sets "this" and "this.shadowRoot"
+    this.shadowRoot.adoptedStyleSheets = [sheet];
   }
 
   static get observedAttributes() {
     return ['data-pos'];
   }
 
-
   connectedCallback() {
-    this.shadowRoot.appendChild(
-      document.getElementById(this.nodeName).content.cloneNode(true)
-    );
+    this.shadowRoot.appendChild(PlSlide.#template.content.cloneNode(true));
     
     this.shadowRoot.getElementById('albumname').innerText = this.albumname || '';
     this.shadowRoot.getElementById('rating').setAttribute('value', this.item?.data?.rating || 0);
