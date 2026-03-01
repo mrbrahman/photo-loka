@@ -11,7 +11,8 @@ class PlSlide extends HTMLElement {
 
   static #template = document.createElement('template');
   static {
-    this.#template.innerHTML = `
+    this.#template.innerHTML = // html
+    `
       <div id="container">
         <div id="media"></div>
         <div id="albumname"></div>
