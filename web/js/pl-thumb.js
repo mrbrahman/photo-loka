@@ -1,4 +1,4 @@
-import {notify} from './utils.mjs';
+import sheet from "./styles/pl-thumb.css" with { type: "css" };
 
 class PlThumb extends HTMLElement {
   // instance variables
@@ -6,12 +6,23 @@ class PlThumb extends HTMLElement {
   
   #dppx = parseFloat(window.devicePixelRatio.toFixed(2));
   
+  static #template = document.createElement('template');
+  static {
+    this.#template.innerHTML = // html
+    `
+      <div id="container">
+        <!--  rest of the template is updated in the connectedCallback method -->
+      </div>
+    `;
+  }
+
   static get observedAttributes() {
     return ['rating','width','height','selected'];
   }
   
   constructor() {
     super().attachShadow({mode: 'open'}); // sets "this" and "this.shadowRoot"
+    this.shadowRoot.adoptedStyleSheets = [sheet];
   }
 
   connectedCallback() {
@@ -20,11 +31,7 @@ class PlThumb extends HTMLElement {
     // if(!(this.#rating && this.#width && this.#height) ){
     //   return;
     // }
-    
-    this.shadowRoot.appendChild(
-      document.getElementById(this.nodeName).content.cloneNode(true)
-    );
-
+    this.shadowRoot.appendChild(PlThumb.#template.content.cloneNode(true));
     
     // create a placeholder regardless of whether the element is still in DOM
     this.#paintWidth();
