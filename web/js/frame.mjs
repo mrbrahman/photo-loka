@@ -55,7 +55,12 @@ function setupSSE() {
       console.log('Server reconnected, resuming slideshow');
       paused = false;
       clearError();
-      loop();
+      let currentSlide = document.querySelector('pl-slide[data-visible]');
+      if (currentSlide?.item?.data?.type?.startsWith('image')) {
+        itemTimer = setTimeout(loop, IMAGE_DISPLAY_DURATION);
+      } else {
+        loop();
+      }
     }
   };
   
@@ -67,7 +72,22 @@ function setupSSE() {
       if (paused) {
         paused = false;
         clearError();
-        loop();
+        let currentSlide = document.querySelector('pl-slide[data-visible]');
+        if (currentSlide?.item?.data?.type?.startsWith('image')) {
+          itemTimer = setTimeout(loop, IMAGE_DISPLAY_DURATION);
+        } else {
+          loop();
+        }
+      }
+    } else if (data.type === 'pause') {
+      console.log('Pause signal received from server');
+      if (!paused) {
+        paused = true;
+        if (itemTimer) {
+          clearTimeout(itemTimer);
+          itemTimer = null;
+        }
+        showError('Frame paused');
       }
     }
   };

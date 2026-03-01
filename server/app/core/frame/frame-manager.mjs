@@ -98,6 +98,9 @@ export async function pauseFrame(frame_id, resumeAtSchedule) {
   frameState.manualPause.paused = true;
   frameState.manualPause.resumeAtSchedule = resumeAtSchedule ?? false;
   
+  // Emit event for SSE notification
+  frameEvents.emit('frame-paused', { frame_ip_addr: frame.frame_ip_addr });
+  
   logger.info(`Frame ${frame.frame_ip_addr} paused manually. Resume At schedule: ${frameState.manualPause.resumeAtSchedule}`);
 }
 

@@ -409,6 +409,16 @@ s.frame.frameEvents.on('frame-resumed', ({frame_ip_addr}) => {
   }
 });
 
+s.frame.frameEvents.on('frame-paused', ({frame_ip_addr}) => {
+  const client = frameSSEClients.get(frame_ip_addr);
+  if (client) {
+    client.write(`data: ${JSON.stringify({ type: 'pause' })}\n\n`);
+    logger.info(`Sent pause event to frame: ${frame_ip_addr}`);
+  } else {
+    logger.warn(`No SSE client found for frame: ${frame_ip_addr}`);
+  }
+});
+
 // *****************************************
 // watchers
 // *****************************************
