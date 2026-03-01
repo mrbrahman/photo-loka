@@ -1,7 +1,7 @@
 
 // <pl-album album_name='Album 1' width=1000 gutterspace=4 paintlayout width=500 data="[{id: 1, ar:1}, {id:2, ar: 1.33}, {id:5, ar:0.82}]"></pl-album>
 
-import { notify } from './utils.mjs';
+import { notify, showConfirmDialog } from './utils.mjs';
 
 class PlAlbum extends HTMLElement {
   
@@ -372,30 +372,18 @@ class PlAlbum extends HTMLElement {
     this.shadowRoot.getElementById('container').appendChild(a);
   }
 
-  #handleDirNotEmptyDuringRename = (evt)=>{ 
-    // show dialog
-    let dialog = this.shadowRoot.querySelector('sl-dialog');
+  #handleDirNotEmptyDuringRename = async (evt)=>{ 
+    const result = await showConfirmDialog(
+      'Move items?',
+      'The new album name already exists. Do you want to move all items to that album?',
+      'Yes',
+      'No'
+    );
 
-    // TODO: is there a better house for the listeners?
-    
-    // Ideally, I would add these event listeners during connectedCallBack
-    // But then need to find a way to pass the newAlbumName
-    // Hence, instead I add the listeners here, as the listeners are only used
-    // one time. Because after the move, the album will be deleted, and with
-    // it these listeners will also be gone
-
-    dialog.querySelector('#yes').addEventListener('click', ()=>{
-      // select all items of this album
+    if(result === 1){
       this.#handleSelectAll(true);
-      
-      // send an event to gallery to request move to the new album
       this.dispatchEvent(new CustomEvent('pl-album-move-selected-items', {detail: {newAlbumName: evt.detail.newAlbumName}}));
-      dialog.hide();
-    });
-
-    dialog.querySelector('#no').addEventListener('click', ()=>dialog.hide());
-
-    dialog.show();
+    }
   }
 
   // boilerplate
