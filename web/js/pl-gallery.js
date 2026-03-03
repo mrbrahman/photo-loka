@@ -234,7 +234,7 @@ class PlGallery extends HTMLElement {
 
 
     } catch (err) {
-      notify(`<strong>Error</strong>:</br>${err}`, 'error', -1);
+      notify(`<strong>Error</strong>:</br>${err.error?.message || err.message || err}`, 'error', -1);
     }
 
   }
@@ -280,7 +280,7 @@ class PlGallery extends HTMLElement {
       notify(`Updated rating for ${this.#itemsSelected.length} item${this.#itemsSelected.length > 1 ? 's' : ''}`, 'success');
     })
     .catch(err=>{
-      notify(`<strong>Error</strong>:</br>${err}`, 'error', -1);
+      notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
     });
 
   }
@@ -310,7 +310,7 @@ class PlGallery extends HTMLElement {
       notify(`${trashedCnt} item${trashedCnt > 1 ? 's' : ''} moved to trash`, 'success');
     })
     .catch(err=>{
-      notify(`<strong>Error</strong>:</br>${err}`, 'error', -1);
+      notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
     });
   }
 

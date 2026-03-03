@@ -21,10 +21,10 @@ async function fetchNextItem() {
   
   if (!res.ok) {
     if (res.status === 423) {
-      const error = { message: output.error.message};
+      const error = { message: output.error?.message || 'Frame is paused'};
       throw error;
     }
-    throw new Error(output.error.message || `Server error: ${res.status}`);
+    throw new Error(output.error?.message || `Server error: ${res.status}`);
   }
   
   return output;

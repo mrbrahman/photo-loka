@@ -147,7 +147,7 @@ router.on('/', function(){
     hideProgressBar();
   })
   .catch(err=>{
-    notify(`<strong>Error</strong>:</br>${err}`, 'error', -1);
+    notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
 
   });
 });
@@ -182,7 +182,7 @@ router.on('/search/:searchText', function(p){
     hideProgressBar();
   })
   .catch(err=>{
-    notify(`<strong>Error</strong>:</br>${err}`, 'error', -1);
+    notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
 
   });
 });
