@@ -15,7 +15,7 @@ class PlAlbumName extends HTMLElement {
         <sl-icon id="select-all" class="select-none" name="check-circle"></sl-icon>
       <!-- </sl-tooltip> -->
 
-      <div id="album-name" contenteditable role="textbox" spellcheck="false"></div>
+      <div id="album-name" role="textbox" spellcheck="false"></div>
       
       <div id="edit-controls">
         <sl-icon id="save" name="check-circle-fill"></sl-icon>
@@ -36,14 +36,21 @@ class PlAlbumName extends HTMLElement {
 
     this.shadowRoot.getElementById("select-all").addEventListener('click', this.#handleSelectAll);
     
+    this.shadowRoot.getElementById("album-name").addEventListener('click', this.#handleClick);
     this.shadowRoot.getElementById("album-name").addEventListener('focus', this.#handleFocus);
     this.shadowRoot.getElementById("album-name").addEventListener('blur', this.#handleBlur);
     this.shadowRoot.getElementById("album-name").addEventListener('keydown', this.#handleKey);
+    this.shadowRoot.getElementById("album-name").addEventListener('input', this.#handleInput);
 
     this.shadowRoot.getElementById("save").addEventListener('click', this.#handleSave);
 
     this.shadowRoot.getElementById("cancel").addEventListener('click', this.#handleCancel);
 
+  }
+
+  #handleClick = (evt) => {
+    this.shadowRoot.getElementById('album-name').contentEditable = 'true';
+    this.shadowRoot.getElementById('album-name').focus();
   }
 
   #handleSelectAll = (evt) => {
@@ -116,6 +123,7 @@ class PlAlbumName extends HTMLElement {
       this.shadowRoot.getElementById('album-name').innerText = this.albumName;
     }
 
+    this.shadowRoot.getElementById('album-name').contentEditable = 'false';
     this.shadowRoot.getElementById('album-name').blur();
     this.shadowRoot.getElementById('edit-controls').style.visibility = 'hidden';
     window.getSelection().removeAllRanges();
@@ -173,6 +181,9 @@ class PlAlbumName extends HTMLElement {
   }
 
   #handleBlur = (evt) => {
+    // disable contentEditable when focus is lost
+    this.shadowRoot.getElementById('album-name').contentEditable = 'false';
+    
     // if there are changes made to album name and not saved, notify, else silently remove 
     if(this.shadowRoot.getElementById('album-name').innerText == this.albumName){
       this.shadowRoot.getElementById('edit-controls').style.visibility = 'hidden';
@@ -216,6 +227,10 @@ class PlAlbumName extends HTMLElement {
     });
   }
 
+  #handleInput = (evt) => {
+    this.#throttleKeyDown();
+  }
+
   #handleKey = (evt) => {
     if (evt.key == "Escape"){
       evt.stopPropagation();
@@ -223,8 +238,6 @@ class PlAlbumName extends HTMLElement {
     } else if(evt.key == "Enter"){
       evt.preventDefault(); // we don't want an actual \n in the album name
       this.#handleSave();
-    } else {
-      this.#throttleKeyDown();
     }
   }
 
