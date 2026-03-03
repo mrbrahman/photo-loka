@@ -73,6 +73,38 @@ Currently this project is very much a work-in-progress.
           - `raw:"strftime('%W',file_date)=strftime('%W',date()) and strftime('%Y',file_date) != strftime('%Y',date())"` (all 'past' photos of current week)
     7. "raw" can be clubbled with other filters, if needed
 
+## Flagship feature - Digital Photo Frames!
+
+We take thousands of photos and videos — and rarely see them again.
+
+Traditional digital frames help, but they’re limited by SD cards and manual updates. Content becomes static and quickly outdated.
+
+This system turns any web browser into a centrally managed digital photo frame.
+
+* No SD cards.
+* No file copying.
+* No device lock-in.
+
+If a device can open a browser — TV, tablet, old laptop, Android TV box — it can become a live photo frame.
+
+All that you do is register the "frame"
+
+![Frame Setup](web/assets/frame-setup.png)
+
+Specify the 
+* IP address
+* A search crieteria (refer to 'search photos' in [UI features](#ui-features))
+* A reset schedule (crontab format) - to auto-refresh the playlist for the frame
+* Dailay Pause range - to auto pause the frame during that time period
+
+The frame is setup, and available at `http://<server-ip>/frame.html`
+
+Traditional frames are static and manual. This is dynamic, automated, and server-controlled.
+
+Your memories don’t sit in storage — they stay alive.
+
+A true "rewind-replay" feature!
+
 ## Backup helper
 
 This module helps take backup of the collections to external drives.
