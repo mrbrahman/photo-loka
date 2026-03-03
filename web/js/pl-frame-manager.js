@@ -1,17 +1,34 @@
 import { notify } from './utils.mjs';
 
+import sheet from "./styles/pl-frame-manager.css" with { type: "css" };
+
 class PlFrameManager extends HTMLElement {
   #frames = [];
+
+  static template = document.createElement('template');
+  static {
+    this.template.innerHTML = // html
+    `
+      <div class="app-container">
+        <div class="header">
+          <h2 style="margin:0">Display Frames</h2>
+          <sl-button variant="primary" size="medium" id="new-frame-btn">
+            <sl-icon slot="prefix" name="plus-lg"></sl-icon> New Frame
+          </sl-button>
+        </div>
+        <div id="frames-list"></div>
+      </div>
+    `;
+  }
 
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
+    this.shadowRoot.adoptedStyleSheets = [sheet];
   }
 
   connectedCallback() {
-    this.shadowRoot.appendChild(
-      document.getElementById(this.nodeName).content.cloneNode(true)
-    );
+    this.shadowRoot.appendChild(this.constructor.template.content.cloneNode(true));
     this.#setupEventListeners();
     this.#loadFrames();
   }

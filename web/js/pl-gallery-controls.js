@@ -1,14 +1,56 @@
+import sheet from "./styles/pl-gallery-controls.css" with { type: "css" };
+
 class PlGalleryControls extends HTMLElement {
   #ctr; #rating; #selectedAlbums = {};
 
+  static template = document.createElement('template');
+  static {
+    this.template.innerHTML = // html
+    `
+      <div id="container">
+        <div class="col" id="col1">
+          <sl-icon-button name="x-lg" id="close"></sl-icon-button>
+          <div id="ctr"></div>
+        </div>
+        
+        <div class="col" id="col2">
+          <sl-rating id="rating"></sl-rating>
+          <sl-icon-button id="add-keywords" name="tags-fill" disabled>Keywords</sl-icon-button>
+          <sl-icon-button id="delete" name="trash-fill">Delete</sl-icon-button>
+          <sl-icon-button id="organize" name="folder-plus">Organize</sl-icon-button>
+          
+          <!-- rest actions from the dropdown -->
+          <sl-dropdown>
+            <sl-icon-button name="three-dots-vertical" slot="trigger"></sl-icon-button>
+            <sl-menu style="max-width: 200px;">
+              <sl-menu-item>
+                Share
+                <sl-icon slot="suffix" name="share-fill"></sl-icon>
+              </sl-menu-item>            
+              <sl-menu-item>
+                Update location
+                <sl-icon slot="suffix" name="geo-alt-fill"></sl-icon>
+              </sl-menu-item>
+            </sl-menu>
+          </sl-dropdown>
+        </div>
+      </div>
+
+      <sl-dialog label="Create/Move-to New Album">
+        <sl-input></sl-input>
+        <sl-button id="save" slot="footer" variant="primary">Save</sl-button>
+        <sl-button id="cancel" slot="footer" variant="primary">Cancel</sl-button>
+      </sl-dialog>
+    `;
+  }
+
   constructor() {
     super().attachShadow({mode: 'open'}); // sets "this" and "this.shadowRoot"
+    this.shadowRoot.adoptedStyleSheets = [sheet];
   }
 
   connectedCallback() {
-    this.shadowRoot.appendChild(
-      document.getElementById(this.nodeName).content.cloneNode(true)
-    );
+    this.shadowRoot.appendChild(this.constructor.template.content.cloneNode(true));
 
     this.shadowRoot.getElementById("close")
       .addEventListener('click', this.#handleClose)

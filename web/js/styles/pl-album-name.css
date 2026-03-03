@@ -1,0 +1,84 @@
+:host {
+  /* height: 50px; */
+  display: grid;
+  grid-template-rows: 1fr;
+  grid-template-columns: auto 1fr auto;
+  /* grid-column-gap: 1px; */
+  align-items: center;
+  background-color: white;
+  z-index: 1;
+  /* "auto" does not transition yet 
+    see 
+    https://codepen.io/matuzo/post/animating-css-grid-layout-properties
+    https://nemzes.net/posts/animating-height-auto/
+    https://css-tricks.com/using-css-transitions-auto-dimensions/ and 
+    https://n12v.com/css-transition-to-from-auto/
+  
+    however, for whatever reason, the max-width / grid-workaround also did not work here as expected 
+    need to debug some other day. Until then there is no transition/animation :-/  
+  */
+  transition: all 0.3s;
+}
+
+#album-name {
+  font-size: 0.95rem;
+  /* color: rgb(60, 64, 67); */
+  filter: blur(0.35px);
+  margin: auto;
+  padding: 0.5rem 0 0.5rem 0;
+  
+  /* overflow-y: scroll; */ 
+  /* TODO: overflow does not work without height, and  
+    specifying height is messing up with verticle alignment
+  */
+  margin: 0 5px 0 5px;
+  border-radius: 5px;
+}
+
+#album-name:hover {
+  cursor: text;
+  background: #fafafa;
+  outline: 2px solid #eee;
+}
+
+#album-name:focus {
+  background: #efefef;
+  outline: 2px solid green;
+  transition: all 0.3s; /* want transition to happen only during focus, and not hover */
+}
+
+sl-icon {
+  font-size: 1.5rem;
+}
+
+#select-all {
+  /* visibility: hidden; */ /* cannot transition, hence showing always*/
+  font-size: 1.5rem;
+  transition: transform 0.3s;
+  cursor: pointer;
+}
+
+.select-all {
+  color: #66b3ff;
+  transform: scale(1.5);
+}
+.select-some {
+  color: grey;
+  transform: scale(1.5);
+}
+.select-none {
+  color: grey;
+}
+
+#edit-controls {
+  visibility: hidden;
+  cursor: pointer;
+}
+
+#save {
+  color: #35b035;
+}
+#cancel {
+  color: grey;
+  margin-right: 5px;
+}

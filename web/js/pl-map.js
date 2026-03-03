@@ -1,55 +1,33 @@
-class PlMap extends HTMLElement {
-  constructor() {
-    super();
-    this.map = null;
-    this.markers = null;
-  }
+import sheet from "./styles/pl-map.css" with { type: "css" };
 
-  connectedCallback() {
-    // Create shadow root
-    if (!this.shadowRoot) {
-      this.attachShadow({ mode: 'open' });
-    }
-    this.shadowRoot.innerHTML = `
+class PlMap extends HTMLElement {
+
+  static template = document.createElement('template');
+  static {
+    this.template.innerHTML = // html
+    `
       <!-- Leaflet CSS -->
       <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
       <!-- Leaflet MarkerCluster CSS -->
       <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
       <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
       
-      <style>
-        #map-container {
-          width: 100%;
-          height: 100%;
-          position: relative;
-        }
-        #map {
-          width: 100%;
-          height: 100%;
-        }
-        .custom-popup {
-          max-width: 200px;
-        }
-        .custom-popup img {
-          width: 100%;
-          height: 120px;
-          object-fit: cover;
-          border-radius: 4px;
-        }
-        .custom-popup .info {
-          padding: 8px 0;
-          font-size: 12px;
-        }
-        .custom-popup .album {
-          font-weight: bold;
-          margin-bottom: 4px;
-        }
-      </style>
       <div id="map-container">
         <div id="map"></div>
       </div>
     `;
+  }
 
+  constructor() {
+    super();
+    this.attachShadow({ mode: 'open' });
+    this.shadowRoot.adoptedStyleSheets = [sheet];
+    this.map = null;
+    this.markers = null;
+  }
+
+  connectedCallback() {
+    this.shadowRoot.appendChild(this.constructor.template.content.cloneNode(true));
     this.initMap();
   }
 

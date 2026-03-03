@@ -9,9 +9,9 @@ class PlSlide extends HTMLElement {
   #zoomLevel = 1; #maxZoom = 1; #startX = 0; #startY = 0; #translateX = 0; #translateY = 0;
   #eventHandlers = [];
 
-  static #template = document.createElement('template');
+  static template = document.createElement('template');
   static {
-    this.#template.innerHTML = // html
+    this.template.innerHTML = // html
     `
       <div id="container">
         <div id="media"></div>
@@ -44,7 +44,7 @@ class PlSlide extends HTMLElement {
   }
 
   connectedCallback() {
-    this.shadowRoot.appendChild(PlSlide.#template.content.cloneNode(true));
+    this.shadowRoot.appendChild(this.constructor.template.content.cloneNode(true));
     
     this.shadowRoot.getElementById('albumname').innerText = this.albumname || '';
     this.shadowRoot.getElementById('rating').setAttribute('value', this.item?.data?.rating || 0);

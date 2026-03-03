@@ -1,16 +1,33 @@
 import { notify } from './utils.mjs';
 
+import sheet from "./styles/pl-carousel.css" with { type: "css" };
+
 class PlCarousel extends HTMLElement {
 
   #data = []; #currentIndex = 0; #layout = [];
+
+  static template = document.createElement('template');
+  static {
+    this.template.innerHTML = // html
+    `
+      <div id="container">
+        <button id="close-btn">&times;</button>
+        <div id="carousel-wrapper">
+          <div id="carousel-track"></div>
+          <button id="prev-btn" class="nav-button">&lt;</button>
+          <button id="next-btn" class="nav-button">&gt;</button>
+        </div>
+      </div>
+    `;
+  }
+
   constructor() {
     super().attachShadow({mode: 'open'}); // sets "this" and "this.shadowRoot"
+    this.shadowRoot.adoptedStyleSheets = [sheet];
   }
 
   connectedCallback() {
-    this.shadowRoot.appendChild(
-      document.getElementById(this.nodeName).content.cloneNode(true)
-    );
+    this.shadowRoot.appendChild(this.constructor.template.content.cloneNode(true));
 
     this.setupEventListeners();
     this.positionCarousel();

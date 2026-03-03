@@ -1,0 +1,17 @@
+#container {
+  position: relative;
+}
+
+pl-album-name {
+  margin: 0 0 0 4px;
+  /* make it stick to the top as long as album is visible */
+  position: sticky;
+  top: 0px;
+}
+
+pl-thumb {
+  position: absolute;
+  top: 0px;
+  left: 0px;
+  transition: transform 0.3s;
+}

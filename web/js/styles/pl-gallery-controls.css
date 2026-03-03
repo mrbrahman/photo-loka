@@ -1,0 +1,46 @@
+:host {
+  position: absolute;
+  top: 2px;
+  left: 5px;
+  right: 5px;
+  z-index: 1;
+}
+
+#container {
+  display: grid;
+  height: 65px;
+  grid-template-rows: 1fr;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  box-shadow: 0 0 5px #333;
+  border-radius: 5px;
+  background-color: white;
+}
+
+.col {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+}
+#col1 {
+  justify-content: flex-start;
+}
+#col2 {
+  justify-content: flex-end;
+}
+#col1 > * {
+  padding-right: 2px;
+  padding-left: 2px;
+}
+#col2 > * {
+  padding-right: 2px;
+  padding-left: 2px;
+}
+
+sl-rating {
+  --symbol-size: 1.25rem;
+}
+
+sl-icon-button {
+  font-size: 1.25rem;
+}

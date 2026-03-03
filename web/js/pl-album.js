@@ -3,9 +3,20 @@
 
 import { notify, showConfirmDialog } from './utils.mjs';
 
+import sheet from "./styles/pl-album.css" with { type: "css" };
+
 class PlAlbum extends HTMLElement {
   
   #width; #paint_layout = false; #gutterspace = 4; #data; #album_name; #album_name_height = 45; #album_height; 
+
+  static template = document.createElement('template');
+  static {
+    this.template.innerHTML = // html
+    `
+      <div id="container">
+      </div>
+    `;
+  }
   
   static get observedAttributes() {
     return ['paint_layout','album_name','width','gutterspace','data','data_src'];
@@ -13,12 +24,11 @@ class PlAlbum extends HTMLElement {
   
   constructor() {
     super().attachShadow({mode: 'open'}); // sets "this" and "this.shadowRoot"
+    this.shadowRoot.adoptedStyleSheets = [sheet];
   }
   
   connectedCallback() {
-    this.shadowRoot.appendChild(
-      document.getElementById(this.nodeName).content.cloneNode(true)
-    );
+    this.shadowRoot.appendChild(this.constructor.template.content.cloneNode(true));
     
     // paint album name
     this.#paintName();

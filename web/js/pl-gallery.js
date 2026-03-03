@@ -19,6 +19,8 @@
 
 import {debounce, throttle, notify} from './utils.mjs';
 
+import sheet from "./styles/pl-gallery.css" with { type: "css" };
+
 class PlGallery extends HTMLElement {
 
   // internal variables
@@ -26,15 +28,22 @@ class PlGallery extends HTMLElement {
   // variables that can be get/set
   #data;
 
+  static template = document.createElement('template');
+  static {
+    this.template.innerHTML = // html
+    `
+      <div id="gallery"></div>
+    `;
+  }
+
   constructor() {
     super().attachShadow({mode: 'open'}); // sets "this" and "this.shadowRoot"
+    this.shadowRoot.adoptedStyleSheets = [sheet];
   }
 
   connectedCallback() {
 
-    this.shadowRoot.appendChild(
-      document.getElementById(this.nodeName).content.cloneNode(true)
-    );
+    this.shadowRoot.appendChild(this.constructor.template.content.cloneNode(true));
     // console.log("logging data... ")
     // console.log(this.data);
 

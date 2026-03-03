@@ -1,0 +1,11 @@
+#gallery {
+  position: relative;
+  overflow-y: scroll;
+  height: 100%;
+}
+
+pl-album {
+  width: 100%;
+  position: absolute;
+  transition: top 0.3s;
+}

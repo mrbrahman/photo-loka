@@ -1,12 +1,71 @@
 import { notify, showConfirmDialog } from './utils.mjs';
 import { serialize } from 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/utilities/form.js';
 
+import sheet from "./styles/pl-frame-item.css" with { type: "css" };
+
 class PlFrameItem extends HTMLElement {
   #data = {};
+
+  static template = document.createElement('template');
+  static {
+    this.template.innerHTML = // html
+    `
+      <sl-details class="frame-row">
+        <div slot="summary" class="row-summary">
+          <div class="info-group">
+            <div class="title" id="title-display"></div>
+            <div class="subtitle" id="ip-display"></div>
+          </div>
+          <div class="status-group">
+            <sl-badge id="status-badge" pill></sl-badge>
+            <sl-icon-button id="pause-btn" name="pause-circle" label="Pause" style="display: none;"></sl-icon-button>
+            <sl-icon-button id="resume-btn" name="play-circle" label="Resume" style="display: none;"></sl-icon-button>
+          </div>
+        </div>
+
+        <form class="edit-form" id="form">
+          <sl-input id="name" name="frame_name" label="Frame Name" size="small" required></sl-input>
+          <sl-input id="ip" name="frame_ip_addr" label="IP Address" size="small" required></sl-input>
+          
+          <sl-select id="collection" name="collection_id" label="Collection" size="small">
+            <sl-option value="">All Collections</sl-option>
+            <sl-option value="1">Family Pics</sl-option>
+          </sl-select>
+          
+          <sl-select id="order" name="display_order" label="Display Order" size="small">
+            <sl-option value="ASC">Date (Oldest First)</sl-option>
+            <sl-option value="DESC">Date (Newest First)</sl-option>
+            <sl-option value="RANDOM">Random</sl-option>
+          </sl-select>
+          
+          <sl-input id="search" name="search_str" label="Search Query" size="small" class="full-width" required></sl-input>
+          
+          <sl-input id="pause" name="daily_pause_range" label="Daily Pause (HH:mm-HH:mm)" size="small" placeholder="22:00-06:00"></sl-input>
+          <sl-input id="cron" name="reset_schedule" label="Reset Schedule (Cron)" size="small" placeholder="0 0 * * *"></sl-input>
+
+          <div class="preview-section full-width">
+            <div class="preview-header">
+              <h4 style="margin: 0;">Preview</h4>
+              <sl-button size="small" type="button" id="load-preview-btn">
+                Load Preview
+              </sl-button>
+            </div>
+            <div id="preview-grid" style="display: none;"></div>
+          </div>
+
+          <div class="full-width" style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.5rem;">
+            <sl-button size="small" variant="danger" outline type="button" id="delete-btn">Delete</sl-button>
+            <sl-button size="small" variant="primary" type="submit" id="save-btn">Save Changes</sl-button>
+          </div>
+        </form>
+      </sl-details>
+    `;
+  }
 
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
+    this.shadowRoot.adoptedStyleSheets = [sheet];
   }
 
   set data(value) {
@@ -21,9 +80,7 @@ class PlFrameItem extends HTMLElement {
   }
 
   connectedCallback() {
-    this.shadowRoot.appendChild(
-      document.getElementById(this.nodeName).content.cloneNode(true)
-    );
+    this.shadowRoot.appendChild(this.constructor.template.content.cloneNode(true));
     this.#updateDisplay();
     this.#setupEventListeners();
   }

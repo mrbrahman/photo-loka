@@ -6,9 +6,9 @@ class PlThumb extends HTMLElement {
   
   #dppx = parseFloat(window.devicePixelRatio.toFixed(2));
   
-  static #template = document.createElement('template');
+  static template = document.createElement('template');
   static {
-    this.#template.innerHTML = // html
+    this.template.innerHTML = // html
     `
       <div id="container">
         <!--  rest of the template is updated in the connectedCallback method -->
@@ -31,7 +31,7 @@ class PlThumb extends HTMLElement {
     // if(!(this.#rating && this.#width && this.#height) ){
     //   return;
     // }
-    this.shadowRoot.appendChild(PlThumb.#template.content.cloneNode(true));
+    this.shadowRoot.appendChild(this.constructor.template.content.cloneNode(true));
     
     // create a placeholder regardless of whether the element is still in DOM
     this.#paintWidth();

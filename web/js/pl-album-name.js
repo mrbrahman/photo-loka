@@ -1,17 +1,36 @@
 import {notify, throttle} from './utils.mjs';
 
+import sheet from "./styles/pl-album-name.css" with { type: "css" };
+
 class PlAlbumName extends HTMLElement {
 
   #albumName; #albumSelectedValue='none';
 
+  static template = document.createElement('template');
+  static {
+    this.template.innerHTML = // html
+    `
+      <!-- tooltip is sticking badly on mobile -->
+      <!-- <sl-tooltip content="Toggle Select All" hoist> -->
+        <sl-icon id="select-all" class="select-none" name="check-circle"></sl-icon>
+      <!-- </sl-tooltip> -->
+
+      <div id="album-name" contenteditable role="textbox" spellcheck="false"></div>
+      
+      <div id="edit-controls">
+        <sl-icon id="save" name="check-circle-fill"></sl-icon>
+        <sl-icon id="cancel" name="x-circle"></sl-icon>
+      </div>
+    `;
+  }
+
   constructor() {
     super().attachShadow({mode: 'open'}); // sets "this" and "this.shadowRoot"
+    this.shadowRoot.adoptedStyleSheets = [sheet];
   }
 
   connectedCallback() {
-    this.shadowRoot.appendChild(
-      document.getElementById(this.nodeName).content.cloneNode(true)
-    );
+    this.shadowRoot.appendChild(this.constructor.template.content.cloneNode(true));
 
     this.#paintAlbumName();
 

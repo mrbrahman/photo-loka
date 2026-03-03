@@ -1,0 +1,22 @@
+:host {
+  font-family: 'Lato', sans-serif;
+  display: block;
+  background: var(--sl-color-neutral-50);
+  min-height: 100%;
+  overflow-y: auto;
+}
+.app-container {
+  max-width: 650px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+#frames-list {
+  display: flex;
+  flex-direction: column;
+}

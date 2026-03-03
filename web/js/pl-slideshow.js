@@ -1,3 +1,5 @@
+import sheet from "./styles/pl-slideshow.css" with { type: "css" };
+
 class PlSlideshow extends HTMLElement {
   #data=[]; #src; #startFrom; #buffer=1; #loop=false;
   #startIdx=[0,0]; #slideshowMode=false; #intervalId; #slideDuration=3;
@@ -10,14 +12,31 @@ class PlSlideshow extends HTMLElement {
   // general cleanup of code, naming of functions, route params etc
   // change URL when item is shown (/item/<uuid>) without putting in history
 
+  static template = document.createElement('template');
+  static {
+    this.template.innerHTML = // html
+    `
+      <div id="container">
+        <div id="slides" >
+        </div>
+
+        <div id="navigation">
+          <sl-icon-button id="prev" name="chevron-left"></sl-icon-button>
+          <sl-icon-button id="next" name="chevron-right"></sl-icon-button>
+          <sl-icon-button id="close" name="x"></sl-icon-button>
+        </div>
+
+      </div>
+    `;
+  }
+
   constructor() {
     super().attachShadow({mode: 'open'}); // sets "this" and "this.shadowRoot"
+    this.shadowRoot.adoptedStyleSheets = [sheet];
   }
 
   connectedCallback() {
-    this.shadowRoot.appendChild(
-      document.getElementById(this.nodeName).content.cloneNode(true)
-    );
+    this.shadowRoot.appendChild(this.constructor.template.content.cloneNode(true));
 
     if(this.data.length == 0){
       return;
