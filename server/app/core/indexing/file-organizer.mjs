@@ -112,6 +112,9 @@ export async function renameFolder(collection_id, currAlbum, newAlbum){
     await logChange(collection_id, 'move', currAlbum, newAlbum);
   } catch (err) {
     logger.error(err)
+    if (err instanceof AppError) {
+      throw err;
+    }
     throw new AppError(err.message, 'FileSystemError', err.code || 'RENAME_FAILED', 500);
   }
 }
