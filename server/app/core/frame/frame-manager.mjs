@@ -1,6 +1,7 @@
 import {EventEmitter} from 'events';
 import * as db from './frame-db.mjs';
 import * as search from '#search/search-engine';
+import { scheduleJobsForFrame, removeJobsForFrame, scheduleResetJob, schedulePauseResumeJobs, removeResetJob, removePauseResumeJobs } from '#jobs/frame-jobs';
 
 import { createLogger } from '#utils/logger';
 import { AppError } from '#utils/app-error';
@@ -28,7 +29,7 @@ export async function loadAllFrames() {
     // initialize frame in case not set (during server startup)
     if (!(frame.frame_ip_addr in allFrames)){
       allFrames[frame.frame_ip_addr] = {
-        autoPause: {paused: false, pauseEndTime: null},  // TODO
+        autoPause: {paused: isInPauseWindow(frame.daily_pause_range), pauseEndTime: null},
         manualPause: {paused: false, resumeAtSchedule: null}
       }
     }
@@ -66,7 +67,7 @@ export async function createNewFrame(entry){
     items: items,
     curr_idx: -1,
     autoPause: {
-      paused: false,     // TODO: Check based on daily_pause_range
+      paused: isInPauseWindow(entry.daily_pause_range),
       pauseEndTime: null
     },
     manualPause: {
@@ -75,15 +76,57 @@ export async function createNewFrame(entry){
     }
   };
 
+  scheduleJobsForFrame({ ...entry, frame_id });
+
   return frame_id;
 }
 
 export async function updateFrame(frame_id, entry){
-  return await db.updateFrame(frame_id, entry);
-  // TODO: reload items for the frame if collection_id, search_str, or display_order changed
+  const oldFrame = await db.getFrameById(frame_id);
+  await db.updateFrame(frame_id, entry);
+  
+  const oldIp = oldFrame.frame_ip_addr;
+  const newIp = entry.frame_ip_addr;
+  
+  // Handle IP address change
+  if (oldIp !== newIp) {
+    allFrames[newIp] = allFrames[oldIp];
+    delete allFrames[oldIp];
+  }
+  
+  // Reload items if search criteria changed
+  if (oldFrame.collection_id !== entry.collection_id || 
+      oldFrame.search_str !== entry.search_str || 
+      oldFrame.display_order !== entry.display_order) {
+    await reloadItemsForFrame({ ...entry, frame_ip_addr: newIp });
+  }
+  
+  // Update autoPause if daily_pause_range changed
+  if (oldFrame.daily_pause_range !== entry.daily_pause_range) {
+    allFrames[newIp].autoPause.paused = isInPauseWindow(entry.daily_pause_range);
+  }
+  
+  // Reschedule reset job if changed
+  if (oldFrame.reset_schedule !== entry.reset_schedule) {
+    removeResetJob(frame_id);
+    if (entry.reset_schedule) {
+      scheduleResetJob(frame_id, entry.reset_schedule, { ...entry, frame_ip_addr: newIp });
+    }
+  }
+  
+  // Reschedule pause/resume jobs if changed
+  if (oldFrame.daily_pause_range !== entry.daily_pause_range) {
+    removePauseResumeJobs(frame_id);
+    if (entry.daily_pause_range) {
+      schedulePauseResumeJobs(frame_id, entry.daily_pause_range);
+    }
+  }
 }
 
 export async function deleteFrame(frame_id){
+  const frame = await db.getFrameById(frame_id);
+  removeJobsForFrame(frame_id);
+  delete allFrames[frame.frame_ip_addr];
   return await db.deleteFrame(frame_id);
 }
 
@@ -192,7 +235,46 @@ function inPauseWindow(rangeStr, currentTime = new Date()) {
   }
 }
 
+export function isInPauseWindow(daily_pause_range) {
+  return daily_pause_range ? inPauseWindow(daily_pause_range) : false;
+}
+
 
 async function getItemsForFrame(frame){
   return await search.search(frame.collection_id, frame.search_str, false, false, frame.display_order);
+}
+
+export async function setAutoPause(frame_id, paused) {
+  const frame = await db.getFrameById(frame_id);
+  if (!allFrames[frame.frame_ip_addr]) {
+    throw new AppError(`No frame setup for IP address: ${frame.frame_ip_addr}`, 'NotFoundError', 'NO_FRAME_SETUP', 404);
+  }
+  
+  let autoPauseState = allFrames[frame.frame_ip_addr].autoPause;
+  let manualPauseState = allFrames[frame.frame_ip_addr].manualPause;
+  
+  if (paused) {
+    autoPauseState.paused = true;
+    autoPauseState.pauseEndTime = null;
+    frameEvents.emit('frame-paused', { frame_ip_addr: frame.frame_ip_addr });
+  }
+  else {
+    autoPauseState.paused = false;
+    autoPauseState.pauseEndTime = null;
+
+    // If auto-resuming and currently manually paused with resume at schedule, clear the manual pause as well
+    if(manualPauseState.paused && manualPauseState.resumeAtSchedule) {
+      manualPauseState.paused = false;
+      manualPauseState.resumeAtSchedule = null;
+    }
+
+    // Emit frame-resumed only if the frame is not paused due to manual pause. 
+    // If it's still manually paused, we consider it as still paused and won't emit frame-resumed.
+    if(!manualPauseState.paused) {
+      frameEvents.emit('frame-resumed', { frame_ip_addr: frame.frame_ip_addr });
+    }
+
+  }
+  
+  logger.info(`Frame ${frame.frame_ip_addr} autoPause set to ${paused}`);
 }

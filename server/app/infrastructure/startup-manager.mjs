@@ -6,6 +6,7 @@ import { getAllCollections } from '#collections/collection-manager';
 import { indexCollection } from '#indexing/collection-indexer';
 import { startWatchersForAllCollections } from '#jobs/file-watcher-job';
 import { scheduleCronJobs } from '#jobs/scheduled-indexing-job';
+import { scheduleFrameJobs } from '#jobs/frame-jobs';
 import { loadAllFrames } from '#frame/frame-manager';
 import * as systemMonitor from '#infra/system-monitor';
 
@@ -39,5 +40,8 @@ export async function startUpActivities(){
   scheduleCronJobs();
 
   // Load all frames
-  loadAllFrames()
+  await loadAllFrames();
+
+  // Schedule frame jobs
+  scheduleFrameJobs();
 }
