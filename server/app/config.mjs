@@ -17,12 +17,18 @@ config.staleDays = 0;
 config.performVideoCompression = true;
 
 // dirs
-config.dataDir = 'data';
+config.dataDir = process.env.DATA_DIR || 'data';
 config.thumbsDir = path.join(config.dataDir, 'thumbnails');
 config.facesDir = path.join(config.dataDir, 'faces');
 
 // db file
 config.dbFile = path.join(config.dataDir, 'MEMORIES-DATABASE.sqlite')
+
+// JWT secret for authentication
+if (!process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is required');
+}
+config.jwtSecret = process.env.JWT_SECRET;
 
 // album name change file (file to track album name changes)
 // config.albumNameChangesFile = path.join(config.dataDir, 'album_name_changes.txt')

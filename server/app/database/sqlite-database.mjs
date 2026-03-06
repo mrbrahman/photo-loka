@@ -24,9 +24,16 @@ db.pragma("synchronous = NORMAL");
 
 // install schema as needed (based on 'user_version')
 
-if(db.pragma("user_version", {simple: true}) < 1){
+const currentVersion = db.pragma("user_version", {simple: true});
+
+if(currentVersion < 1){
   initialDbSetup();
   db.pragma("user_version = 1");
+}
+
+if(currentVersion < 2){
+  addAuthenticationTables();
+  db.pragma("user_version = 2");
 }
 
 // define a json_patch_agg SQL aggregate function, which is similar to the SQLite provided
@@ -140,4 +147,37 @@ function initialDbSetup() {
     );
   `)
   var info = stmt.run();
+}
+
+function addAuthenticationTables() {
+  logger.info("adding authentication tables ... ");
+
+  var stmt = db.prepare(`
+    create table users (
+      user_id integer PRIMARY KEY AUTOINCREMENT,
+      username varchar UNIQUE NOT NULL,
+      password_hash varchar NOT NULL,
+      role varchar NOT NULL DEFAULT 'user',
+      failed_login_attempts integer DEFAULT 0,
+      locked_at datetime,
+      created_at datetime DEFAULT (datetime('now','localtime')),
+      check (role in ('admin', 'user'))
+    )
+  `);
+  stmt.run();
+
+  stmt = db.prepare(`
+    create table refresh_tokens (
+      token_id integer PRIMARY KEY AUTOINCREMENT,
+      user_id integer NOT NULL,
+      token_hash varchar NOT NULL,
+      expires_at datetime NOT NULL,
+      created_at datetime DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(user_id)
+    )
+  `);
+  stmt.run();
+
+  db.prepare('CREATE INDEX idx_refresh_tokens_hash ON refresh_tokens(token_hash)').run();
+  db.prepare('CREATE INDEX idx_refresh_tokens_expires ON refresh_tokens(expires_at)').run();
 }

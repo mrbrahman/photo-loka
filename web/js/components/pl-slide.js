@@ -1,4 +1,4 @@
-import {notify} from './utils.mjs';
+import {notify} from '../utils.mjs';
 
 import sheet from "./styles/pl-slide.css" with { type: "css" };
 

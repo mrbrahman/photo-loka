@@ -69,15 +69,23 @@ export function throttle(fn, threshhold, scope) {
 }
 
 export function showProgressBar(){
-  document.getElementById("progress-bar").toggleAttribute("indeterminate");
-  document.getElementById("progress-bar").classList.remove("hide");
+  const shell = document.querySelector('pl-app-shell');
+  if (shell) {
+    const progressBar = shell.getProgressBar();
+    progressBar.toggleAttribute("indeterminate");
+    progressBar.classList.remove("hide");
+  }
 }
 
 // hide the progress bar after a specific timeout
 export function hideProgressBar(timeout=500){
   setTimeout(()=>{
-    document.getElementById("progress-bar").classList.add("hide");
-    document.getElementById("progress-bar").toggleAttribute("indeterminate");
+    const shell = document.querySelector('pl-app-shell');
+    if (shell) {
+      const progressBar = shell.getProgressBar();
+      progressBar.classList.add("hide");
+      progressBar.toggleAttribute("indeterminate");
+    }
   }, timeout)
 }
 

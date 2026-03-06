@@ -1,5 +1,4 @@
 import { config } from '#config';
-import 'dotenv/config';
 import { createLogger } from '#utils/logger';
 
 import { getAllCollections } from '#collections/collection-manager';

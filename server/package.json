@@ -4,7 +4,9 @@
   "description": "Relive every (captured) moment!",
   "main": "index.js",
   "scripts": {
-    "start": "nodemon --ignore ./data --ignore ./public server.mjs"
+    "start": "nodemon --ignore ./data --ignore ./public server.mjs",
+    "create-user": "node scripts/create-user.mjs",
+    "unlock-user": "node scripts/unlock-user.mjs"
   },
   "keywords": [
     "photos",
@@ -15,14 +17,17 @@
   "author": "Shreyas Jois",
   "license": "ISC",
   "dependencies": {
+    "bcryptjs": "^2.4.3",
     "better-sqlite3": "^11.1.2",
     "chokidar": "^3.5.2",
     "compression": "^1.7.4",
+    "cookie-parser": "^1.4.6",
     "dateformat": "^5.0.2",
     "dotenv": "^16.4.5",
     "exiftool-vendored": "^28.2.0",
     "express": "^4.17.1",
     "fdir": "^6.5.0",
+    "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
     "node-addon-api": "^8.1.0",
     "node-cron": "^4.2.1",
@@ -39,6 +44,7 @@
     "#config": "./app/config.mjs",
     "#services": "./app/services.mjs",
     "#utils/*": "./app/utils/*.mjs",
+    "#authn/*": "./app/authn/*.mjs",
     "#db/*": "./app/database/*.mjs",
     "#infra/*": "./app/infrastructure/*.mjs",
     "#jobs/*": "./app/jobs/*.mjs",

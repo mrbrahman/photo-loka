@@ -14,7 +14,6 @@
   <link rel="apple-touch-icon" href="assets/R3-resized.png">
 
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/themes/light.css" />
-  <!-- <script type="module" src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/shoelace.js" ></script> -->
   <script data-shoelace="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/"></script>
 
   <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
@@ -36,6 +35,7 @@
 
     :root {
       --sl-font-sans: 'Lato', sans-serif;
+      --progress-bar-height: 4px;
     }
 
     body, h1, h2, h3, h4, h5, h6 {
@@ -43,105 +43,23 @@
     }
     
     body {
-      overflow-x: hidden;
-      overflow-y: hidden;
-      margin: 0px;
-      padding: 0px;
+      overflow: hidden;
+      margin: 0;
+      padding: 0;
     }
 
-    :root {
-      --progress-bar-height: 4px;
-    }
-
-    #app {
-      display: grid;
-      grid-template-columns: 1fr;
-      grid-template-rows: var(--progress-bar-height) 60px 1fr;
-      height: 100svh; /* note the svh */
+    #app-root {
       width: 100vw;
+      height: 100vh;
     }
-
-    sl-progress-bar {
-      margin-top: 1px;
-      --height: var(--progress-bar-height);
-      --indicator-color: orange;
-    }
-
-    sl-progress-bar.hide {
-      visibility: hidden;
-    }
-
-    #nav-header {
-      display: flex;
-      align-items: center;
-      padding: 10px 0 10px 0;
-      background-color: white;
-    }
-    #nav-header > .nav-item {
-      padding: 0 10px 0 10px;
-    }
-    #nav-header > #nav-search-box {
-      flex-grow: 1;
-      height: 40px;
-      border-radius: 20px;
-      border: 1px solid darkgrey;
-      font-size: medium;
-      font-family: inherit;
-    }
-    #nav-header > #nav-title {
-      font-weight: bold;
-    }
-
-    @media(max-width: 601px) {
-      #nav-header > #nav-title {display: none}
-    }
-
-    #main-content {
-      overflow-x: hidden;
-      overflow-y: hidden;
-      position: relative;
-    }
-
   </style>
 
   <!-- many web component practices adapted from: https://dev.to/dannyengelman/web-component-102-the-5-lessons-after-learning-web-components-101-h9p -->
 
 </head>
 <body>
-  <div id="app">
-    <sl-progress-bar id="progress-bar" class="hide"></sl-progress-bar>
-
-    <!-- Navigation Header -->
-    <nav id="nav-header">
-      <a class="nav-item" id="nav-logo" href="/" data-navigo>
-        <img id="logo" src="assets/R3-resized.png" alt="Relive!">
-      </a>
-
-      <a class="nav-item" id="nav-title" href="/" data-navigo>
-        Rewind, Replay & Relive!
-      </a>
-
-      <input class="nav-item" id="nav-search-box" type="search" placeholder="Search your memories..."/>
-
-      <!-- <sl-input class="nav-item" id="nav-search-box" clearable pill type="search" enterkeyhint="search" placeholder="Search your memories...">
-        <sl-icon name="search" slot="prefix"></sl-icon>
-      </sl-input> -->
-
-      <a class="nav-item" href="/map" data-navigo>
-        <sl-icon-button name="geo-alt-fill" label="Map View"></sl-icon-button>
-      </a>
-      
-      <a class="nav-item" href="/frames" data-navigo>
-        <sl-icon-button name="display" label="Frames"></sl-icon-button>
-      </a>
-      
-      <sl-icon-button class="nav-item" id="nav-settings" name="gear" label="Settings"></sl-icon-button>
-    </nav>
-    
-    <!-- Placeholder for dynamic main content -->
-    <main id="main-content"></main>
-
-  </div>
+  <!-- Router will inject pl-login-page or pl-app-shell here -->
+  <div id="app-root"></div>
   
   <!-- Leaflet JavaScript -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -153,6 +71,5 @@
       navigator.serviceWorker.register('/sw.js');
     }
   </script>
-
 </body>
 </html>

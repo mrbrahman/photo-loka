@@ -1,4 +1,4 @@
-import {notify, throttle} from './utils.mjs';
+import {notify, throttle} from '../utils.mjs';
 
 import sheet from "./styles/pl-album-name.css" with { type: "css" };
 

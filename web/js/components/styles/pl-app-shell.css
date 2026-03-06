@@ -1,0 +1,65 @@
+:host {
+  display: block;
+  height: 100vh;
+  width: 100vw;
+}
+
+#app-container {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: var(--progress-bar-height, 4px) 60px 1fr;
+  height: 100vh;
+  width: 100vw;
+}
+
+sl-progress-bar {
+  margin-top: 1px;
+  --height: var(--progress-bar-height, 4px);
+  --indicator-color: orange;
+}
+
+sl-progress-bar.hide {
+  visibility: hidden;
+}
+
+#nav-header {
+  display: flex;
+  align-items: center;
+  padding: 10px 0;
+  background-color: white;
+}
+
+#nav-header > .nav-item {
+  padding: 0 10px;
+}
+
+#nav-header > #nav-search-box {
+  flex-grow: 1;
+  height: 40px;
+  border-radius: 20px;
+  border: 1px solid darkgrey;
+  font-size: medium;
+  font-family: inherit;
+  padding: 0 15px;
+}
+
+#nav-header > #nav-title {
+  font-weight: bold;
+}
+
+#logo {
+  height: 40px;
+  width: 40px;
+}
+
+@media(max-width: 601px) {
+  #nav-header > #nav-title {
+    display: none;
+  }
+}
+
+#main-content {
+  overflow-x: hidden;
+  overflow-y: hidden;
+  position: relative;
+}

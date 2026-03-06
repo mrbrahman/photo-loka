@@ -1,4 +1,4 @@
-import { notify } from './utils.mjs';
+import { notify } from '../utils.mjs';
 
 import sheet from "./styles/pl-carousel.css" with { type: "css" };
 

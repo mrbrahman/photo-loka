@@ -18,7 +18,7 @@ export const frameEvents = new EmitterClass();
 //   autoPause: { paused: false, pauseEndTime: null }, // auto-pause state
 //   manualPause: { paused: false, resumeAtSchedule: null } // manual pause state
 // }
-const allFrames = {};
+export const allFrames = {};
 
 export async function loadAllFrames() {
   logger.info("Loading data for all frames...")

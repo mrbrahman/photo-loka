@@ -1,4 +1,5 @@
-import { notify, showConfirmDialog } from './utils.mjs';
+import { notify, showConfirmDialog } from '../utils.mjs';
+import { authenticatedFetch } from '../authn.mjs';
 import { serialize } from 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/utilities/form.js';
 
 import sheet from "./styles/pl-frame-item.css" with { type: "css" };
@@ -152,7 +153,7 @@ class PlFrameItem extends HTMLElement {
 
       loadBtn.loading = true;
       try {
-        const response = await fetch('/api/search', {
+        const response = await authenticatedFetch('/api/search', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -193,7 +194,7 @@ class PlFrameItem extends HTMLElement {
         
         if (this.#data.frame_id) {
           // Update existing frame
-          const response = await fetch(`/api/updateFrame/${this.#data.frame_id}`, {
+          const response = await authenticatedFetch(`/api/updateFrame/${this.#data.frame_id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
@@ -205,7 +206,7 @@ class PlFrameItem extends HTMLElement {
           notify('Frame saved successfully!', 'success');
         } else {
           // Create new frame
-          const response = await fetch('/api/createNewFrame', {
+          const response = await authenticatedFetch('/api/createNewFrame', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
@@ -235,7 +236,7 @@ class PlFrameItem extends HTMLElement {
       if (!confirm(`Delete ${this.#data.frame_name}?`)) return;
       
       try {
-        const response = await fetch(`/api/deleteFrame/${this.#data.frame_id}`, {
+        const response = await authenticatedFetch(`/api/deleteFrame/${this.#data.frame_id}`, {
           method: 'DELETE'
         });
         
@@ -275,7 +276,7 @@ class PlFrameItem extends HTMLElement {
       e.stopPropagation();
       
       try {
-        const response = await fetch(`/api/resumeFrame/${this.#data.frame_id}`, {
+        const response = await authenticatedFetch(`/api/resumeFrame/${this.#data.frame_id}`, {
           method: 'POST'
         });
         
@@ -294,7 +295,7 @@ class PlFrameItem extends HTMLElement {
 
   async #pauseFrame(resumeAtSchedule) {
     try {
-      const response = await fetch(`/api/pauseFrame/${this.#data.frame_id}`, {
+      const response = await authenticatedFetch(`/api/pauseFrame/${this.#data.frame_id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ resumeAtSchedule })

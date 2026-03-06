@@ -17,7 +17,7 @@
 // 6. The only exception is 'album name' component, which can also update the backend. But
 //    that is fine, since the album name update does not span multiple albums
 
-import {debounce, throttle, notify} from './utils.mjs';
+import {debounce, throttle, notify} from '../utils.mjs';
 
 import sheet from "./styles/pl-gallery.css" with { type: "css" };
 
@@ -64,7 +64,19 @@ class PlGallery extends HTMLElement {
 
     this.shadowRoot.getElementById('gallery').append(...this.#albums);
     this.#reAssignAlbumPositions();
-    this.#selectivelyPaintAlbums();
+    
+    // Reset scroll position
+    this.shadowRoot.getElementById('gallery').scrollTop = 0;
+    
+    // Wait for next frame to ensure dimensions are calculated.
+    // When gallery is nested inside other web components (e.g. pl-app-shell),
+    // the browser hasn't finished calculating layout for the nested shadow DOM structure
+    // when connectedCallback runs. clientWidth/clientHeight might return 0 or incorrect values.
+    // requestAnimationFrame defers painting until after the browser completes the layout pass,
+    // ensuring all dimensions are properly calculated before we paint thumbnails.
+    requestAnimationFrame(() => {
+      this.#selectivelyPaintAlbums();
+    });
 
     this.addEventListener('pl-gallery-item-clicked', (evt)=>{
       evt.stopPropagation();

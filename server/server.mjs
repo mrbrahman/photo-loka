@@ -1,13 +1,18 @@
 import * as path from 'path';
+import 'dotenv/config';
 
 import express from 'express';
+import cookieParser from 'cookie-parser';
 import compression from 'compression';
 import morgan from 'morgan';
 import { createLogger } from './app/utils/logger.mjs';
 import { AppError } from './app/utils/app-error.mjs';
 
 import {config} from './app/config.mjs';
-import * as s from './app/services.mjs'
+import * as s from './app/services.mjs';
+import { authenticateToken } from './app/authn/authn-middleware.mjs';
+import { authenticateMediaAccess } from './app/authn/media-auth-middleware.mjs';
+import * as authnService from './app/authn/authn-service.mjs';
 
 const logger = createLogger(import.meta.url);
 
@@ -16,6 +21,7 @@ const logger = createLogger(import.meta.url);
 const app = express();
 
 app.use(express.json());
+app.use(cookieParser());
 app.use(express.static(path.join(import.meta.dirname, '../web')));
 
 morgan.token('query', (req) => JSON.stringify(req.query));
@@ -40,6 +46,59 @@ const morganMiddleware = morgan(
 app.use(morganMiddleware);
 
 // *****************************************
+// Authentication routes (no auth required)
+// *****************************************
+const authnRouter = express.Router();
+
+authnRouter.post('/login', async function(req, res, next) {
+  try {
+    const { username, password } = req.body;
+    const result = await authnService.login(username, password);
+    
+    res.cookie('refreshToken', result.refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 30 * 24 * 60 * 60 * 1000
+    });
+    
+    res.json({ accessToken: result.accessToken, user: result.user });
+  } catch (error) {
+    next(error);
+  }
+});
+
+authnRouter.post('/refresh', async function(req, res, next) {
+  try {
+    const refreshToken = req.cookies.refreshToken;
+    if (!refreshToken) {
+      throw new AppError('Refresh token required', 'NO_REFRESH_TOKEN', 'NO_REFRESH_TOKEN', 401);
+    }
+    
+    const result = authnService.refreshAccessToken(refreshToken);
+    
+    res.cookie('refreshToken', result.refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 30 * 24 * 60 * 60 * 1000
+    });
+    
+    res.json({ accessToken: result.accessToken, user: result.user });
+  } catch (error) {
+    res.clearCookie('refreshToken');
+    next(error);
+  }
+});
+
+authnRouter.post('/logout', function(req, res) {
+  const refreshToken = req.cookies.refreshToken;
+  authnService.logout(refreshToken);
+  res.clearCookie('refreshToken');
+  res.sendStatus(200);
+});
+
+// *****************************************
 // API router with /api prefix
 // *****************************************
 const apiRouter = express.Router();
@@ -61,7 +120,7 @@ apiRouter.get('/getAll', compression(), async function(req,res,next){
   }
 });
 
-apiRouter.get('/getThumbnail', function(req,res){
+apiRouter.get('/getThumbnail', authenticateMediaAccess, function(req,res){
   let uuid = req.query.uuid, height = +req.query.height;
 
   // TODO: get the list of sizes from indexer / thumbnail generator
@@ -70,10 +129,10 @@ apiRouter.get('/getThumbnail', function(req,res){
   // console.log(`inputs: uuid ${uuid} height ${height}`)
   let fileName = path.join(config.thumbsDir, ...Array.from(uuid).slice(0,3), `${uuid}_${thumbHeight}_fit.jpg`);
   // console.log(`getting thumbnail: ${fileName}`)
-  res.sendFile(fileName, {root: '.'});
+  res.sendFile(fileName);
 });
 
-apiRouter.get('/getImage', async function(req,res){
+apiRouter.get('/getImage', authenticateMediaAccess, async function(req,res){
   let uuid = req.query.uuid, height = +req.query.height, width = +req.query.width;
   
   res.type('image/jpg');
@@ -86,7 +145,7 @@ apiRouter.get('/getImage', async function(req,res){
 });
 
 
-apiRouter.get('/getVideo', async function(req,res){
+apiRouter.get('/getVideo', authenticateMediaAccess, async function(req,res){
   let uuid = req.query.uuid, height = +req.query.height, width = +req.query.width;
 
   (await s.videos.getVideo(uuid)).pipe(res);
@@ -497,11 +556,14 @@ apiRouter.get('/getAllBackupRegistrations', async function(req,res,next){
   
 // })
 
-// Mount the API router at /api
-app.use('/api', apiRouter);
+// Mount the authn router at /api/authn (no auth required)
+app.use('/api/authn', authnRouter);
 
-// Mount the frame router at /frame
+// Mount the frame router at /frame (no auth required)
 app.use('/frame', frameRouter);
+
+// Mount the API router at /api (auth required)
+app.use('/api', authenticateToken, apiRouter);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

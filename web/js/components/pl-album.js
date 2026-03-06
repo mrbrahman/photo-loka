@@ -1,7 +1,7 @@
 
 // <pl-album album_name='Album 1' width=1000 gutterspace=4 paintlayout width=500 data="[{id: 1, ar:1}, {id:2, ar: 1.33}, {id:5, ar:0.82}]"></pl-album>
 
-import { notify, showConfirmDialog } from './utils.mjs';
+import { notify, showConfirmDialog } from '../utils.mjs';
 
 import sheet from "./styles/pl-album.css" with { type: "css" };
 
