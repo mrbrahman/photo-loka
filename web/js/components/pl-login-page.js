@@ -53,6 +53,13 @@ class PlLoginPage extends HTMLElement {
   connectedCallback() {
     this.shadowRoot.appendChild(this.constructor.template.content.cloneNode(true));
     this.attachEventListeners();
+    
+    // Use requestAnimationFrame to wait for sl-input to render before focusing.
+    // DOMContentLoaded won't work here as it only fires once on initial page load,
+    // but this component is recreated dynamically (e.g., after logout).
+    requestAnimationFrame(() => {
+      this.shadowRoot.getElementById('username').focus();
+    });
   }
 
   attachEventListeners() {
