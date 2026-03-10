@@ -74,10 +74,10 @@ class PlLoginPage extends HTMLElement {
         
         // Check for redirect parameter
         const params = new URLSearchParams(window.location.hash.split('?')[1]);
-        const goto = params.get('goto');
+        const goto = params.get('goto') || '/app';
         
         // Use window.location.hash instead of router.navigate to force a clean navigation
-        window.location.hash = goto || '/';
+        window.location.hash = goto;
       } catch (error) {
         errorDiv.textContent = error.message;
       } finally {

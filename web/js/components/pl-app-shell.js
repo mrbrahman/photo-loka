@@ -1,11 +1,19 @@
-import { logout } from '../authn.mjs';
-import { router, state } from '../router.mjs';
+
 import { authenticatedFetch } from '../authn.mjs';
+import { notify, showProgressBar, hideProgressBar } from '../utils.mjs';
 
 import sheet from "./styles/pl-app-shell.css" with { type: "css" };
 
 
 class PlAppShell extends HTMLElement {
+
+  #state = {
+    collection_id: 1,
+    galleryData: null,
+    prevLink: null
+  };
+
+  #router = null;
 
   static template = document.createElement('template');
   static {
@@ -54,20 +62,22 @@ class PlAppShell extends HTMLElement {
   constructor() {
     super().attachShadow({ mode: 'open' });
     this.shadowRoot.adoptedStyleSheets = [sheet];
+    this.#router = new Navigo('/app', { hash: true });
   }
 
   connectedCallback() {
     this.shadowRoot.appendChild(this.constructor.template.content.cloneNode(true));
-    this.attachEventListeners();
+    this.#initAppRouter();
+    this.#attachEventListeners();
   }
 
-  attachEventListeners() {
+  #attachEventListeners() {
     // Manual navigation for shadow DOM links
     this.shadowRoot.querySelectorAll('[data-navigo]').forEach(link => {
       link.addEventListener('click', (e) => {
         e.preventDefault();
         const href = link.getAttribute('href');
-        if (href) router.navigate(href);
+        if (href) this.#router.navigate(href);
       });
     });
 
@@ -76,25 +86,24 @@ class PlAppShell extends HTMLElement {
       if (e.key === 'Enter') {
         const searchText = searchBox.value.trim();
         if (searchText) {
-          router.navigate(`/search/${encodeURIComponent(searchText)}`);
+          this.#router.navigate(`/search/${encodeURIComponent(searchText)}`);
           searchBox.blur();
         }
       }
     });
 
     const logoutBtn = this.shadowRoot.getElementById('logout-btn');
-    logoutBtn.addEventListener('click', async () => {
-      await logout();
-      router.navigate('/login');
+    logoutBtn.addEventListener('click', () => {
+      this.dispatchEvent(new CustomEvent('pl-logout-request', { bubbles: true }));
     });
 
     this.handleSlideshowRequest = (evt) => {
-      state.galleryData = evt.detail.data;
-      router.navigate(`/slideshow/${evt.detail.startFrom}`);
+      this.#state.galleryData = evt.detail.data;
+      this.#router.navigate(`/slideshow/${evt.detail.startFrom}`);
     };
 
     this.handleSlideshowClosed = () => {
-      router.navigate(state.prevLink[0].url);
+      this.#router.navigate(this.#state.prevLink[0].url);
     };
 
     this.handleMapItemClick = async (evt) => {
@@ -103,15 +112,15 @@ class PlAppShell extends HTMLElement {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
-            collection_id: state.collection_id, 
+            collection_id: this.#state.collection_id, 
             searchText: `uuid:${evt.detail.uuid}` 
           })
         });
         
         const result = await response.json();
         if (result.length > 0 && result[0].items.length > 0) {
-          state.galleryData = result;
-          router.navigate(`/slideshow/0`);
+          this.#state.galleryData = result;
+          this.#router.navigate(`/slideshow/0`);
         }
       } catch (error) {
         console.error('Error loading item for slideshow:', error);
@@ -127,6 +136,111 @@ class PlAppShell extends HTMLElement {
     document.removeEventListener('pl-slideshow-request', this.handleSlideshowRequest);
     document.removeEventListener('pl-slideshow-closed', this.handleSlideshowClosed);
     document.removeEventListener('pl-map-item-click', this.handleMapItemClick);
+    this.#router.destroy();
+  }
+
+  #showGallery(data) {
+    this.#state.galleryData = data;
+    this.style.overflowY = 'hidden';
+    
+    if (data.length === 0) {
+      this.innerHTML = '<div style="padding: 2rem; text-align: center;">No results found</div>';
+      return;
+    }
+
+    const gallery = Object.assign(document.createElement('pl-gallery'), { data });
+    this.innerHTML = '';
+    this.appendChild(gallery);
+
+    const totalItems = data.map(x => x.items.length).reduce((a, c) => a + c, 0);
+    notify(`Found ${data.length.toLocaleString()} albums containing ${totalItems.toLocaleString()} items`);
+  }
+
+  #initAppRouter() {
+    this.#router.on('/', async () => {
+      if (document.querySelector('pl-slideshow')) {
+        document.querySelector('pl-slideshow').remove();
+        this.shadowRoot.getElementById('nav-header').style.opacity = 1;
+        this.style.opacity = 1;
+        return;
+      }
+
+      showProgressBar();
+
+      try {
+        const res = await authenticatedFetch('/api/getAll');
+        if (!res.ok) throw `${res.status} ${res.statusText}`;
+        const result = await res.json();
+        this.#showGallery(result);
+      } catch (err) {
+        notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
+      } finally {
+        hideProgressBar();
+      }
+    });
+
+    this.#router.on('/search/:searchText', async (params) => {
+      if (document.querySelector('pl-slideshow')) {
+        document.querySelector('pl-slideshow').remove();
+        this.shadowRoot.getElementById('nav-header').style.opacity = 1;
+        this.style.opacity = 1;
+        return;
+      }
+
+      showProgressBar();
+
+      try {
+        const res = await authenticatedFetch('/api/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            collection_id: this.#state.collection_id, 
+            searchText: params.data.searchText 
+          })
+        });
+        
+        if (!res.ok) throw `${res.status} ${res.statusText}`;
+        const result = await res.json();
+        this.#showGallery(result);
+      } catch (err) {
+        notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
+      } finally {
+        hideProgressBar();
+      }
+    });
+
+    this.#router.on('/map', () => {
+      const mapComponent = document.createElement('pl-map');
+      
+      this.innerHTML = '';
+      this.style.overflowY = 'hidden';
+      this.appendChild(mapComponent);
+    });
+
+    this.#router.on('/frames', () => {
+      const framesManager = document.createElement('pl-frame-manager');
+      
+      this.innerHTML = '';
+      this.style.overflowY = 'auto';
+      this.appendChild(framesManager);
+    });
+
+    this.#router.on('/slideshow/:startFrom', (params) => {
+      this.#state.prevLink = this.#router.lastResolved();
+      
+      this.shadowRoot.getElementById('nav-header').style.opacity = 0;
+      this.style.opacity = 0;
+
+      const slideshow = Object.assign(document.createElement('pl-slideshow'), {
+        data: this.#state.galleryData,
+        startFrom: params.data.startFrom,
+        buffer: 1
+      });
+
+      document.getElementById('app-root').appendChild(slideshow);
+    });
+
+    this.#router.resolve();
   }
 
   getProgressBar() {
@@ -135,3 +249,4 @@ class PlAppShell extends HTMLElement {
 }
 
 customElements.define('pl-app-shell', PlAppShell);
+
