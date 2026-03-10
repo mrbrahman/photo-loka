@@ -33,7 +33,7 @@ export function createLogger(fileUrl) {
     try {
       // Lazy load userContext on first use
       if (!userContext) {
-        import('../authn/authn-middleware.mjs').then(module => {
+        import('../../middleware/authn-middleware.mjs').then(module => {
           userContext = module.userContext;
         });
       }

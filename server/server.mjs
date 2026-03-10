@@ -10,9 +10,8 @@ import { AppError } from './app/utils/app-error.mjs';
 
 import {config} from './app/config.mjs';
 import * as s from './app/services.mjs';
-import { authenticateToken } from './app/authn/authn-middleware.mjs';
-import { authenticateMediaAccess } from './app/authn/media-auth-middleware.mjs';
-import * as authnService from './app/authn/authn-service.mjs';
+import { authenticateToken, authenticateMediaAccess } from './middleware/authn-middleware.mjs';
+import * as authnService from './app/infrastructure/authn/authn-service.mjs';
 
 const logger = createLogger(import.meta.url);
 

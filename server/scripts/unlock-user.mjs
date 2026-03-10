@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { unlockUser } from '../app/authn/authn-service.mjs';
+import { unlockUser } from '../app/infrastructure/authn/authn-service.mjs';
 
 const args = process.argv.slice(2);
 

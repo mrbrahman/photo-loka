@@ -107,6 +107,20 @@ export function verifyAccessToken(token) {
   }
 }
 
+export function validateRefreshTokenForAuth(tokenHash) {
+  const tokenRecord = authnDb.getRefreshToken(tokenHash);
+  
+  if (!tokenRecord) {
+    return null;
+  }
+  
+  return {
+    user_id: tokenRecord.user_id,
+    username: tokenRecord.username,
+    role: tokenRecord.role
+  };
+}
+
 export function unlockUser(username) {
   authnDb.unlockUser(username);
   logger.info(`User unlocked: ${username}`);

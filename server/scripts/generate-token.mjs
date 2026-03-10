@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { generateApiToken } from '../app/authn/authn-service.mjs';
+import { generateApiToken } from '../app/infrastructure/authn/authn-service.mjs';
 
 const args = process.argv.slice(2);
 

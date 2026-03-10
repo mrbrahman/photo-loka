@@ -296,3 +296,23 @@ TODO - sync timestamps on +2 level folders
 - exiftool-vendored for metadata read / write
 - Use browser native features (HTML5) to play videos
 
+# Notes
+
+## Start nodejs server using systemd
+
+* Place .service file in `~/.config/systemd/user/rewind-replay.service`
+* Use the following commands to start/restart/stop etc
+  ```bash
+  alias start='systemctl --user start rewind-replay.service'
+  alias stop='systemctl --user stop rewind-replay.service'
+  alias rs='systemctl --user restart rewind-replay.service'
+  ```
+* Use the follwing for checking logs in `journalctl`
+  ```bash
+  # logs from the start of the service
+  alias log='journalctl --user -u rewind-replay.service --all --no-hostname'
+  # similar to `tail -50f`
+  alias logs='journalctl --user -f -u rewind-replay.service --all --no-hostname --lines 50'
+  # just logs from today
+  alias lt='journalctl --user -u rewind-replay.service --all --no-hostname --since today'
+  ```

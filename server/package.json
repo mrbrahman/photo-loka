@@ -45,7 +45,7 @@
     "#config": "./app/config.mjs",
     "#services": "./app/services.mjs",
     "#utils/*": "./app/utils/*.mjs",
-    "#authn/*": "./app/authn/*.mjs",
+    "#authn/*": "./app/infrastructure/authn/*.mjs",
     "#db/*": "./app/database/*.mjs",
     "#infra/*": "./app/infrastructure/*.mjs",
     "#jobs/*": "./app/jobs/*.mjs",
