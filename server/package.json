@@ -6,7 +6,8 @@
   "scripts": {
     "start": "nodemon --ignore ./data --ignore ./public server.mjs",
     "create-user": "node scripts/create-user.mjs",
-    "unlock-user": "node scripts/unlock-user.mjs"
+    "unlock-user": "node scripts/unlock-user.mjs",
+    "generate-token": "node scripts/generate-token.mjs"
   },
   "keywords": [
     "photos",

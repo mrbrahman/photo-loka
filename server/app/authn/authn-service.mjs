@@ -112,6 +112,22 @@ export function unlockUser(username) {
   logger.info(`User unlocked: ${username}`);
 }
 
+export function generateApiToken(username, expiresInDays = 365) {
+  const user = authnDb.getUserByUsername(username);
+  if (!user) {
+    throw new AppError('User not found', 'USER_NOT_FOUND', 'USER_NOT_FOUND', 404);
+  }
+  
+  const token = jwt.sign(
+    { userId: user.user_id, username: user.username, role: user.role },
+    config.jwtSecret,
+    { expiresIn: `${expiresInDays}d` }
+  );
+  
+  logger.info(`API token generated for user: ${username} (expires in ${expiresInDays} days)`);
+  return token;
+}
+
 function generateAccessToken(user) {
   return jwt.sign(
     { userId: user.user_id, username: user.username, role: user.role },
