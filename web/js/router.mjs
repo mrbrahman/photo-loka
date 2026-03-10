@@ -45,20 +45,31 @@ function showGallery(data) {
 }
 
 export function initRouter() {
-  // Global before hook for authentication (applies to all routes except those explicitly excluded)
+  // Global authentication guard - protects all routes except login
+  // This prevents the need to add auth checks in every route handler
   router.hooks({
     before: (done, match) => {
-      // Allow login route without authentication
+      // Public routes that don't require authentication
       if (match.url === '/login' || match.url.startsWith('/login?')) {
         done();
         return;
       }
       
-      // All other routes require authentication
+      // Block unauthorized access to protected routes
       if (!isAuthenticated()) {
+        // done(false) prevents the route handler from executing
         done(false);
+        
+        // Render login page directly instead of using router.navigate('/login?goto=...')
+        // This approach prevents double-rendering and avoids re-triggering this hook,
+        // which would happen if we used router.navigate() from within the hook itself.
+        // We then manually update the URL below to reflect the login state.
         const root = document.getElementById('app-root');
         root.innerHTML = '<pl-login-page></pl-login-page>';
+        
+        // Store intended destination in URL for post-login redirect
+        // Using window.history.replaceState instead of router.navigate to avoid
+        // triggering another navigation cycle and re-entering this hook
         const intendedRoute = match.url === '/' ? '' : match.url;
         if (intendedRoute) {
           window.history.replaceState(null, '', `#/login?goto=${encodeURIComponent(intendedRoute)}`);
@@ -68,12 +79,14 @@ export function initRouter() {
         return;
       }
       
+      // User is authenticated, allow route to proceed
       done();
     }
   });
 
-  // Login route (public)
+  // Login route - handles direct visits and post-auth redirects
   router.on('/login', () => {
+    // If already authenticated, redirect to intended destination
     if (isAuthenticated()) {
       const params = new URLSearchParams(window.location.hash.split('?')[1]);
       const goto = params.get('goto');
@@ -81,6 +94,7 @@ export function initRouter() {
       return;
     }
     
+    // Show login page for unauthenticated direct visits
     const root = document.getElementById('app-root');
     root.innerHTML = '<pl-login-page></pl-login-page>';
   });
@@ -109,7 +123,7 @@ export function initRouter() {
     }
   });
 
-  // Protected routes (no need for individual before hooks)
+  // Protected routes - authentication is enforced by global hook above
   router.on('/', async () => {
     if (document.querySelector('pl-slideshow')) {
       document.querySelector('pl-slideshow').remove();
