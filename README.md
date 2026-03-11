@@ -6,6 +6,8 @@ Rewind-Replay is (planned to be) a no frills, self-hosted photos app that helps 
 
 Currently this project is very much a work-in-progress.
 
+Also, many things are rough around the edges, simply because I'm the sole user & developer. In case someone else comes along that finds this beneficial and can contribute, at that time we can make things more 'user-friendly'! :-)
+
 # Philosophy
 
 1. We don't want to use cloud providers for personal photo collection.
@@ -145,6 +147,7 @@ TODO - sync timestamps on +2 level folders
   - [ffmpeg](https://ffmpeg.org/download.html) (for video operations: thumbnail extraction, compression)
   - On Linux, simply run 
     ```bash
+    # Note: The preferred method of node installation is via [nvm](https://github.com/nvm-sh/nvm?tab=readme-ov-file#installing-and-updating)
     sudo apt install node ffmpeg
     ```
 
@@ -171,6 +174,9 @@ TODO - sync timestamps on +2 level folders
   # https://sharp.pixelplumbing.com/install#building-from-source
   npm install --build-from-source node-addon-api node-gyp sharp
   ```
+
+  **Update your .env in `server`**
+  See `.env.example` for an example
 
 - **Start server**
   ```bash
@@ -281,14 +287,55 @@ TODO - sync timestamps on +2 level folders
   $ curl -X PUT 'http://localhost:9000/api/updateIndexerConcurrency/2'
 
   ```
+- Create a [user](#create-user) using the CLI commands as shown below
 - Visit your rewind-replay page http://localhost:9000
-- As indexing progresses, you should see photos appear
 - Enjoy!
+
+## User management
+
+Use CLI commands below until there is a need to make a screen
+
+### Create User
+```bash
+# Create admin user
+npm run create-user -- --username admin --password pass123 --role admin
+
+# Create regular user
+npm run create-user -- --username john --password pass123 --role user
+```
+
+### Unlock Locked Account
+```bash
+npm run unlock-user -- --username john
+```
+
+### Generate API Token
+Generate long-lived tokens for API access (useful for curl commands, scripts, integrations):
+
+```bash
+# Generate token with 1 year expiry (default)
+npm run generate-token -- admin
+
+# Generate token with custom expiry (in days)
+npm run generate-token -- admin 730  # 2 years
+npm run generate-token -- admin 36500  # 100 years (effectively never expires)
+```
+
+The token is a JWT that works with existing authentication. Use it in API calls:
+```bash
+curl -H "Authorization: Bearer <token>" http://localhost:9000/api/getIndexerStatus
+```
+
+Or place the authoriation in `.curlrc`
+
+**Note**: API tokens are not stored in the database. They're self-contained JWTs that remain valid until expiry. If you need to revoke a token before expiry, you'll need to change the JWT_SECRET (which invalidates all tokens).
+
 
 # Architecture
 ## Main
 - nodejs server
 - SQLite 3 database
+- Native web components for front end
 
 ## Supporting
 - Sqlite3 provided FTS5 for searches
