@@ -1,15 +1,24 @@
+/* Ensure width and height calculations include padding */
+* {
+  box-sizing: border-box;
+}
+
+/* Main background spanning dynamic viewport height (accounts for mobile URL bars) */
 .login-container {
   display: flex;
   justify-content: center;
   align-items: center;
-  min-height: 100vh;
+  min-height: 100dvh;
+  padding: 1rem;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   font-family: 'Lato', sans-serif;
 }
 
+/* The central white card holding the form */
 .login-card {
   background: white;
-  padding: 3rem;
+  padding: 2rem;
+  /* Reduced base padding for mobile */
   border-radius: 12px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
   width: 100%;
@@ -17,6 +26,14 @@
   text-align: center;
 }
 
+/* Restore larger padding on tablet and desktop screens */
+@media (min-width: 480px) {
+  .login-card {
+    padding: 3rem;
+  }
+}
+
+/* Branding elements */
 .logo {
   width: 80px;
   height: 80px;
@@ -35,22 +52,27 @@ h1 {
   font-size: 0.95rem;
 }
 
+/* Form layout spacing */
 #login-form {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
 }
 
+/* Ensure inputs override any center alignment from parents */
 sl-input {
   text-align: left;
 }
 
+/* Error message styling */
 .error {
   color: #dc3545;
   font-size: 0.9rem;
+  /* Fixed height to prevent form from jumping up and down when error text appears/disappears */
   min-height: 1.2rem;
 }
 
+/* Make submit button stretch full width of form */
 sl-button {
   width: 100%;
 }
