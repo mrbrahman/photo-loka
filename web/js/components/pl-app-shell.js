@@ -14,11 +14,12 @@ class PlAppShell extends HTMLElement {
   };
 
   #router = null;
+  #mainContent = null;
 
   static template = document.createElement('template');
   static {
     this.template.innerHTML = // html
-    `
+      `
       <div id="app-container">
         <sl-progress-bar id="progress-bar" class="hide"></sl-progress-bar>
 
@@ -52,9 +53,7 @@ class PlAppShell extends HTMLElement {
           </sl-dropdown>
         </nav>
         
-        <main>
-          <slot></slot>
-        </main>
+        <main id="main-content"></main>
       </div>
     `;
   }
@@ -67,6 +66,7 @@ class PlAppShell extends HTMLElement {
 
   connectedCallback() {
     this.shadowRoot.appendChild(this.constructor.template.content.cloneNode(true));
+    this.#mainContent = this.shadowRoot.getElementById('main-content');
     this.#initAppRouter();
     this.#attachEventListeners();
   }
@@ -111,12 +111,12 @@ class PlAppShell extends HTMLElement {
         const response = await authenticatedFetch('/api/search', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            collection_id: this.#state.collection_id, 
-            searchText: `uuid:${evt.detail.uuid}` 
+          body: JSON.stringify({
+            collection_id: this.#state.collection_id,
+            searchText: `uuid:${evt.detail.uuid}`
           })
         });
-        
+
         const result = await response.json();
         if (result.length > 0 && result[0].items.length > 0) {
           this.#state.galleryData = result;
@@ -141,16 +141,16 @@ class PlAppShell extends HTMLElement {
 
   #showGallery(data) {
     this.#state.galleryData = data;
-    this.style.overflowY = 'hidden';
-    
+    this.#mainContent.style.overflowY = 'hidden';
+
     if (data.length === 0) {
-      this.innerHTML = '<div style="padding: 2rem; text-align: center;">No results found</div>';
+      this.#mainContent.innerHTML = '<div style="padding: 2rem; text-align: center;">No results found</div>';
       return;
     }
 
     const gallery = Object.assign(document.createElement('pl-gallery'), { data });
-    this.innerHTML = '';
-    this.appendChild(gallery);
+    this.#mainContent.innerHTML = '';
+    this.#mainContent.appendChild(gallery);
 
     const totalItems = data.map(x => x.items.length).reduce((a, c) => a + c, 0);
     notify(`Found ${data.length.toLocaleString()} albums containing ${totalItems.toLocaleString()} items`);
@@ -193,12 +193,12 @@ class PlAppShell extends HTMLElement {
         const res = await authenticatedFetch('/api/search', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            collection_id: this.#state.collection_id, 
-            searchText: params.data.searchText 
+          body: JSON.stringify({
+            collection_id: this.#state.collection_id,
+            searchText: params.data.searchText
           })
         });
-        
+
         if (!res.ok) throw `${res.status} ${res.statusText}`;
         const result = await res.json();
         this.#showGallery(result);
@@ -211,23 +211,23 @@ class PlAppShell extends HTMLElement {
 
     this.#router.on('/map', () => {
       const mapComponent = document.createElement('pl-map');
-      
-      this.innerHTML = '';
-      this.style.overflowY = 'hidden';
-      this.appendChild(mapComponent);
+
+      this.#mainContent.innerHTML = '';
+      this.#mainContent.style.overflowY = 'hidden';
+      this.#mainContent.appendChild(mapComponent);
     });
 
     this.#router.on('/frames', () => {
       const framesManager = document.createElement('pl-frame-manager');
-      
-      this.innerHTML = '';
-      this.style.overflowY = 'auto';
-      this.appendChild(framesManager);
+
+      this.#mainContent.innerHTML = '';
+      this.#mainContent.style.overflowY = 'auto';
+      this.#mainContent.appendChild(framesManager);
     });
 
     this.#router.on('/slideshow/:startFrom', (params) => {
       this.#state.prevLink = this.#router.lastResolved();
-      
+
       this.shadowRoot.getElementById('nav-header').style.opacity = 0;
       this.style.opacity = 0;
 
