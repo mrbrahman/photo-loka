@@ -68,27 +68,6 @@ export function throttle(fn, threshhold, scope) {
   };
 }
 
-export function showProgressBar(){
-  const shell = document.querySelector('pl-app-shell');
-  if (shell) {
-    const progressBar = shell.getProgressBar();
-    progressBar.toggleAttribute("indeterminate");
-    progressBar.classList.remove("hide");
-  }
-}
-
-// hide the progress bar after a specific timeout
-export function hideProgressBar(timeout=500){
-  setTimeout(()=>{
-    const shell = document.querySelector('pl-app-shell');
-    if (shell) {
-      const progressBar = shell.getProgressBar();
-      progressBar.classList.add("hide");
-      progressBar.toggleAttribute("indeterminate");
-    }
-  }, timeout)
-}
-
 export function showConfirmDialog(title, message, btn1Text='OK', btn2Text='Cancel'){
   return new Promise((resolve) => {
     const dialog = document.createElement('sl-dialog');

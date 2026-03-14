@@ -1,6 +1,5 @@
 
 import { authenticatedFetch } from '../authn.mjs';
-import { notify, showProgressBar, hideProgressBar } from '../utils.mjs';
 
 import sheet from "./styles/pl-app-shell.css" with { type: "css" };
 
@@ -14,7 +13,7 @@ class PlAppShell extends HTMLElement {
   };
 
   #router = null;
-  #mainContent = null;
+  #mainContent = null; #progressBar = null;
 
   static template = document.createElement('template');
   static {
@@ -67,6 +66,8 @@ class PlAppShell extends HTMLElement {
   connectedCallback() {
     this.shadowRoot.appendChild(this.constructor.template.content.cloneNode(true));
     this.#mainContent = this.shadowRoot.getElementById('main-content');
+    this.#progressBar = this.shadowRoot.getElementById('progress-bar');
+
     this.#initAppRouter();
     this.#attachEventListeners();
   }
@@ -165,7 +166,7 @@ class PlAppShell extends HTMLElement {
         return;
       }
 
-      showProgressBar();
+      this.#showProgressBar();
 
       try {
         const res = await authenticatedFetch('/api/getAll');
@@ -175,7 +176,7 @@ class PlAppShell extends HTMLElement {
       } catch (err) {
         notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
       } finally {
-        hideProgressBar();
+        this.#hideProgressBar();
       }
     });
 
@@ -187,7 +188,7 @@ class PlAppShell extends HTMLElement {
         return;
       }
 
-      showProgressBar();
+      this.#showProgressBar();
 
       try {
         const res = await authenticatedFetch('/api/search', {
@@ -205,7 +206,7 @@ class PlAppShell extends HTMLElement {
       } catch (err) {
         notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
       } finally {
-        hideProgressBar();
+        this.#hideProgressBar();
       }
     });
 
@@ -243,8 +244,17 @@ class PlAppShell extends HTMLElement {
     this.#router.resolve();
   }
 
-  getProgressBar() {
-    return this.shadowRoot.getElementById('progress-bar');
+  #showProgressBar(){
+    this.#progressBar.toggleAttribute("indeterminate");
+    this.#progressBar.classList.remove("hide");
+  }
+
+  // hide the progress bar after a specific timeout
+  #hideProgressBar(timeout=500){
+    setTimeout(()=>{
+      this.#progressBar.classList.add("hide");
+      this.#progressBar.toggleAttribute("indeterminate");
+    }, timeout)
   }
 }
 
