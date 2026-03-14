@@ -1,9 +1,3 @@
-// Always escape HTML for text arguments!
-function escapeHtml(html) {
-  const div = document.createElement('div');
-  div.textContent = html;
-  return div.innerHTML;
-}
 
 let info = {variant: 'primary', icon: 'info-circle'};
 let success = {variant: 'success', icon: 'check2-circle'};
