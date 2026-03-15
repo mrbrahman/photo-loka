@@ -33,6 +33,10 @@ class PlGallery extends HTMLElement {
     this.template.innerHTML = // html
     `
       <div id="gallery"></div>
+      <div id="album-nav-btns">
+        <sl-icon-button id="prev-album-btn" name="chevron-up" label="Previous album"></sl-icon-button>
+        <sl-icon-button id="next-album-btn" name="chevron-down" label="Next album"></sl-icon-button>
+      </div>
     `;
   }
 
@@ -76,6 +80,7 @@ class PlGallery extends HTMLElement {
     // ensuring all dimensions are properly calculated before we paint thumbnails.
     requestAnimationFrame(() => {
       this.#selectivelyPaintAlbums();
+      this.#updateNavBtnState();
     });
 
     this.addEventListener('pl-gallery-item-clicked', (evt)=>{
@@ -99,7 +104,17 @@ class PlGallery extends HTMLElement {
     this.shadowRoot.getElementById('gallery')
       .addEventListener('scroll', this.#throttleHandleScroll)
     ;
+    this.shadowRoot.getElementById('gallery')
+      .addEventListener('scrollend', this.#updateNavBtnState)
+    ;
     
+    this.shadowRoot.getElementById('next-album-btn')
+      .addEventListener('click', this.#scrollToNextAlbum)
+    ;
+    this.shadowRoot.getElementById('prev-album-btn')
+      .addEventListener('click', this.#scrollToPrevAlbum)
+    ;
+
     window.addEventListener('resize', this.#throttleHandleResize)
     ;
   }
@@ -452,7 +467,34 @@ class PlGallery extends HTMLElement {
     console.log(this.#albumsInBuffer)
   }
 
-  #throttleHandleScroll = throttle(()=>this.#selectivelyPaintAlbums(false), 100);
+  #scrollToNextAlbum = () => {
+    let gallery = this.shadowRoot.getElementById('gallery');
+    let scrollTop = gallery.scrollTop;
+    let nextAlbum = this.#albums.find(a => a.offsetTop > scrollTop + 1);
+    if (nextAlbum) {
+      gallery.scrollTo({ top: nextAlbum.offsetTop, behavior: 'smooth' });
+    }
+  }
+
+  #scrollToPrevAlbum = () => {
+    let gallery = this.shadowRoot.getElementById('gallery');
+    let scrollTop = gallery.scrollTop;
+    let prevAlbum = this.#albums.findLast(a => a.offsetTop < scrollTop - 1);
+    if (prevAlbum) {
+      gallery.scrollTo({ top: prevAlbum.offsetTop, behavior: 'smooth' });
+    }
+  }
+
+  #updateNavBtnState = () => {
+    let gallery = this.shadowRoot.getElementById('gallery');
+    let scrollTop = gallery.scrollTop;
+    let maxScroll = gallery.scrollHeight - gallery.clientHeight;
+    let currentIdx = this.#albums.findLastIndex(a => a.offsetTop <= scrollTop + 1);
+    this.shadowRoot.getElementById('prev-album-btn').disabled = currentIdx <= 0;
+    this.shadowRoot.getElementById('next-album-btn').disabled = currentIdx >= this.#albums.length - 1 || scrollTop >= maxScroll - 1;
+  }
+
+  #throttleHandleScroll = throttle(()=>{ this.#selectivelyPaintAlbums(false); this.#updateNavBtnState(); }, 100);
 
   #handleResize() {
     // apply the new width to all albums
@@ -475,7 +517,15 @@ class PlGallery extends HTMLElement {
     this.shadowRoot.getElementById('gallery')
       .removeEventListener('scroll', this.#throttleHandleScroll)
     ;
-    
+    this.shadowRoot.getElementById('gallery')
+      .removeEventListener('scrollend', this.#updateNavBtnState)
+    ;
+    this.shadowRoot.getElementById('next-album-btn')
+      .removeEventListener('click', this.#scrollToNextAlbum)
+    ;
+    this.shadowRoot.getElementById('prev-album-btn')
+      .removeEventListener('click', this.#scrollToPrevAlbum)
+    ;
     window
       .removeEventListener('resize', this.#throttleHandleResize)
     ;
