@@ -158,10 +158,9 @@ function hashToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
-// Cleanup expired tokens periodically
-setInterval(() => {
+export function cleanupExpiredTokens() {
   const deleted = authnDb.cleanupExpiredTokens();
   if (deleted > 0) {
     logger.info(`Cleaned up ${deleted} expired refresh tokens`);
   }
-}, 24 * 60 * 60 * 1000); // Daily
+}

@@ -8,6 +8,7 @@ import { scheduleCronJobs } from '#jobs/scheduled-indexing-job';
 import { scheduleFrameJobs } from '#jobs/frame-jobs';
 import { loadAllFrames } from '#frame/frame-manager';
 import * as systemMonitor from '#infra/system-monitor';
+import { scheduleTokenCleanup } from '#jobs/token-cleanup-job';
 
 const logger = createLogger(import.meta.url);
 
@@ -43,4 +44,7 @@ export async function startUpActivities(){
 
   // Schedule frame jobs
   scheduleFrameJobs();
+
+  // Schedule token cleanup
+  scheduleTokenCleanup();
 }
