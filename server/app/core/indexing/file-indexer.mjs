@@ -49,12 +49,11 @@ export async function indexFile(collection, sourceFileName, uuid, inPlace){
   // Step 4: Video thumbnail extraction
   if(p.mediatype == "video" || p.mediatype == "image"){
 
-    let imageFileName = p.filename, playImageOverlay=false;
+    let imageFileName = p.filename;
     if(p.mediatype == "video"){
       try{
         // extract video thumbnail (screenshot) and use that image to extract image thumbs
         imageFileName = await thumbnailManager.generateVideoThumbnail(p.uuid, p.filename);
-        playImageOverlay=true;
       } catch(error){
         throw `ERROR during video processing for file: ${p.filename}: ${error}`;
       }
@@ -70,7 +69,7 @@ export async function indexFile(collection, sourceFileName, uuid, inPlace){
 
     // thumbnails generation
     try{
-      await thumbnailManager.createImageThumbnails(p.uuid, buf, playImageOverlay);
+      await thumbnailManager.createImageThumbnails(p.uuid, buf);
     } catch(error){
       throw `ERROR during createImageThumbnails for file: ${sourceFileName}: ${error}`;
     }

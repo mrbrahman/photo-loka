@@ -2,7 +2,7 @@ import sheet from "./styles/pl-thumb.css" with { type: "css" };
 
 class PlThumb extends HTMLElement {
   // instance variables
-  #width; #height; #rating=0; #selected=false;
+  #width; #height; #rating=0; #selected=false; #type; #dur;
   
   #dppx = parseFloat(window.devicePixelRatio.toFixed(2));
   
@@ -82,12 +82,14 @@ class PlThumb extends HTMLElement {
       <label for="chk"></label>
 
       <sl-rating label="Rating" readonly></sl-rating>
+      <span class="video-badge" hidden></span>
     `
     
     // now paint them
     this.#paintSrc();
     this.#paintRating();
     this.#paintSelected();
+    this.#paintVideoBadge();
     
     // setup event listeners
     this.shadowRoot.querySelector('input[type="checkbox"]')
@@ -166,6 +168,17 @@ class PlThumb extends HTMLElement {
 
   }
   
+  #paintVideoBadge(){
+    if(!this.isConnected) return;
+    let badge = this.shadowRoot.querySelector('.video-badge');
+    if(this.#type?.startsWith('video')){
+      badge.textContent = this.#dur ? `▶ ${this.#dur}` : '▶';
+      badge.hidden = false;
+    } else {
+      badge.hidden = true;
+    }
+  }
+
   // boilerplate stuff
   get width(){
     return this.#width;
@@ -191,6 +204,20 @@ class PlThumb extends HTMLElement {
     this.#paintRating();
   }
   
+  get type(){
+    return this.#type;
+  }
+  set type(_){
+    this.#type = _;
+  }
+
+  get dur(){
+    return this.#dur;
+  }
+  set dur(_){
+    this.#dur = _;
+  }
+
   get selected(){
     return this.#selected;
   }

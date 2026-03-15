@@ -6,20 +6,19 @@ import { createLogger } from '#utils/logger';
 import { fmtTime } from '#utils/time-format';
 
 import {config} from '#config';
-import {overlays} from '#overlays/all-overlays.mjs';
 import * as db from '#indexing/indexer-db';
 
 const logger = createLogger(import.meta.url);
 
 const sizes = [
   // below are thumbnails with same aspect ratio as original image
-  {height: 20,  fit: 'inside', suffix: 'fit', playIcon: 'play-button-5.png'},  // small thubnail to give the feel of "loading"
-  {height: 100, fit: 'inside', suffix: 'fit', playIcon: 'play-button-40.png'},
-  {height: 250, fit: 'inside', suffix: 'fit', playIcon: 'play-button-100.png'},
-  {height: 500, fit: 'inside', suffix: 'fit', playIcon: 'play-button-200.png'},  // TODO: do we really need this?
+  {height: 20,  fit: 'inside', suffix: 'fit'},  // small thubnail to give the feel of "loading"
+  {height: 100, fit: 'inside', suffix: 'fit'},
+  {height: 250, fit: 'inside', suffix: 'fit'},
+  {height: 500, fit: 'inside', suffix: 'fit'},  // TODO: do we really need this?
 
   // below is a square thumbnail
-  {width: 50,  height: 50,  fit: 'cover', suffix: 'center', playIcon: 'play-button-20.png'}
+  {width: 50,  height: 50,  fit: 'cover', suffix: 'center'}
 ];
 
 let thumbsDir = config.thumbsDir;
@@ -28,7 +27,7 @@ let thumbsDir = config.thumbsDir;
 // when reading the image / buffer with sharp
 // https://github.com/lovell/sharp/issues/1578
 
-export async function createImageThumbnails(uuid, buf, playImageOverlay){
+export async function createImageThumbnails(uuid, buf){
   // We don't want all thumbnails in one directory. Hence, create
   // sub-dirs based on the first 3 chars of the uuid.
   // If we have the uuid in the front end, we can directly go to the
@@ -52,10 +51,6 @@ export async function createImageThumbnails(uuid, buf, playImageOverlay){
       .rotate()  // rotate based on exif Orientation
       .resize(s)
     ;
-    if (playImageOverlay){
-      sharpInstance
-        .composite([{input: overlays[s.playIcon]}]) // default center overlay
-    }
 
     // return a promise
     return sharpInstance
@@ -138,7 +133,7 @@ export async function refreshThumbs(uuid){
 
 
   let meta = await db.retriveMetadata(uuid),
-    filename = meta.filename, playImageOverlay = false;
+    filename = meta.filename;
   let imageFileName = filename;
 
   if(!fs.existsSync(filename)){
@@ -149,11 +144,10 @@ export async function refreshThumbs(uuid){
   if (meta.mediatype === 'video'){
     logger.info(`refreshThumbs - Generating video thumbnail: ${uuid} ${filename}`);
     imageFileName = await generateVideoThumbnail(uuid, filename);
-    playImageOverlay=true;
   }
 
   let buf = fs.readFileSync(imageFileName);
-  await createImageThumbnails(uuid, buf, playImageOverlay);
+  await createImageThumbnails(uuid, buf);
 }
 
 export async function getImage(uuid, width, height){

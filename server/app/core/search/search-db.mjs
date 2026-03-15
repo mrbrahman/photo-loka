@@ -139,7 +139,14 @@ export async function runSearch(collection_id, searchStr, trashed = false, group
             'ar', round(aspectratio, 2),
             'id', uuid,
             'type', mediatype,
-            'rating', coalesce(rating,0)
+            'rating', coalesce(rating,0),
+            'dur', 
+              case
+                when duration >= 3600 then 
+                  cast(duration/3600 as int) || ':' || substr('0' || cast((duration % 3600)/60 as int), -2) || ':' || substr('0' || cast(duration % 60 as int), -2)
+                when duration is not null then 
+                  cast(duration/60 as int) || ':' || substr('0' || cast(duration % 60 as int), -2)
+              end
           )
       ) as item
     from metadata

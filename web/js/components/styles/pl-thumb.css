@@ -77,6 +77,18 @@ label:before {
   transform: scale(1.5);
 }
 
+.video-badge {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  color: white;
+  font-size: 0.85rem;
+  padding: 1px 4px;
+  border-radius: 3px;
+  pointer-events: none;
+  line-height: 1.2;
+}
+
 /* img is a sibling of checkbox and comes before checkbox */
 img:has(~ :checked) {
   transform: scale(0.85);
