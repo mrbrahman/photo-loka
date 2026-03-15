@@ -14,6 +14,7 @@ import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/compone
 import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/option/option.js';
 import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/details/details.js';
 import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/badge/badge.js';
+import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/divider/divider.js';
 
 // Import app components
 import './components/pl-login-page.js';

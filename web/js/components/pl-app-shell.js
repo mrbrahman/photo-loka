@@ -13,7 +13,7 @@ class PlAppShell extends HTMLElement {
   };
 
   #router = null;
-  #mainContent = null; #progressBar = null;
+  #mainContent = null; #progressBar = null; #sidebar = null; #backdrop = null;
 
   static template = document.createElement('template');
   static {
@@ -23,27 +23,25 @@ class PlAppShell extends HTMLElement {
         <sl-progress-bar id="progress-bar" class="hide"></sl-progress-bar>
 
         <nav id="nav-header">
-          <a class="nav-item" id="nav-logo" href="/" data-navigo>
+          <sl-icon-button class="nav-item" id="hamburger-btn" name="list" label="Menu"></sl-icon-button>
+
+          <a class="nav-item" id="nav-logo" href="/">
             <img id="logo" src="assets/R3-resized.png" alt="Relive!">
           </a>
 
-          <a class="nav-item" id="nav-title" href="/" data-navigo>
+          <a class="nav-item" id="nav-title" href="/">
             Rewind, Replay & Relive!
           </a>
 
           <input class="nav-item" id="nav-search-box" type="search" placeholder="Search your memories..."/>
 
-          <a class="nav-item" href="/map" data-navigo>
-            <sl-icon-button name="geo-alt-fill" label="Map View"></sl-icon-button>
-          </a>
-          
-          <a class="nav-item" href="/frames" data-navigo>
-            <sl-icon-button name="display" label="Frames"></sl-icon-button>
-          </a>
-          
           <sl-dropdown class="nav-item">
-            <sl-icon-button slot="trigger" name="gear" label="Settings"></sl-icon-button>
+            <sl-icon-button slot="trigger" name="person-circle" label="Account"></sl-icon-button>
             <sl-menu>
+              <sl-menu-item id="my-account-btn" disabled>
+                <sl-icon slot="prefix" name="person-gear"></sl-icon>
+                My Account
+              </sl-menu-item>
               <sl-menu-item id="logout-btn">
                 <sl-icon slot="prefix" name="box-arrow-right"></sl-icon>
                 Logout
@@ -51,8 +49,56 @@ class PlAppShell extends HTMLElement {
             </sl-menu>
           </sl-dropdown>
         </nav>
-        
-        <main id="main-content"></main>
+
+        <div id="content-area">
+          <nav id="sidebar">
+            <div id="sidebar-nav">
+              <!-- TODO: uncomment when multiple collections are supported
+              <div class="sidebar-section-label">Collections</div>
+              <a class="sidebar-item" data-route="/" data-collection-id="1">
+                <sl-icon name="folder-fill"></sl-icon>
+                <span>My Collection</span>
+              </a>
+
+              <sl-divider></sl-divider>
+              -->
+
+              <a class="sidebar-item" data-route="/">
+                <sl-icon name="images"></sl-icon>
+                <span>Photos</span>
+              </a>
+              <a class="sidebar-item" data-route="/map">
+                <sl-icon name="geo-alt-fill"></sl-icon>
+                <span>Map</span>
+              </a>
+              <a class="sidebar-item" data-route="/frames">
+                <sl-icon name="display"></sl-icon>
+                <span>Frames</span>
+              </a>
+              <a class="sidebar-item" data-route="/faces" disabled>
+                <sl-icon name="person-circle"></sl-icon>
+                <span>Faces</span>
+              </a>
+              <a class="sidebar-item" data-route="/trash" disabled>
+                <sl-icon name="trash"></sl-icon>
+                <span>Trash</span>
+              </a>
+
+              <div class="sidebar-spacer"></div>
+
+              <sl-divider></sl-divider>
+
+              <a class="sidebar-item" data-route="/settings" disabled>
+                <sl-icon name="gear"></sl-icon>
+                <span>Settings</span>
+              </a>
+            </div>
+          </nav>
+
+          <div id="sidebar-backdrop"></div>
+
+          <main id="main-content"></main>
+        </div>
       </div>
     `;
   }
@@ -67,21 +113,44 @@ class PlAppShell extends HTMLElement {
     this.shadowRoot.appendChild(this.constructor.template.content.cloneNode(true));
     this.#mainContent = this.shadowRoot.getElementById('main-content');
     this.#progressBar = this.shadowRoot.getElementById('progress-bar');
+    this.#sidebar = this.shadowRoot.getElementById('sidebar');
+    this.#backdrop = this.shadowRoot.getElementById('sidebar-backdrop');
 
     this.#initAppRouter();
     this.#attachEventListeners();
   }
 
   #attachEventListeners() {
-    // Manual navigation for shadow DOM links
-    this.shadowRoot.querySelectorAll('[data-navigo]').forEach(link => {
-      link.addEventListener('click', (e) => {
+    // Hamburger toggle
+      const hamburgerBtn = this.shadowRoot.getElementById("hamburger-btn");
+      hamburgerBtn.addEventListener('click', () => {
+      hamburgerBtn.classList.add('spin');
+      hamburgerBtn.addEventListener('animationend', () => hamburgerBtn.classList.remove('spin'), { once: true });
+      this.#toggleSidebar();
+    });
+    // Backdrop click closes sidebar
+    this.#backdrop.addEventListener('click', () => this.#closeSidebar());
+
+    // Sidebar navigation
+    this.#sidebar.querySelectorAll('.sidebar-item[data-route]:not([disabled])').forEach(item => {
+      item.addEventListener('click', (e) => {
         e.preventDefault();
-        const href = link.getAttribute('href');
-        if (href) this.#router.navigate(href);
+        this.#router.navigate(item.dataset.route);
+        this.#closeSidebar();
       });
     });
 
+    // Logo and title navigation
+    this.shadowRoot.getElementById('nav-logo').addEventListener('click', (e) => {
+      e.preventDefault();
+      this.#router.navigate('/');
+    });
+    this.shadowRoot.getElementById('nav-title').addEventListener('click', (e) => {
+      e.preventDefault();
+      this.#router.navigate('/');
+    });
+
+    // Search
     const searchBox = this.shadowRoot.getElementById('nav-search-box');
     searchBox.addEventListener('keyup', (e) => {
       if (e.key === 'Enter') {
@@ -93,11 +162,13 @@ class PlAppShell extends HTMLElement {
       }
     });
 
-    const logoutBtn = this.shadowRoot.getElementById('logout-btn');
-    logoutBtn.addEventListener('click', () => {
-      this.dispatchEvent(new CustomEvent('pl-logout-request', { bubbles: true }));
-    });
+    // Logout
+    this.shadowRoot.getElementById('logout-btn')
+      .addEventListener('click', () => {
+        this.dispatchEvent(new CustomEvent('pl-logout-request', { bubbles: true }));
+      });
 
+    // Global events
     this.handleSlideshowRequest = (evt) => {
       this.#state.galleryData = evt.detail.data;
       this.#router.navigate(`/slideshow/${evt.detail.startFrom}`);
@@ -140,6 +211,26 @@ class PlAppShell extends HTMLElement {
     this.#router.destroy();
   }
 
+  // --- Sidebar ---
+
+  #toggleSidebar() {
+    this.#sidebar.classList.toggle('open');
+    this.#backdrop.classList.toggle('open');
+  }
+
+  #closeSidebar() {
+    this.#sidebar.classList.remove('open');
+    this.#backdrop.classList.remove('open');
+  }
+
+  #setActiveMenuItem(route) {
+    this.#sidebar.querySelectorAll('.sidebar-item').forEach(item => {
+      item.classList.toggle('active', item.dataset.route === route);
+    });
+  }
+
+  // --- Gallery ---
+
   #showGallery(data) {
     this.#state.galleryData = data;
     this.#mainContent.style.overflowY = 'hidden';
@@ -157,6 +248,8 @@ class PlAppShell extends HTMLElement {
     notify(`Found ${data.length.toLocaleString()} albums containing ${totalItems.toLocaleString()} items`);
   }
 
+  // --- Router ---
+
   #initAppRouter() {
     this.#router.on('/', async () => {
       if (document.querySelector('pl-slideshow')) {
@@ -166,6 +259,7 @@ class PlAppShell extends HTMLElement {
         return;
       }
 
+      this.#setActiveMenuItem('/');
       this.#showProgressBar();
 
       try {
@@ -188,6 +282,7 @@ class PlAppShell extends HTMLElement {
         return;
       }
 
+      this.#setActiveMenuItem(null);
       this.#showProgressBar();
 
       try {
@@ -211,6 +306,7 @@ class PlAppShell extends HTMLElement {
     });
 
     this.#router.on('/map', () => {
+      this.#setActiveMenuItem('/map');
       const mapComponent = document.createElement('pl-map');
 
       this.#mainContent.innerHTML = '';
@@ -219,6 +315,7 @@ class PlAppShell extends HTMLElement {
     });
 
     this.#router.on('/frames', () => {
+      this.#setActiveMenuItem('/frames');
       const framesManager = document.createElement('pl-frame-manager');
 
       this.#mainContent.innerHTML = '';
@@ -249,7 +346,6 @@ class PlAppShell extends HTMLElement {
     this.#progressBar.classList.remove("hide");
   }
 
-  // hide the progress bar after a specific timeout
   #hideProgressBar(timeout=500){
     setTimeout(()=>{
       this.#progressBar.classList.add("hide");
@@ -259,4 +355,3 @@ class PlAppShell extends HTMLElement {
 }
 
 customElements.define('pl-app-shell', PlAppShell);
-
