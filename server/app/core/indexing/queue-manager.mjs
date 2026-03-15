@@ -11,11 +11,16 @@ const logger = createLogger(import.meta.url);
 class EmitterClass extends EventEmitter {};
 export const indexerEvents = new EmitterClass();
 
-let indexerQueue = ParallelProcesses.dynamic({
-  maxConcurrency: config.maxConcurrency || os.cpus().length-1,  // use all but one CPU core
-  systemMonitor: systemMonitor,
-  emitter: indexerEvents
-});
+let indexerQueue = config.indexerMode === 'static'
+  ? ParallelProcesses.simple({
+      maxConcurrency: config.maxConcurrency || os.cpus().length-1,
+      emitter: indexerEvents
+    })
+  : ParallelProcesses.dynamic({
+      maxConcurrency: config.maxConcurrency || os.cpus().length-1,
+      systemMonitor: systemMonitor,
+      emitter: indexerEvents
+    });
 
 export const indexerErrors = [];
 

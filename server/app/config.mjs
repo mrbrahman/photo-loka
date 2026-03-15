@@ -51,6 +51,10 @@ config.geonamesDailyLimit = 10000;
 config.videoEncoder = 'libvpx'; 
 // videoContainer auto-determined: webm for VP8/VP9, mp4 for H.264/H.265/AV1
 
+// indexer parallel processing mode: 'dynamic' (auto-adjusts based on system load) or 'static' (fixed concurrency)
+config.indexerMode = 'static';
+config.maxConcurrency = 4;
+
 
 // TODO: store and and read these from db?
 

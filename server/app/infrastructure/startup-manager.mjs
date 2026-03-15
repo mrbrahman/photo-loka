@@ -18,8 +18,8 @@ export async function startUpActivities(){
     throw new Error('GEONAMES_USERNAME environment variable is required but not set');
   }
 
-  // Start system load monitoring
-  systemMonitor.start();
+  // Start system load monitoring (only needed for dynamic indexer mode)
+  if(config.indexerMode === 'dynamic') systemMonitor.start();
 
   // setup watch during start-up
   if(config.startFileWatcherAtStartup){
