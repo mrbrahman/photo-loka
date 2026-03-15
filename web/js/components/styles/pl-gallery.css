@@ -10,10 +10,16 @@ pl-album {
   transition: top 0.3s;
 }
 
+:host {
+  display: block;
+  position: relative;
+  height: 100%;
+}
+
 #album-nav-btns {
-  position: absolute;
-  bottom: 20px;
-  right: 20px;
+  position: fixed;
+  bottom: 3vh;
+  right: 30px;
   display: flex;
   flex-direction: column;
   z-index: 10;
@@ -37,4 +43,12 @@ pl-album {
 
 #album-nav-btns sl-icon-button:hover {
   opacity: 1;
+}
+
+@media (max-width: 640px) {
+  #album-nav-btns {
+    bottom: 2vh;
+    right: 10px;
+  }
+
 }
