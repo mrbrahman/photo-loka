@@ -151,3 +151,24 @@ export async function getVideo(uuid){
   let filename = await getFileName(uuid);
   return streamVideo(uuid, filename);
 }
+
+export async function getVideoInfo(uuid) {
+  let filename = await getFileName(uuid);
+  let filePath = resolveVideoPath(uuid, filename);
+  let stat = fs.statSync(filePath);
+  return { filePath, fileSize: stat.size };
+}
+
+export function streamVideoRange(filePath, start, end) {
+  return fs.createReadStream(filePath, { start, end });
+}
+
+function resolveVideoPath(uuid, filename) {
+  let webmFile = path.join(
+    config.thumbsDir,
+    ...Array.from(uuid).slice(0,3),
+    uuid+'_compressed_video.webm'
+  );
+
+  return fs.existsSync(webmFile) ? webmFile : filename;
+}

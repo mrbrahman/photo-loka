@@ -145,10 +145,40 @@ apiRouter.get('/getImage', authenticateMediaAccess, async function(req,res){
 
 
 apiRouter.get('/getVideo', authenticateMediaAccess, async function(req,res){
-  let uuid = req.query.uuid, height = +req.query.height, width = +req.query.width;
+  let uuid = req.query.uuid;
 
-  (await s.videos.getVideo(uuid)).pipe(res);
+  try {
+    const { filePath, fileSize } = await s.videos.getVideoInfo(uuid);
+    const range = req.headers.range;
+    const contentType = filePath.endsWith('.webm') ? 'video/webm' : 'video/mp4';
 
+    if (range) {
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      const chunkSize = end - start + 1;
+
+      res.status(206);
+      res.set({
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunkSize,
+        'Content-Type': contentType,
+      });
+
+      const stream = s.videos.streamVideoRange(filePath, start, end);
+      stream.pipe(res);
+    } else {
+      res.set({
+        'Content-Length': fileSize,
+        'Content-Type': contentType,
+      });
+      const stream = s.videos.streamVideoRange(filePath, 0, fileSize - 1);
+      stream.pipe(res);
+    }
+  } catch (error) {
+    next(error)
+  }
 });
 
 apiRouter.post('/search', compression(), async function(req,res){
