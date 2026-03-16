@@ -144,7 +144,7 @@ apiRouter.get('/getImage', authenticateMediaAccess, async function(req,res){
 });
 
 
-apiRouter.get('/getVideo', authenticateMediaAccess, async function(req,res){
+apiRouter.get('/getVideo', authenticateMediaAccess, async function(req, res, next){
   let uuid = req.query.uuid;
 
   try {
@@ -177,7 +177,7 @@ apiRouter.get('/getVideo', authenticateMediaAccess, async function(req,res){
       stream.pipe(res);
     }
   } catch (error) {
-    next(error)
+    next(error);
   }
 });
 
