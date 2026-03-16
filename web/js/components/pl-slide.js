@@ -190,7 +190,14 @@ class PlSlide extends HTMLElement {
       element.removeEventListener(event, handler, options);
     });
     this.#eventHandlers = [];
-    
+
+    // Stop video download if in progress
+    let video = this.shadowRoot.querySelector('video');
+    if (video) {
+      video.pause();
+      video.querySelector('source')?.remove();
+      video.load();
+    }
   }
 
   attributeChangedCallback(name, oldVal, newVal) {
