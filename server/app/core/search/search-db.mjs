@@ -102,7 +102,7 @@ function converToFilterStr(searchStr){
 }
 
 function orderByClause(inp) {
-  const defaultClause = 'order by album desc, datetime(file_date)';
+  const defaultClause = 'order by album desc, datetime(file_date) desc';
   if(!inp) return defaultClause;
 
   if(inp.toLowerCase() === 'asc') return 'order by datetime(file_date) asc';
