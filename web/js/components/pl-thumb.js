@@ -2,7 +2,7 @@ import sheet from "./styles/pl-thumb.css" with { type: "css" };
 
 class PlThumb extends HTMLElement {
   // instance variables
-  #width; #height; #rating=0; #selected=false; #type; #dur;
+  #width; #height; #rating=0; #selected=false; #type; #dur; #hasGps; #hasDesc; #hasTags;
   
   #dppx = parseFloat(window.devicePixelRatio.toFixed(2));
   
@@ -83,6 +83,7 @@ class PlThumb extends HTMLElement {
 
       <sl-rating label="Rating" readonly></sl-rating>
       <span class="video-badge" hidden></span>
+      <span class="info-icons"></span>
     `
     
     // now paint them
@@ -90,6 +91,7 @@ class PlThumb extends HTMLElement {
     this.#paintRating();
     this.#paintSelected();
     this.#paintVideoBadge();
+    this.#paintInfoIcons();
     
     // setup event listeners
     this.shadowRoot.querySelector('input[type="checkbox"]')
@@ -178,6 +180,15 @@ class PlThumb extends HTMLElement {
       badge.hidden = true;
     }
   }
+  #paintInfoIcons(){
+    if(!this.isConnected) return;
+    let container = this.shadowRoot.querySelector('.info-icons');
+    let icons = [];
+    if(!this.#hasGps) icons.push('icon-no-gps');
+    if(this.#hasDesc) icons.push('icon-desc');
+    if(this.#hasTags) icons.push('icon-tags');
+    container.innerHTML = icons.map(c => `<span class="info-icon ${c}"></span>`).join('');
+  }
 
   // boilerplate stuff
   get width(){
@@ -216,6 +227,27 @@ class PlThumb extends HTMLElement {
   }
   set dur(_){
     this.#dur = _;
+  }
+
+  get hasGps(){
+    return this.#hasGps;
+  }
+  set hasGps(_){
+    this.#hasGps = +_;
+  }
+
+  get hasDesc(){
+    return this.#hasDesc;
+  }
+  set hasDesc(_){
+    this.#hasDesc = +_;
+  }
+
+  get hasTags(){
+    return this.#hasTags;
+  }
+  set hasTags(_){
+    this.#hasTags = +_;
   }
 
   get selected(){

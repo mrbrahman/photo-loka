@@ -354,6 +354,9 @@ class PlAlbum extends HTMLElement {
         rating: x.data.rating,
         type: x.data.type,
         dur: x.data.dur,
+        hasGps: x.data.hasGps,
+        hasDesc: x.data.hasDesc,
+        hasTags: x.data.hasTags,
         selected: x.layout.selected ? x.layout.selected : false
       });
       elem.style.transform = `translate(${x.layout.trX},${x.layout.trY})`

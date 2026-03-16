@@ -146,7 +146,10 @@ export async function runSearch(collection_id, searchStr, trashed = false, group
                   cast(duration/3600 as int) || ':' || substr('0' || cast((duration % 3600)/60 as int), -2) || ':' || substr('0' || cast(duration % 60 as int), -2)
                 when duration is not null then 
                   cast(duration/60 as int) || ':' || substr('0' || cast(duration % 60 as int), -2)
-              end
+              end,
+            'hasGps', case when gps_lat is not null then 1 else 0 end,
+            'hasDesc', case when trim(coalesce(description,'')) not in ('', 'null') then 1 else 0 end,
+            'hasTags', case when trim(coalesce(keywords,'')) not in ('', 'null', '[null]') then 1 else 0 end
           )
       ) as item
     from metadata

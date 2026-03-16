@@ -89,6 +89,38 @@ label:before {
   line-height: 1.2;
 }
 
+.info-icons {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  display: flex;
+  gap: 3px;
+  pointer-events: none;
+}
+
+.info-icon {
+  width: 18px;
+  height: 18px;
+  display: inline-block;
+  background-size: contain;
+  background-repeat: no-repeat;
+}
+
+.icon-no-gps {
+  /* Material Symbols: location_off */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='%23ff4444' viewBox='0 -960 960 960'%3E%3Cpath d='M480-80Q319-217 239.5-334.5T160-552q0-58 17-108t49-96L57-925l57-57 868 868-57 57-200-200q-35 38-71 74.5T580-112l-20 18-20-18q-10-10-23.5-24T489-166L480-80Zm0-160q22-24 43.5-47.5T564-336L284-616q-4 18-6 36.5t-2 37.5q0 76 47.5 170T480-240Zm188-90L527-471q11-18 22-37t22-39q38-58 58.5-113T650-552q0-90-57-149t-113-59q-57 0-105.5 34.5T302-640l-82-82q32-50 77.5-84T400-852q25-8 38.5-10t41.5-2q150 0 235 104t85 208q0 50-16.5 104T733-330l-65-60Z'/%3E%3C/svg%3E");
+}
+
+.icon-desc {
+  /* Bootstrap Icons: text-left */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='white' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M2 12.5a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5m0-3a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5m0-3a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5m0-3a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5'/%3E%3C/svg%3E");
+}
+
+.icon-tags {
+  /* Bootstrap Icons: tags-fill */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='white' viewBox='0 0 16 16'%3E%3Cpath d='M2 2a1 1 0 0 1 1-1h4.586a1 1 0 0 1 .707.293l7 7a1 1 0 0 1 0 1.414l-4.586 4.586a1 1 0 0 1-1.414 0l-7-7A1 1 0 0 1 2 6.586zm3.5 4a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3'/%3E%3Cpath d='M1.293 7.793A1 1 0 0 1 1 7.086V2a1 1 0 0 0-1 1v4.586a1 1 0 0 0 .293.707l7 7a1 1 0 0 0 1.414 0l.043-.043z'/%3E%3C/svg%3E");
+}
+
 /* img is a sibling of checkbox and comes before checkbox */
 img:has(~ :checked) {
   transform: scale(0.85);
