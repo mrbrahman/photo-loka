@@ -338,7 +338,24 @@ class PlAppShell extends HTMLElement {
       document.getElementById('app-root').appendChild(slideshow);
     });
 
-    this.#router.resolve();
+    // IMPORTANT: Deferred resolve to handle the redirect scenario.
+    //
+    // When an already-authenticated user visits without a hash (e.g. just "http://host:9000"),
+    // the global router's "/" route calls router.navigate('/app'). Navigo fires the matching
+    // "/app*" handler *synchronously* within that navigate() call ??? before the URL hash has
+    // actually updated from "#/" to "#/app". That handler creates this <pl-app-shell> element
+    // and appends it to the DOM, which triggers connectedCallback ??? #initAppRouter.
+    //
+    // If we call this.#router.resolve() synchronously here, the inner router (base: '/app')
+    // reads the hash which is still "#/" (the old value), can't match it, and logs:
+    //   'Navigo: "/" didn't match any of the registered routes'
+    //
+    // queueMicrotask defers resolve() to run after the current call stack completes, by which
+    // time the hash has updated to "#/app" and the inner router correctly resolves "/".
+    //
+    // This does NOT affect direct visits (e.g. refreshing on "#/app") ??? the hash is already
+    // correct in those cases, so the deferred resolve simply works as before.
+    queueMicrotask(() => this.#router.resolve());
   }
 
   #showProgressBar(){
