@@ -571,7 +571,17 @@ apiRouter.get('/getAllBackupRegistrations', async function(req,res,next){
   }
 });
 
+app.get('/speed-test', (req, res) => {
+  // Send 1MB of random data
+  const buffer = Buffer.alloc(1024 * 1024);
+  res.set('Content-Type', 'application/octet-stream');
+  res.send(buffer);
+});
 
+
+app.get('/ping', (req, res) => {
+  res.status(204).end(); // No content, just a header response
+});
 
 // TODO
 // apiRouter.delete('/deleteAlbum/:albumName', function(req,res){
