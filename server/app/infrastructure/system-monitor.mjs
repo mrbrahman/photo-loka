@@ -66,7 +66,7 @@ function analyzeLoad() {
     recommendation = { action: 'MAINTAIN', factor: 1.0 };
   }
   
-  logger.trace(`Load analysis - Avg CPU: ${(avgCpu * 100).toFixed(1)}%, Avg Memory: ${(avgMem * 100).toFixed(1)}% ??? ${recommendation.action}`);
+  logger.trace(`Load analysis - Avg CPU: ${(avgCpu * 100).toFixed(1)}%, Avg Memory: ${(avgMem * 100).toFixed(1)}% -> ${recommendation.action}`);
   
   return recommendation;
 }

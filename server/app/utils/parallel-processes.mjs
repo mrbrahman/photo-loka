@@ -240,17 +240,17 @@ export class ParallelProcesses {
     switch (recommendation.action) {
       case 'REDUCE_AGGRESSIVE':
         this.#currentConcurrency = Math.max(1, Math.floor(this.#currentConcurrency * 0.5));
-        logger.trace(`REDUCE_AGGRESSIVE: ${oldConcurrency} ??? ${this.#currentConcurrency}`);
+        logger.trace(`REDUCE_AGGRESSIVE: ${oldConcurrency} -> ${this.#currentConcurrency}`);
         break;
       case 'REDUCE':
         this.#currentConcurrency = Math.max(1, this.#currentConcurrency - 1);
-        logger.trace(`REDUCE: ${oldConcurrency} ??? ${this.#currentConcurrency}`);
+        logger.trace(`REDUCE: ${oldConcurrency} -> ${this.#currentConcurrency}`);
         break;
       case 'INCREASE':
         const totalPending = this.#queues.high.length + this.#queues.normal.length + this.#queues.low.length;
         if (totalPending > 0) {
           this.#currentConcurrency = Math.min(this.#maxConcurrency, this.#currentConcurrency + 1);
-          logger.trace(`INCREASE: ${oldConcurrency} ??? ${this.#currentConcurrency} (max: ${this.#maxConcurrency})`);
+          logger.trace(`INCREASE: ${oldConcurrency} -> ${this.#currentConcurrency} (max: ${this.#maxConcurrency})`);
         } else {
           logger.trace(`INCREASE skipped - no pending tasks`);
         }
@@ -261,7 +261,7 @@ export class ParallelProcesses {
     }
     
     if (oldConcurrency !== this.#currentConcurrency) {
-      logger.info(`Concurrency adjusted: ${oldConcurrency} ??? ${this.#currentConcurrency} (${recommendation.action})`);
+      logger.info(`Concurrency adjusted: ${oldConcurrency} -> ${this.#currentConcurrency} (${recommendation.action})`);
       
       if (this.#currentConcurrency > oldConcurrency) {
         const additionalTasks = this.#currentConcurrency - oldConcurrency;

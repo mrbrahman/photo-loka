@@ -17,9 +17,9 @@ if (!username) {
 
 try {
   unlockUser(username);
-  console.log(`??? User unlocked successfully: ${username}`);
+  console.log(`User unlocked successfully: ${username}`);
   process.exit(0);
 } catch (error) {
-  console.error('??? Failed to unlock user:', error.message);
+  console.error('Failed to unlock user:', error.message);
   process.exit(1);
 }

@@ -171,7 +171,7 @@ sl-progress-bar.hide {
   flex: 1;
 }
 
-/* --- Mobile / Medium (???1280px): sidebar as overlay --- */
+/* --- Mobile / Medium (<=1280px): sidebar as overlay --- */
 
 @media (max-width: 1280px) {
   #sidebar {

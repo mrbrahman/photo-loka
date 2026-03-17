@@ -37,9 +37,9 @@ if (!['admin', 'user'].includes(role)) {
 
 try {
   await createUser(username, password, role);
-  console.log(`??? User created successfully: ${username} (${role})`);
+  console.log(`User created successfully: ${username} (${role})`);
   process.exit(0);
 } catch (error) {
-  console.error('??? Failed to create user:', error.message);
+  console.error('Failed to create user:', error.message);
   process.exit(1);
 }
