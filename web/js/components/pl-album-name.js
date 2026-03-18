@@ -154,9 +154,9 @@ class PlAlbumName extends HTMLElement {
       // TODO: remove hardcoding, may be when there is at least one other person using this sytem :-)
       let searchStr = albumNameText.textContent.substring(0,15);
       fetch(`/api/searchForExistingAlbums?searchStr=${searchStr}&wantFullName=true`)
-      .then(res=>{
+      .then(async res=>{
         if(!res.ok){
-          throw `${res.status} ${res.statusText}`
+          throw await res.json().catch(() => ({error: {message: `${res.status} ${res.statusText}`}}));
         }
         return res.json();
       })
@@ -173,7 +173,7 @@ class PlAlbumName extends HTMLElement {
         }
       })
       .catch(err=>{
-        notify(`<strong>Error</strong>:</br>${err}`, 'error', -1);
+        notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
   
       });
     }
@@ -203,9 +203,9 @@ class PlAlbumName extends HTMLElement {
 
   #suggestAlbumNames = (txt) => {
     fetch(`/api/searchForExistingAlbums?searchStr=${txt.substring(15).trim()}&wantFullName=false`)
-    .then(res=>{
+    .then(async res=>{
       if(!res.ok){
-        throw `${res.status} ${res.statusText}`
+        throw await res.json().catch(() => ({error: {message: `${res.status} ${res.statusText}`}}));
       }
       return res.json();
     })
@@ -222,7 +222,7 @@ class PlAlbumName extends HTMLElement {
       }
     })
     .catch(err=>{
-        notify(`<strong>Error</strong>:</br>${err}`, 'error', -1);
+        notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
   
     });
   }

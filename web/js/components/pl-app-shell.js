@@ -264,7 +264,7 @@ class PlAppShell extends HTMLElement {
 
       try {
         const res = await authenticatedFetch('/api/getAll');
-        if (!res.ok) throw `${res.status} ${res.statusText}`;
+        if (!res.ok) throw await res.json().catch(() => ({error: {message: `${res.status} ${res.statusText}`}}));
         const result = await res.json();
         this.#showGallery(result);
       } catch (err) {
@@ -295,7 +295,7 @@ class PlAppShell extends HTMLElement {
           })
         });
 
-        if (!res.ok) throw `${res.status} ${res.statusText}`;
+        if (!res.ok) throw await res.json().catch(() => ({error: {message: `${res.status} ${res.statusText}`}}));
         const result = await res.json();
         this.#showGallery(result);
       } catch (err) {

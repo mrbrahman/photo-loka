@@ -144,9 +144,9 @@ class PlSlide extends HTMLElement {
         newRating
       })
     })
-    .then(res=>{
+    .then(async res=>{
       if(!res.ok){
-        throw `${res.status} ${res.statusText}`;
+        throw await res.json().catch(() => ({error: {message: `${res.status} ${res.statusText}`}}));
       }
     })
     // Update in backend successful, now update the UI

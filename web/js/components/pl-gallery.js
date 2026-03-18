@@ -200,9 +200,9 @@ class PlGallery extends HTMLElement {
           new_album_name: targetAlbumName
         })
       })
-      .then(res=>{
+      .then(async res=>{
         if(!res.ok){
-          throw `${res.status} ${res.statusText}`
+          throw await res.json().catch(() => ({error: {message: `${res.status} ${res.statusText}`}}));
         }
       });
 
@@ -293,9 +293,9 @@ class PlGallery extends HTMLElement {
         newRating: evt.detail.newRating
       })
     })
-    .then(res=>{
+    .then(async res=>{
       if(!res.ok){
-        throw `${res.status} ${res.statusText}`
+        throw await res.json().catch(() => ({error: {message: `${res.status} ${res.statusText}`}}));
       }
     })
     .then(()=>{
@@ -324,9 +324,9 @@ class PlGallery extends HTMLElement {
         uuid_arr: this.#itemsSelected.map(x=>x.data.id)
       })
     })
-    .then(res=>{
+    .then(async res=>{
       if(!res.ok){
-        throw `${res.status} ${res.statusText}`
+        throw await res.json().catch(() => ({error: {message: `${res.status} ${res.statusText}`}}));
       }
     })
     .then(()=>{
