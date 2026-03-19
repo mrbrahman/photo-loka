@@ -1,4 +1,5 @@
 import {notify} from '../utils.mjs';
+import {authenticatedFetch} from '../authn.mjs';
 
 import sheet from "./styles/pl-item-info.css" with { type: "css" };
 
@@ -139,7 +140,7 @@ class PlItemInfo extends HTMLElement {
     }
 
     try {
-      let res = await fetch(`/api/getItemInfo?uuid=${this.#uuid}`);
+      let res = await authenticatedFetch(`/api/getItemInfo?uuid=${this.#uuid}`);
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       this.#data = await res.json();
       this.#populate();
@@ -303,7 +304,7 @@ class PlItemInfo extends HTMLElement {
     status.className = 'field-status saving';
 
     try {
-      let res = await fetch('/api/renameFile', {
+      let res = await authenticatedFetch('/api/renameFile', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ collection_id: 1, uuid: this.#uuid, newBasename })
@@ -332,7 +333,7 @@ class PlItemInfo extends HTMLElement {
     status.className = 'field-status saving';
 
     try {
-      let res = await fetch('/api/updateDescription', {
+      let res = await authenticatedFetch('/api/updateDescription', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ uuid: this.#uuid, description: newDesc })
