@@ -46,7 +46,7 @@ class PlItemInfo extends HTMLElement {
               <div class="row-content">
                 <div id="file-meta"></div>
                 <div class="filename-wrap">
-                  <span id="file-dir"></span><input id="filename" type="text" spellcheck="false"><span id="file-ext"></span>
+                  <span id="file-dir"></span><span id="filename" contenteditable spellcheck="false"></span><span id="file-ext"></span>
                 </div>
                 <div id="filename-status" class="field-status"></div>
               </div>
@@ -103,8 +103,7 @@ class PlItemInfo extends HTMLElement {
     // Filename save on blur / enter, auto-size on input
     let fnInput = this.shadowRoot.getElementById('filename');
     fnInput.addEventListener('blur', () => this.#saveFilename());
-    fnInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') fnInput.blur(); });
-    fnInput.addEventListener('input', () => { fnInput.size = Math.max(1, fnInput.value.length + 1); });
+    fnInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); fnInput.blur(); } });
 
     // Description save on blur
     let descEl = this.shadowRoot.getElementById('description');
@@ -168,8 +167,7 @@ class PlItemInfo extends HTMLElement {
       this.#ext = '';
     }
     this.shadowRoot.getElementById('file-dir').textContent = dir;
-    this.shadowRoot.getElementById('filename').value = this.#originalStem;
-    this.shadowRoot.getElementById('filename').size = Math.max(1, this.#originalStem.length + 1);
+    this.shadowRoot.getElementById('filename').innerText = this.#originalStem;
     this.shadowRoot.getElementById('file-ext').textContent = this.#ext;
 
     // Description
@@ -309,9 +307,9 @@ class PlItemInfo extends HTMLElement {
   async #saveFilename() {
     let input = this.shadowRoot.getElementById('filename');
     let status = this.shadowRoot.getElementById('filename-status');
-    let newStem = input.value.trim();
+    let newStem = input.innerText.trim();
     if (!newStem || newStem === this.#originalStem) {
-      input.value = this.#originalStem;
+      input.innerText = this.#originalStem;
       return;
     }
 
@@ -334,7 +332,7 @@ class PlItemInfo extends HTMLElement {
       setTimeout(() => { if (status.isConnected) { status.textContent = ''; status.className = 'field-status'; } }, 2000);
 
     } catch (err) {
-      input.value = this.#originalStem;
+      input.innerText = this.#originalStem;
       status.textContent = 'Error saving';
       status.className = 'field-status error';
       notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);

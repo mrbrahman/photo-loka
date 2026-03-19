@@ -76,18 +76,15 @@ sl-drawer::part(overlay) {
 }
 
 #filename {
-  background: transparent;
-  border: 1px solid transparent;
+  border: 1px solid #eee;
   border-radius: 3px;
   color: #444;
-  font-family: inherit;
-  font-size: var(--font-secondary);
   padding: 0 2px;
+  outline: none;
   transition: border-color 0.2s;
 }
 
 #filename:focus {
-  outline: none;
   border-color: #bbb;
 }
 
