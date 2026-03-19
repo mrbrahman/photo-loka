@@ -1,5 +1,7 @@
 import dateFormat from 'dateformat';
+import * as path from 'path';
 import * as db from './indexer-db.mjs';
+import * as fileOps from './file-organizer.mjs';
 import * as exifManager from '#media/exif-manager';
 import { createLogger } from '#utils/logger';
 
@@ -15,6 +17,24 @@ export async function refreshMetadata(uuid, filename){
   metadata['uuid'] = uuid;
 
   await db.updateMetadataRow(metadata)
+}
+
+export function updateDescription(uuid, description){
+  let fileModifyDate = dateFormat(new Date(), 'isoDateTime');
+
+  db.updateDescription(uuid, description, fileModifyDate);
+  db.scheduleExif([uuid], {ImageDescription: description, FileModifyDate: fileModifyDate});
+}
+
+export async function renameFile(collection_id, uuid, newBasename){
+  let oldPath = await db.getFileName(uuid);
+  let dir = path.dirname(oldPath);
+  let newPath = path.join(dir, newBasename);
+
+  if (oldPath === newPath) return;
+
+  await fileOps.moveItem(collection_id, oldPath, newPath);
+  db.updateFilename(uuid, newPath);
 }
 
 export function updateRating(uuid_arr, newRating){

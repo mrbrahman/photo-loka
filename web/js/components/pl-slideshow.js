@@ -2,7 +2,7 @@ import sheet from "./styles/pl-slideshow.css" with { type: "css" };
 
 class PlSlideshow extends HTMLElement {
   #data=[]; #src; #startFrom; #buffer=1; #loop=false;
-  #startIdx=[0,0]; #slideshowMode=false; #intervalId; #slideDuration=3;
+  #startIdx=[0,0]; #slideshowMode=false; #infoPanelOpen=false; #intervalId; #slideDuration=3;
 
   // TODO
   // slideshow pause button, exit button
@@ -111,6 +111,10 @@ class PlSlideshow extends HTMLElement {
       // }
     });
 
+    this.addEventListener('pl-info-panel-toggled', (evt) => {
+      this.#infoPanelOpen = evt.detail.open;
+    });
+
     this.addEventListener('pl-slideshow-video-ended', ()=>{
       if(this.#slideshowMode && this.shadowRoot.getElementById('slides').querySelector('[data-pos="1"')){
         this.#startTimer();
@@ -195,6 +199,7 @@ class PlSlideshow extends HTMLElement {
 
   #handleSlideshowEscape = (evt) =>{
     if(evt.key == "Escape"){
+      if (this.#infoPanelOpen) return; // let the drawer close first
       this.#slideshowClosed();
     // } else if(evt.key == "A" || evt.key == "a"){
     //   // toggle album name
@@ -300,6 +305,7 @@ class PlSlideshow extends HTMLElement {
     nextSlide.classList.add('active');
     nextSlide.classList.remove('right');
     nextSlide.slideshowMode = this.#slideshowMode;
+    nextSlide.infoPanelOpen = this.#infoPanelOpen;
 
     if(nextSlide.dataset.type.startsWith('video')){
       nextSlide.play = true;
@@ -319,6 +325,7 @@ class PlSlideshow extends HTMLElement {
 
       if(i == -this.buffer){
         // remove slide at the left
+        slide.infoPanelOpen = false;
         slide.remove();
       } else {
         // adjust positions for the remaining
@@ -368,6 +375,7 @@ class PlSlideshow extends HTMLElement {
     prevSlide.classList.add('active');
     prevSlide.classList.remove('left');
     prevSlide.slideshowMode = this.#slideshowMode;
+    prevSlide.infoPanelOpen = this.#infoPanelOpen;
     if(prevSlide.dataset.type.startsWith('video')){
       prevSlide.play = true;
     }
@@ -383,6 +391,7 @@ class PlSlideshow extends HTMLElement {
 
       if(i == this.buffer){
         // remove slide at the right
+        slide.infoPanelOpen = false;
         slide.remove();
       } else {
         // adjust positions for the remaining

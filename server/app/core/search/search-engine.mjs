@@ -14,6 +14,10 @@ export async function getAllFromDefaultCollection(){
   return await getAllFromCollection(c.collection_id);
 }
 
+export async function getItemInfo(uuid){
+  return await db.getItemInfo(uuid);
+}
+
 export async function getGpsCoordinates() {
   return await db.getGpsCoordinates();
 }

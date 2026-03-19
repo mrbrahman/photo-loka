@@ -101,6 +101,19 @@ const insertIntoExifUpdatesStatement = `
   (@uuid, @new_exif_json)
 `;
 
+const updateDescriptionStatement = `
+  update metadata
+  set description = @description,
+    file_modify_date = @fileModifyDate
+  where uuid = @uuid
+`;
+
+const updateFilenameStatement = `
+  update metadata
+  set filename = @filename
+  where uuid = @uuid
+`;
+
 const updateRatingStatement = `
   update metadata
   set rating = @newRating,
@@ -144,6 +157,8 @@ const getPendingExifUpdatesStatemet = `
 // const insertObjectDetails = db.prepare(insertIntoObjectDetailsStatement);
 const insertIntoExifUpdates = db.prepare(insertIntoExifUpdatesStatement);
 const updateRatingInDb = db.prepare(updateRatingStatement);
+const updateDescriptionInDb = db.prepare(updateDescriptionStatement);
+const updateFilenameInDb = db.prepare(updateFilenameStatement);
 
 function transformDataToMetadataRow(row){
   ['faces','objects','keywords','xmpregion','geolocation_api_json'].forEach(c=>{
@@ -179,6 +194,14 @@ export async function getFileName(uuid){
 
 export async function retriveMetadata(uuid){
   return await asyncGet(retriveMetadataStatement, {uuid});
+}
+
+export function updateDescription(uuid, description, fileModifyDate){
+  updateDescriptionInDb.run({uuid, description, fileModifyDate});
+}
+
+export function updateFilename(uuid, filename){
+  updateFilenameInDb.run({uuid, filename});
 }
 
 export function updateRating(uuid_arr, newRating, fileModifyDate){

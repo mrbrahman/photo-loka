@@ -5,7 +5,7 @@ import sheet from "./styles/pl-slide.css" with { type: "css" };
 // const html = (strings, ...values) => String.raw({ raw: strings }, ...values);
 
 class PlSlide extends HTMLElement {
-  #albumname; #item; #play; #slideshowMode;
+  #albumname; #item; #play; #slideshowMode; #infoPanelOpen = false;
   #zoomLevel = 1; #maxZoom = 1; #startX = 0; #startY = 0; #translateX = 0; #translateY = 0;
   #eventHandlers = [];
 
@@ -22,7 +22,7 @@ class PlSlide extends HTMLElement {
         </div>
         <div id="actions">
           <sl-rating id="rating"></sl-rating>
-          <sl-icon-button id="info" name="info-circle" disabled></sl-icon-button>
+          <sl-icon-button id="info" name="info-circle"></sl-icon-button>
           <sl-dropdown>
             <sl-icon-button slot="trigger" name="three-dots-vertical"></sl-icon-button>
             <sl-menu>
@@ -53,6 +53,22 @@ class PlSlide extends HTMLElement {
 
     this.shadowRoot.getElementById('start-slideshow').addEventListener('click', ()=>{
       this.dispatchEvent(new Event('pl-start-slideshow', {composed: true, bubbles: true}));
+    });
+
+    this.shadowRoot.getElementById('info').addEventListener('click', () => {
+      this.infoPanelOpen = !this.#infoPanelOpen;
+      this.dispatchEvent(new CustomEvent('pl-info-panel-toggled', {
+        composed: true, bubbles: true,
+        detail: { open: this.#infoPanelOpen }
+      }));
+    });
+
+    this.addEventListener('pl-item-desc-updated', (evt) => {
+      let {uuid, hasDesc} = evt.detail;
+      if (this.item?.data?.id === uuid) {
+        this.item.data.hasDesc = hasDesc;
+        if (this.item.elem) this.item.elem.hasDesc = hasDesc;
+      }
     });
 
     // this.#setupZoomControls();
@@ -183,6 +199,33 @@ class PlSlide extends HTMLElement {
         }
       }
     }
+  }
+
+  set infoPanelOpen(val) {
+    this.#infoPanelOpen = Boolean(val);
+    if (!this.isConnected) return;
+
+    if (this.#infoPanelOpen) {
+      if (!this.shadowRoot.querySelector('pl-item-info')) {
+        let info = Object.assign(document.createElement('pl-item-info'), {
+          uuid: this.item?.data?.id
+        });
+        info.addEventListener('pl-info-panel-closed', () => {
+          this.#infoPanelOpen = false;
+          this.dispatchEvent(new CustomEvent('pl-info-panel-toggled', {
+            composed: true, bubbles: true,
+            detail: { open: false }
+          }));
+        });
+        this.shadowRoot.appendChild(info);
+      }
+    } else {
+      let info = this.shadowRoot.querySelector('pl-item-info');
+      if (info) info.remove();
+    }
+  }
+  get infoPanelOpen() {
+    return this.#infoPanelOpen;
   }
 
   disconnectedCallback() {

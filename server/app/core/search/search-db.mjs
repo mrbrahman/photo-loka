@@ -3,7 +3,7 @@ import { createLogger } from '#utils/logger';
 
 const logger = createLogger(import.meta.url);
 
-export const restrictSearchCols = ['album', 'keywords', 'faces', 'objects', 'mediatype', 'make', 'model', 'geo_address'];
+export const restrictSearchCols = ['album', 'description', 'keywords', 'faces', 'objects', 'mediatype', 'make', 'model', 'geo_address'];
 
 // aliases: the right side (realCol) can also be known by the left side (alias)
 export const aliases = {
@@ -16,6 +16,7 @@ export const aliases = {
   address: 'geo_address',
   camera: 'model',
   type: 'mediatype',
+  desc: 'description',
   l: 'logical'
 }
 
@@ -196,6 +197,23 @@ function transform2(rows){
     row['item'] = JSON.parse(row['item']);
     return row
   });
+}
+
+export async function getItemInfo(uuid){
+  let sql = `
+    select 
+      uuid, album, filename,
+      description, filesize, ext, mimetype, mediatype,
+      keywords, faces, objects, rating,
+      image_width, image_height, duration,
+      make, model,
+      gps_lat, gps_long, gps_alt, geo_address,
+      datetime_original, create_date, file_modify_date, file_date,
+      indexed_dt, trashed_dt
+    from metadata
+    where uuid = ?
+  `;
+  return await asyncGet(sql, uuid);
 }
 
 export async function getGpsCoordinates(){

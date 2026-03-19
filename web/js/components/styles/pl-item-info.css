@@ -1,0 +1,221 @@
+sl-drawer::part(header) {
+  padding: 12px 16px 0;
+}
+
+sl-drawer::part(body) {
+  padding: 8px 16px;
+}
+
+sl-drawer::part(overlay) {
+  background: transparent;
+}
+
+.loading {
+  text-align: center;
+  padding: 40px 0;
+  color: #888;
+}
+
+/* Rows */
+#info-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+#desc-section {
+  padding-top: 0;
+}
+
+/* Icon + content row layout (Google Photos style) */
+.info-row {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.info-row[hidden] {
+  display: none;
+}
+
+.info-row + .info-row {
+  margin-top: 0;
+}
+
+.row-icon {
+  flex-shrink: 0;
+  font-size: 1.15rem;
+  color: #555;
+  margin-top: 2px;
+}
+
+.row-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.meta-sub {
+  font-size: 0.72rem;
+  color: #888;
+  margin-top: 2px;
+}
+
+/* Filename (dir + editable stem + ext) */
+.filename-wrap {
+  font-size: 0.72rem;
+  color: #888;
+  word-break: break-all;
+  margin-top: 2px;
+  line-height: 1.5;
+}
+
+#filename {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: #444;
+  font-family: inherit;
+  font-size: 0.72rem;
+  padding: 0 2px;
+  transition: border-color 0.2s;
+}
+
+#filename:focus {
+  outline: none;
+  border-color: #bbb;
+}
+
+/* Description */
+#description {
+  width: 100%;
+  background: transparent;
+  border: 1px solid #eee;
+  border-radius: 4px;
+  color: #333;
+  font-family: inherit;
+  font-size: 0.82rem;
+  padding: 4px 6px;
+  resize: vertical;
+  min-height: 36px;
+  box-sizing: border-box;
+  transition: border-color 0.2s;
+}
+
+#description:focus {
+  outline: none;
+  border-color: #bbb;
+}
+
+#description::placeholder {
+  color: #aaa;
+}
+
+/* Shared status styles */
+.field-status {
+  font-size: 0.65rem;
+  color: #888;
+  margin-top: 2px;
+  min-height: 1em;
+  padding-left: 6px;
+}
+
+.field-status.saving { color: #b08800; }
+.field-status.saved { color: #2e7d32; }
+.field-status.error { color: #c62828; }
+
+/* Dates */
+.dates-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.date-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  color: #666;
+}
+
+.date-label {
+  color: #888;
+  flex-shrink: 0;
+  margin-right: 12px;
+}
+
+.date-value {
+  text-align: right;
+}
+
+/* Map */
+#map-container {
+  width: 100%;
+  height: 160px;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+#geo-address {
+  font-size: 0.78rem;
+  color: #444;
+}
+
+/* People / Faces */
+.faces-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.face-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.face-thumb {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #eee;
+}
+
+.face-placeholder {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: #eee;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #999;
+  font-size: 1.2rem;
+}
+
+.face-name {
+  font-size: 0.65rem;
+  color: #555;
+  max-width: 64px;
+  text-align: center;
+  overflow: wrap;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Keywords */
+.keywords-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.keyword-tag {
+  background: #f0f0f0;
+  color: #444;
+  padding: 3px 12px;
+  border-radius: 14px;
+  font-size: 0.72rem;
+}

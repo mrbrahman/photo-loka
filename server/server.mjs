@@ -1,4 +1,5 @@
 import * as path from 'path';
+import * as fs from 'fs';
 import 'dotenv/config';
 
 import express from 'express';
@@ -186,6 +187,28 @@ apiRouter.post('/search', compression(), async function(req,res){
   res.json(await s.search.search(collection_id, searchText));
 });
 
+apiRouter.get('/getItemInfo', async function(req,res,next){
+  try {
+    let uuid = req.query.uuid;
+    let info = await s.search.getItemInfo(uuid);
+    if (!info) return res.status(404).json({error: {message: 'Item not found'}});
+    res.json(info);
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.get('/getFaceThumbnail', authenticateMediaAccess, function(req,res,next){
+  try {
+    let {uuid, name} = req.query;
+    let filePath = path.join(config.facesDir, name, `${uuid}.jpg`);
+    if (!fs.existsSync(filePath)) return res.status(404).end();
+    res.sendFile(path.resolve(filePath));
+  } catch (error) {
+    next(error);
+  }
+});
+
 apiRouter.get('/getGpsCoordinates', compression(), async function(req,res){
   res.json(await s.search.getGpsCoordinates());
 });
@@ -296,6 +319,26 @@ apiRouter.put('/updateRating', function(req,res,next){
     s.metadataUpdates.updateRating(uuid_arr, newRating);
     res.sendStatus(200);
   } catch(err){
+    next(err);
+  }
+});
+
+apiRouter.put('/updateDescription', function(req,res,next){
+  let {uuid, description} = req.body;
+  try {
+    s.metadataUpdates.updateDescription(uuid, description);
+    res.sendStatus(200);
+  } catch(err) {
+    next(err);
+  }
+});
+
+apiRouter.put('/renameFile', async function(req,res,next){
+  let {collection_id, uuid, newBasename} = req.body;
+  try {
+    await s.metadataUpdates.renameFile(collection_id, uuid, newBasename);
+    res.sendStatus(200);
+  } catch(err) {
     next(err);
   }
 });
