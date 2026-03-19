@@ -54,7 +54,7 @@ class PlItemInfo extends HTMLElement {
 
             <!-- Keywords -->
             <div class="info-row" id="keywords-row" hidden>
-              <sl-icon name="tags" class="row-icon"></sl-icon>
+              <sl-icon name="tags-fill" class="row-icon"></sl-icon>
               <div class="row-content">
                 <div id="keywords-list" class="keywords-list"></div>
               </div>
@@ -62,7 +62,7 @@ class PlItemInfo extends HTMLElement {
 
             <!-- Location -->
             <div class="info-row" id="location-row" hidden>
-              <sl-icon name="geo-alt" class="row-icon"></sl-icon>
+              <sl-icon name="geo-alt-fill" class="row-icon"></sl-icon>
               <div class="row-content">
                 <div id="geo-address"></div>
                 <div id="map-container"></div>
@@ -210,16 +210,32 @@ class PlItemInfo extends HTMLElement {
     // Dates
     let datesList = this.shadowRoot.getElementById('dates-list');
     datesList.innerHTML = '';
-    let dates = [
-      ['Taken', d.datetime_original],
-      ['Created', d.create_date],
-      ['File date', d.file_date],
-      ['Modified', d.file_modify_date],
-      ['Indexed', d.indexed_dt],
-      ['Trashed', d.trashed_dt],
+    let mediaDates = [
+      ['Datetime Original (images)', d.datetime_original],
+      ['Create Date (videos)', d.create_date],
+      ['File Modify Date', d.file_modify_date],
+      ['(Effective) File date', d.file_date],
     ].filter(([, v]) => v);
 
-    for (let [label, val] of dates) {
+    let systemDates = [
+      ['Indexed Date', d.indexed_dt],
+      ['Trashed Date', d.trashed_dt],
+    ].filter(([, v]) => v);
+
+    for (let [label, val] of mediaDates) {
+      let row = document.createElement('div');
+      row.className = 'date-row';
+      row.innerHTML = `<span class="date-label">${label}</span><span class="date-value">${this.#formatDate(val)}</span>`;
+      datesList.appendChild(row);
+    }
+
+    if (mediaDates.length && systemDates.length) {
+      let spacer = document.createElement('div');
+      spacer.style.height = '6px';
+      datesList.appendChild(spacer);
+    }
+
+    for (let [label, val] of systemDates) {
       let row = document.createElement('div');
       row.className = 'date-row';
       row.innerHTML = `<span class="date-label">${label}</span><span class="date-value">${this.#formatDate(val)}</span>`;

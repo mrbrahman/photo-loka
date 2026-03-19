@@ -1,3 +1,9 @@
+:host {
+  --font-primary: 0.9rem;
+  --font-secondary: 0.8rem;
+  --font-tertiary: 0.7rem;
+}
+
 sl-drawer::part(header) {
   padding: 12px 16px 0;
 }
@@ -55,14 +61,14 @@ sl-drawer::part(overlay) {
 }
 
 .meta-sub {
-  font-size: 0.72rem;
+  font-size: var(--font-secondary);
   color: #888;
   margin-top: 2px;
 }
 
 /* Filename (dir + editable stem + ext) */
 .filename-wrap {
-  font-size: 0.72rem;
+  font-size: var(--font-secondary);
   color: #888;
   word-break: break-all;
   margin-top: 2px;
@@ -75,7 +81,7 @@ sl-drawer::part(overlay) {
   border-radius: 3px;
   color: #444;
   font-family: inherit;
-  font-size: 0.72rem;
+  font-size: var(--font-secondary);
   padding: 0 2px;
   transition: border-color 0.2s;
 }
@@ -93,7 +99,7 @@ sl-drawer::part(overlay) {
   border-radius: 4px;
   color: #333;
   font-family: inherit;
-  font-size: 0.82rem;
+  font-size: var(--font-primary);
   padding: 4px 6px;
   resize: vertical;
   min-height: 36px;
@@ -112,7 +118,7 @@ sl-drawer::part(overlay) {
 
 /* Shared status styles */
 .field-status {
-  font-size: 0.65rem;
+  font-size: var(--font-tertiary);
   color: #888;
   margin-top: 2px;
   min-height: 1em;
@@ -133,7 +139,7 @@ sl-drawer::part(overlay) {
 .date-row {
   display: flex;
   justify-content: space-between;
-  font-size: 0.72rem;
+  font-size: var(--font-secondary);
   color: #666;
 }
 
@@ -157,7 +163,7 @@ sl-drawer::part(overlay) {
 }
 
 #geo-address {
-  font-size: 0.78rem;
+  font-size: var(--font-primary);
   color: #444;
 }
 
@@ -196,7 +202,7 @@ sl-drawer::part(overlay) {
 }
 
 .face-name {
-  font-size: 0.65rem;
+  font-size: var(--font-tertiary);
   color: #555;
   max-width: 64px;
   text-align: center;
@@ -217,5 +223,5 @@ sl-drawer::part(overlay) {
   color: #444;
   padding: 3px 12px;
   border-radius: 14px;
-  font-size: 0.72rem;
+  font-size: var(--font-secondary);
 }
