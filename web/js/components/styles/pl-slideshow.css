@@ -12,32 +12,6 @@
   overflow: hidden;
 }
 
-sl-icon-button {
-  font-size: 1.5rem;
-}
-
-sl-icon-button::part(base) {
-  color: white;
-}
-
-#prev {
-  position: absolute;
-  top: 50%;
-  left: 10px;
-}
-
-#next {
-  position: absolute;
-  top: 50%;
-  right: 10px;
-}
-
-#close {
-  position: absolute;
-  bottom: 0px;
-  left: 10px;
-}
-
 #slides > * {
   position: absolute;
   top: 0px;
@@ -60,8 +34,4 @@ sl-icon-button::part(base) {
   left: 0px;
   transform: translate(120vw, 0px);
   visibility: hidden;
-}
-
-#navigation {
-  transition: visibility 0.2s;
 }

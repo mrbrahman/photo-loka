@@ -19,13 +19,6 @@ class PlSlideshow extends HTMLElement {
       <div id="container">
         <div id="slides" >
         </div>
-
-        <div id="navigation">
-          <sl-icon-button id="prev" name="chevron-left"></sl-icon-button>
-          <sl-icon-button id="next" name="chevron-right"></sl-icon-button>
-          <sl-icon-button id="close" name="x"></sl-icon-button>
-        </div>
-
       </div>
     `;
   }
@@ -49,7 +42,6 @@ class PlSlideshow extends HTMLElement {
     }
 
     console.log(`startIdx: ${this.#startIdx}`);
-    // console.log(`height: ${this.#screenHeight} width: ${this.#screenWidth}`);
 
     let slide = this.#createSlide(this.#startIdx);
     slide.classList.add('active');
@@ -97,11 +89,14 @@ class PlSlideshow extends HTMLElement {
       }
     }
 
-    this.shadowRoot.getElementById('close').addEventListener('click', this.#slideshowClosed);
+    // Set hasNext/hasPrev on the initial active slide
+    this.#updateActiveSlideNav();
 
-    this.shadowRoot.getElementById('next').addEventListener('click', ()=>this.#next());
-    this.shadowRoot.getElementById('prev').addEventListener('click', ()=>this.#prev());
-    
+    // Listen for nav events from pl-slide
+    this.addEventListener('pl-nav-prev', () => this.#prev());
+    this.addEventListener('pl-nav-next', () => this.#next());
+    this.addEventListener('pl-slideshow-close-requested', this.#slideshowClosed);
+
     this.addEventListener('fullscreenchange', this.#slideshowToggle);
     this.addEventListener('pl-start-slideshow', ()=>{
       // if (document.fullscreenElement){
@@ -125,39 +120,33 @@ class PlSlideshow extends HTMLElement {
     window.addEventListener('keydown', this.#handleRightArrow);
     window.addEventListener('keydown', this.#handleLeftArrow);
     window.addEventListener('keyup', this.#handleSlideshowEscape);
-    // window.addEventListener('resize', this.#handleResize);
 
-    // conditionally enable prev and next
-
-    // remove prev if there is no slide to show
+    // conditionally enable keyboard nav
     if(!this.shadowRoot.getElementById('slides').querySelector('[data-pos="-1"]')){
-      this.shadowRoot.getElementById('prev').style.display = 'none';
       window.removeEventListener('keydown', this.#handleLeftArrow);
     }
-
-    // remove next if there is no slide to show
     if(!this.shadowRoot.getElementById('slides').querySelector('[data-pos="1"]')){
-      this.shadowRoot.getElementById('next').style.display = 'none';
       window.removeEventListener('keydown', this.#handleRightArrow);
     }
   }
 
+  #updateActiveSlideNav() {
+    let slide = this.shadowRoot.getElementById('slides').querySelector('[data-pos="0"]');
+    if (!slide) return;
+    slide.hasNext = !!this.shadowRoot.getElementById('slides').querySelector('[data-pos="1"]');
+    slide.hasPrev = !!this.shadowRoot.getElementById('slides').querySelector('[data-pos="-1"]');
+  }
+
   #slideshowToggle = () => {
     if(document.fullscreenElement){
-      // start slideshow
-
-      // change the state of this (pl-slideshow) element
       this.#slideshowMode = true;
-      this.shadowRoot.getElementById('navigation').style.visibility = 'hidden';
-      
-      // now initiate changes to the current slide being shown, and start slideshow
+
       let slide = this.shadowRoot.getElementById('slides').querySelector('[data-pos="0"]');
       slide.slideshowMode = true;
       this.#startTimer();
 
     } else {
       this.#slideshowMode = false;
-      this.shadowRoot.getElementById('navigation').style.visibility = 'visible';
 
       let slide = this.shadowRoot.getElementById('slides').querySelector('[data-pos="0"]');
       slide.slideshowMode = false;
@@ -170,7 +159,6 @@ class PlSlideshow extends HTMLElement {
       if(this.shadowRoot.getElementById('slides').querySelector('[data-pos="1"]')){
         this.#next()
       } else {
-        // this.#stopTimer();
         document.exitFullscreen();
       }
     }, this.#slideDuration*1000);
@@ -185,21 +173,9 @@ class PlSlideshow extends HTMLElement {
     this.#startTimer();
   }
 
-  // #handleResize = (evt) => {
-  //   this.#screenWidth  = document.documentElement.clientWidth;
-  //   this.#screenHeight = document.documentElement.clientHeight;
-
-  //   for(let i=-this.buffer; i<=this.buffer; i++){
-  //     let slide = this.shadowRoot.getElementById('slides').querySelector(`[data-pos="${i}"]`);
-  //     if(slide){
-  //       slide.setDimensions = [this.#screenWidth, this.#screenHeight];
-  //     }
-  //   }
-  // }
-
   #handleSlideshowEscape = (evt) =>{
     if(evt.key == "Escape"){
-      if (this.#infoPanelOpen) return; // let the drawer close first
+      if (this.#infoPanelOpen) return; // let pl-slide close the info panel first
       this.#slideshowClosed();
     // } else if(evt.key == "A" || evt.key == "a"){
     //   // toggle album name
@@ -219,12 +195,9 @@ class PlSlideshow extends HTMLElement {
     if(evt.key == "ArrowRight"){
       this.#next();
 
-      // if slideshowmode, reset timer
       if(this.#slideshowMode){
         this.#resetTimer();
       }
-    } else {
-      // ignore
     }
   }
 
@@ -232,12 +205,9 @@ class PlSlideshow extends HTMLElement {
     if(evt.key == "ArrowLeft"){
       this.#prev();
 
-      // if slideshowmode, reset timer
       if(this.#slideshowMode){
         this.#resetTimer();
       }
-    } else {
-      // ignore
     }
   }
 
@@ -348,15 +318,14 @@ class PlSlideshow extends HTMLElement {
       }
     } // for loop
 
-    // remove next if there is no slide to show
+    // update nav buttons on new active slide
+    this.#updateActiveSlideNav();
+
+    // update keyboard nav
     if(!this.shadowRoot.getElementById('slides').querySelector('[data-pos="1"]')){
-      this.shadowRoot.getElementById('next').style.display = 'none';
       window.removeEventListener('keydown', this.#handleRightArrow);
     }
-
-    // enable the prev button if it was removed before
-    if(this.shadowRoot.getElementById('prev').style.display == 'none'){
-      this.shadowRoot.getElementById('prev').style.display = 'block';
+    if(this.shadowRoot.getElementById('slides').querySelector('[data-pos="-1"]')){
       window.addEventListener('keydown', this.#handleLeftArrow);
     }
 
@@ -414,15 +383,14 @@ class PlSlideshow extends HTMLElement {
       }
     } // for loop
 
-    // remove prev if there is no slide to show
+    // update nav buttons on new active slide
+    this.#updateActiveSlideNav();
+
+    // update keyboard nav
     if(!this.shadowRoot.getElementById('slides').querySelector('[data-pos="-1"]')){
-      this.shadowRoot.getElementById('prev').style.display = 'none';
       window.removeEventListener('keydown', this.#handleLeftArrow);
     }
-
-    // enable the next button if it was removed before
-    if(this.shadowRoot.getElementById('next').style.display == 'none'){
-      this.shadowRoot.getElementById('next').style.display = 'block';
+    if(this.shadowRoot.getElementById('slides').querySelector('[data-pos="1"]')){
       window.addEventListener('keydown', this.#handleRightArrow);
     }
 
@@ -432,7 +400,6 @@ class PlSlideshow extends HTMLElement {
     window.removeEventListener('keydown', this.#handleRightArrow);
     window.removeEventListener('keydown', this.#handleLeftArrow);
     window.removeEventListener('keyup', this.#handleSlideshowEscape);
-    // window.removeEventListener('resize', this.#handleResize);
   }
 
   attributeChangedCallback(name, oldVal, newVal) {

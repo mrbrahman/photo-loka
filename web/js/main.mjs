@@ -15,7 +15,7 @@ import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/compone
 import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/details/details.js';
 import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/badge/badge.js';
 import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/divider/divider.js';
-import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/drawer/drawer.js';
+
 
 // Import app components
 import './components/pl-login-page.js';
@@ -25,6 +25,7 @@ import './components/pl-album.js';
 import './components/pl-album-name.js';
 import './components/pl-gallery.js';
 import './components/pl-gallery-controls.js';
+import './components/pl-slide-media.js';
 import './components/pl-slide.js';
 import './components/pl-slideshow.js';
 import './components/pl-map.js';

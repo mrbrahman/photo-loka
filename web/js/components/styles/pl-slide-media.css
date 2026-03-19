@@ -1,0 +1,83 @@
+:host {
+  display: block;
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+#container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+#albumname {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  color: white;
+}
+
+#media {
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+#media :is(img, video) {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+#zoom-controls {
+  visibility: hidden;  /* for now, keep it hidden until I decide what to do with it */
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+#zoom-controls sl-icon-button {
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+}
+
+#zoom-controls sl-icon-button::part(base) {
+  color: white;
+  border-radius: 50%;
+}
+
+@media (max-width: 768px) {
+  #zoom-controls {
+    display: none;
+  }
+}
+
+#actions {
+  position: absolute;
+  top: 20px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+}
+
+#actions > * {
+  padding-left: 5px;
+}
+
+sl-icon-button {
+  font-size: 1.20rem;
+}
+
+sl-icon-button::part(base) {
+  color: white;
+}
+
+.hidden {
+  visibility: hidden;
+}

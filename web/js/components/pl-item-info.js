@@ -10,8 +10,12 @@ class PlItemInfo extends HTMLElement {
   static {
     this.template.innerHTML = // html
     `
-      <sl-drawer label="Info" placement="end" open>
-        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+      <div id="panel">
+        <div id="header">
+          <span>Info</span>
+          <sl-icon-button id="close" name="x-lg"></sl-icon-button>
+        </div>
         <div id="content">
           <div class="loading">Loading...</div>
 
@@ -79,7 +83,7 @@ class PlItemInfo extends HTMLElement {
 
           </div>
         </div>
-      </sl-drawer>
+      </div>
     `;
   }
 
@@ -91,16 +95,15 @@ class PlItemInfo extends HTMLElement {
   connectedCallback() {
     this.shadowRoot.appendChild(this.constructor.template.content.cloneNode(true));
 
-    this.shadowRoot.querySelector('sl-drawer').addEventListener('sl-after-hide', () => {
+    this.shadowRoot.getElementById('close').addEventListener('click', () => {
       this.dispatchEvent(new Event('pl-info-panel-closed', {composed: true, bubbles: true}));
-      this.remove();
     });
 
-    // Stop keyboard events from reaching slideshow when info panel is open
-    this.addEventListener('keydown', (e) => e.stopPropagation());
-    this.addEventListener('keyup', (e) => e.stopPropagation());
+    // Stop keyboard events from reaching slideshow, but let Escape through
+    this.addEventListener('keydown', (e) => { if (e.key !== 'Escape') e.stopPropagation(); });
+    this.addEventListener('keyup', (e) => { if (e.key !== 'Escape') e.stopPropagation(); });
 
-    // Filename save on blur / enter, auto-size on input
+    // Filename save on blur / enter
     let fnInput = this.shadowRoot.getElementById('filename');
     fnInput.addEventListener('blur', () => this.#saveFilename());
     fnInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); fnInput.blur(); } });
@@ -193,7 +196,6 @@ class PlItemInfo extends HTMLElement {
     if (d.ext) fileParts.push(d.ext.toUpperCase());
     if (d.filesize) fileParts.push(this.#formatFileSize(d.filesize));
     if (!d.make && !d.model) {
-      // Show dimensions here if no camera row
       if (d.image_width && d.image_height) fileParts.push(`${d.image_width} x ${d.image_height}`);
       if (d.duration) fileParts.push(this.#formatDuration(d.duration));
     }
