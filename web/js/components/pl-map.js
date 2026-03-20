@@ -1,4 +1,5 @@
 import sheet from "./styles/pl-map.css" with { type: "css" };
+import leafletSheet from "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" with { type: "css" };
 
 class PlMap extends HTMLElement {
 
@@ -7,7 +8,6 @@ class PlMap extends HTMLElement {
     this.template.innerHTML = // html
     `
       <!-- Leaflet CSS -->
-      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
       <!-- Leaflet MarkerCluster CSS -->
       <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
       <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
@@ -21,7 +21,7 @@ class PlMap extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
-    this.shadowRoot.adoptedStyleSheets = [sheet];
+    this.shadowRoot.adoptedStyleSheets = [sheet, leafletSheet];
     this.map = null;
     this.markers = null;
   }
