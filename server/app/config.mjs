@@ -48,7 +48,7 @@ config.geonamesDailyLimit = 10000;
 // H.264 Hardware: 'h264_nvenc'(NVIDIA)/'h264_qsv'(Intel)/'h264_amf'(AMD) - widely supported
 // H.265/HEVC Hardware: 'hevc_nvenc'(NVIDIA)/'hevc_qsv'(Intel)/'hevc_amf'(AMD) - better compression than H.264
 // AV1: 'libaom-av1'(software)/'av1_nvenc'(NVIDIA RTX40+)/'av1_qsv'(Intel Arc) - future codec, best compression
-config.videoEncoder = 'libvpx'; 
+config.videoEncoder = 'libvpx-vp9'; 
 // videoContainer auto-determined: webm for VP8/VP9, mp4 for H.264/H.265/AV1
 
 // indexer parallel processing mode: 'dynamic' (auto-adjusts based on system load) or 'static' (fixed concurrency)
