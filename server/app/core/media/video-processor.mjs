@@ -1,4 +1,5 @@
 import { spawn } from 'child_process';
+import os from 'os';
 import path from 'path';
 import fs from 'fs';
 import {glob} from 'glob';
@@ -31,7 +32,7 @@ export async function compressVideo(uuid, filename) {
  * VP8 (libvpx):
  *   - Container: WebM
  *   - Audio: libvorbis
- *   - Settings: CRF 23, 1M bitrate (fast encoding, good compression)
+ *   - Settings: 2-pass, 2.5M bitrate, bt709 color space
  * 
  * VP9 (libvpx-vp9):
  *   - Container: WebM
@@ -49,35 +50,8 @@ export async function compressVideo(uuid, filename) {
  *   - Settings: CRF 23, streaming optimized
  */
 
-async function compressVideoWithFFMpeg(uuid, inputVideoPath) {
-  const isWebM = config.videoEncoder === 'libvpx' || config.videoEncoder === 'libvpx-vp9';
-  const container = isWebM ? 'webm' : 'mp4';
-  
-  const outputPath = path.join(
-    config.thumbsDir,
-    ...Array.from(uuid).slice(0,3), 
-    `${uuid}_compressed_video.${container}`
-  );
-  
+function runFFmpeg(args, uuid, inputVideoPath) {
   return new Promise((resolve, reject) => {
-    const isVP8 = config.videoEncoder === 'libvpx';
-    const isVP9 = config.videoEncoder === 'libvpx-vp9';
-    const isHardware = config.videoEncoder.includes('nvenc') || config.videoEncoder.includes('qsv') || config.videoEncoder.includes('amf');
-    
-    let args = ['-i', inputVideoPath, '-c:v', config.videoEncoder];
-    
-    if (isVP8) {
-      args.push('-c:a', 'libvorbis', '-crf', '23', '-b:v', '1M', '-b:a', '128k', '-threads', '4');
-    } else if (isVP9) {
-      args.push('-c:a', 'libopus', '-crf', '30', '-b:v', '0', '-maxrate', '1M', '-bufsize', '2M', '-b:a', '128k');
-    } else if (isHardware) {
-      args.push('-c:a', 'aac', '-preset', 'fast', '-crf', '23', '-maxrate', '1.5M', '-bufsize', '3M', '-movflags', '+faststart');
-    } else {
-      args.push('-c:a', 'aac', '-crf', '23', '-maxrate', '1.5M', '-bufsize', '3M', '-movflags', '+faststart');
-    }
-    
-    args.push('-y', outputPath);
-    
     const ffmpegProcess = spawn('ffmpeg', args);
 
     ffmpegProcess.stderr.on('data', (data) => {
@@ -91,60 +65,93 @@ async function compressVideoWithFFMpeg(uuid, inputVideoPath) {
     ffmpegProcess.on('exit', (code) => {
       logger.info(`${uuid} ${inputVideoPath} ffmpeg process exited with code: ${code}`);
     });
-    
+
     ffmpegProcess.on('close', (code) => {
       if (code === 0) {
-        resolve(outputPath);
+        resolve();
       } else {
         reject(new Error(`ffmpeg process closed with code ${code}`));
       }
     });
-    
+
     ffmpegProcess.on('error', (err) => reject(err));
   });
 }
 
-// TODO: fix path
-export function deleteCompressedVideo(uuid) {
-  const pattern = path.join(config.thumbsDir, `${uuid}_compressed_video.*`);
-  const files = glob.sync(pattern);
-  
-  files.forEach(filePath => {
-    fs.unlinkSync(filePath);
-  });
-}
-
-// TODO: Fix path
-export function getCompressedVideoPath(uuid) {
-  const pattern = path.join(config.thumbsDir, `${uuid}_compressed_video.*`);
-  const files = glob.sync(pattern);
-  
-  if (files.length > 0) {
-    return files[0]; // Return first match
-  }
-  
-  // If none exist, return path for current encoder
+async function compressVideoWithFFMpeg(uuid, inputVideoPath) {
   const isWebM = config.videoEncoder === 'libvpx' || config.videoEncoder === 'libvpx-vp9';
   const container = isWebM ? 'webm' : 'mp4';
-  return path.join(config.thumbsDir, `${uuid}_compressed_video.${container}`);
+  
+  const isVP8 = config.videoEncoder === 'libvpx';
+  const isVP9 = config.videoEncoder === 'libvpx-vp9';
+  const isHardware = config.videoEncoder.includes('nvenc') || config.videoEncoder.includes('qsv') || config.videoEncoder.includes('amf');
+
+  const compressedFileName = isVP8 ? `${uuid}_2pass_compressed_video.webm` : `${uuid}_compressed_video.${container}`;
+  const outputPath = path.join(
+    config.thumbsDir,
+    ...Array.from(uuid).slice(0,3), 
+    compressedFileName
+  );
+
+  if (isVP8) {
+    const passlogfile = path.join(os.tmpdir(), `ffmpeg2pass-${uuid}`);
+    const commonArgs = ['-c:v', config.videoEncoder, '-b:v', '2.5M', '-threads', '4',
+      '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709'];
+
+    // Pass 1: analysis only
+    const pass1Args = ['-i', inputVideoPath, ...commonArgs,
+      '-pass', '1', '-passlogfile', passlogfile, '-an', '-f', 'null',
+      process.platform === 'win32' ? 'NUL' : '/dev/null'];
+
+    logger.info(`${uuid} starting pass 1`);
+    await runFFmpeg(pass1Args, uuid, inputVideoPath);
+
+    // Pass 2: actual encode
+    const pass2Args = ['-i', inputVideoPath, ...commonArgs,
+      '-pass', '2', '-passlogfile', passlogfile,
+      '-c:a', 'libvorbis', '-b:a', '128k', '-y', outputPath];
+
+    logger.info(`${uuid} starting pass 2`);
+    await runFFmpeg(pass2Args, uuid, inputVideoPath);
+
+    // Cleanup passlog files
+    for (const f of glob.sync(`${passlogfile}*`)) {
+      fs.unlinkSync(f);
+    }
+  } else {
+    let args = ['-i', inputVideoPath, '-c:v', config.videoEncoder];
+
+    if (isVP9) {
+      args.push('-c:a', 'libopus', '-crf', '30', '-b:v', '0', '-maxrate', '1M', '-bufsize', '2M', '-b:a', '128k');
+    } else if (isHardware) {
+      args.push('-c:a', 'aac', '-preset', 'fast', '-crf', '23', '-maxrate', '1.5M', '-bufsize', '3M', '-movflags', '+faststart');
+    } else {
+      args.push('-c:a', 'aac', '-crf', '23', '-maxrate', '1.5M', '-bufsize', '3M', '-movflags', '+faststart');
+    }
+
+    args.push('-y', outputPath);
+    await runFFmpeg(args, uuid, inputVideoPath);
+  }
+
+  return outputPath;
+}
+
+export function deleteCompressedVideo(uuid) {
+  const thumbDir = path.join(config.thumbsDir, ...Array.from(uuid).slice(0,3));
+  const patterns = [
+    path.join(thumbDir, `${uuid}_2pass_compressed_video.*`),
+    path.join(thumbDir, `${uuid}_compressed_video.*`),
+  ];
+  for (const pattern of patterns) {
+    for (const filePath of glob.sync(pattern)) {
+      fs.unlinkSync(filePath);
+    }
+  }
 }
 
 export function streamVideo(uuid, filename){
-  let readStream;
-
-  let webmFile = path.join(
-    config.thumbsDir,
-    ...Array.from(uuid).slice(0,3),
-    uuid+'_compressed_video.webm'
-  );
-
-  if(fs.existsSync(webmFile)){
-    readStream = fs.createReadStream(webmFile);
-  } else {
-    readStream = fs.createReadStream(filename);
-  }
-
-  return readStream;
+  let filePath = resolveVideoPath(uuid, filename);
+  return fs.createReadStream(filePath);
 }
 
 export async function getVideo(uuid){
@@ -152,9 +159,9 @@ export async function getVideo(uuid){
   return streamVideo(uuid, filename);
 }
 
-export async function getVideoInfo(uuid) {
+export async function getVideoInfo(uuid, quality) {
   let filename = await getFileName(uuid);
-  let filePath = resolveVideoPath(uuid, filename);
+  let filePath = resolveVideoPath(uuid, filename, quality);
   let stat = fs.statSync(filePath);
   return { filePath, fileSize: stat.size };
 }
@@ -163,12 +170,16 @@ export function streamVideoRange(filePath, start, end) {
   return fs.createReadStream(filePath, { start, end });
 }
 
-function resolveVideoPath(uuid, filename) {
-  let webmFile = path.join(
-    config.thumbsDir,
-    ...Array.from(uuid).slice(0,3),
-    uuid+'_compressed_video.webm'
-  );
+function resolveVideoPath(uuid, filename, quality) {
+  if (quality === 'original') return filename;
 
-  return fs.existsSync(webmFile) ? webmFile : filename;
+  const thumbDir = path.join(config.thumbsDir, ...Array.from(uuid).slice(0,3));
+
+  const twoPassFile = path.join(thumbDir, uuid+'_2pass_compressed_video.webm');
+  if (fs.existsSync(twoPassFile)) return twoPassFile;
+
+  const compressedFile = path.join(thumbDir, uuid+'_compressed_video.webm');
+  if (fs.existsSync(compressedFile)) return compressedFile;
+
+  return filename;
 }

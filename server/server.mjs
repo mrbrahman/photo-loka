@@ -147,9 +147,10 @@ apiRouter.get('/getImage', authenticateMediaAccess, async function(req,res){
 
 apiRouter.get('/getVideo', authenticateMediaAccess, async function(req, res, next){
   let uuid = req.query.uuid;
+  let quality = req.query.quality || 'compressed';
 
   try {
-    const { filePath, fileSize } = await s.videos.getVideoInfo(uuid);
+    const { filePath, fileSize } = await s.videos.getVideoInfo(uuid, quality);
     const range = req.headers.range;
     const contentType = filePath.endsWith('.webm') ? 'video/webm' : 'video/mp4';
 
