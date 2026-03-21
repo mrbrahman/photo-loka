@@ -84,7 +84,7 @@ class PlSlideMedia extends HTMLElement {
       });
 
       let src = Object.assign(document.createElement('source'), {
-        src: `/api/getVideo?uuid=${this.item.data.id}`
+        src: `/api/getVideo?uuid=${this.item.data.id}&quality=${window.innerWidth >= 1281 ? 'original' : 'compressed'}`
       });
 
       let txt = 'Cannot play video';
