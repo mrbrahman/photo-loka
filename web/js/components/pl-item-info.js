@@ -2,6 +2,7 @@ import {notify} from '../utils.mjs';
 import {authenticatedFetch} from '../authn.mjs';
 
 import sheet from "./styles/pl-item-info.css" with { type: "css" };
+import leafletSheet from "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" with { type: "css" };
 
 class PlItemInfo extends HTMLElement {
   #uuid; #data; #map; #originalDesc; #originalStem; #ext;
@@ -10,7 +11,6 @@ class PlItemInfo extends HTMLElement {
   static {
     this.template.innerHTML = // html
     `
-      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
       <div id="panel">
         <div id="header">
           <span>Info</span>
@@ -89,7 +89,7 @@ class PlItemInfo extends HTMLElement {
 
   constructor() {
     super().attachShadow({mode: 'open'});
-    this.shadowRoot.adoptedStyleSheets = [sheet];
+    this.shadowRoot.adoptedStyleSheets = [sheet, leafletSheet];
   }
 
   connectedCallback() {
