@@ -32,7 +32,7 @@ export async function compressVideo(uuid, filename) {
  * VP8 (libvpx):
  *   - Container: WebM
  *   - Audio: libvorbis
- *   - Settings: 2-pass, 2.5M bitrate, bt709 color space
+ *   - Settings: 2-pass, 2.5M bitrate, 720p, bt709 color space
  * 
  * VP9 (libvpx-vp9):
  *   - Container: WebM
@@ -86,7 +86,7 @@ async function compressVideoWithFFMpeg(uuid, inputVideoPath) {
   const isVP9 = config.videoEncoder === 'libvpx-vp9';
   const isHardware = config.videoEncoder.includes('nvenc') || config.videoEncoder.includes('qsv') || config.videoEncoder.includes('amf');
 
-  const compressedFileName = isVP8 ? `${uuid}_2pass_compressed_video.webm`
+  const compressedFileName = isVP8 ? `${uuid}_2pass_vp8_compressed_video.webm`
     : isVP9 ? `${uuid}_2pass_vp9_compressed_video.webm`
     : `${uuid}_compressed_video.${container}`;
   const outputPath = path.join(
@@ -97,8 +97,16 @@ async function compressVideoWithFFMpeg(uuid, inputVideoPath) {
 
   if (isVP8) {
     const passlogfile = path.join(os.tmpdir(), `ffmpeg2pass-${uuid}`);
-    const commonArgs = ['-c:v', config.videoEncoder, '-b:v', '2.5M', '-threads', '4',
-      '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709'];
+    const commonArgs = [
+      '-c:v', config.videoEncoder,
+      '-b:v', '2.5M',              // Target bitrate
+      // Downscale to 720p max, preserving aspect ratio. Don't upscale smaller videos
+      '-vf', "scale=-2:'min(ih,720)'",
+      '-threads', '4',
+      '-colorspace', 'bt709',      // Standard color space for web video
+      '-color_primaries', 'bt709',
+      '-color_trc', 'bt709',
+    ];
 
     // Pass 1: analysis only
     const pass1Args = ['-i', inputVideoPath, ...commonArgs,
@@ -176,7 +184,7 @@ export function deleteCompressedVideo(uuid) {
   const thumbDir = path.join(config.thumbsDir, ...Array.from(uuid).slice(0,3));
   const patterns = [
     path.join(thumbDir, `${uuid}_2pass_vp9_compressed_video.*`),
-    path.join(thumbDir, `${uuid}_2pass_compressed_video.*`),
+    path.join(thumbDir, `${uuid}_2pass_vp8_compressed_video.*`),
     path.join(thumbDir, `${uuid}_compressed_video.*`),
   ];
   for (const pattern of patterns) {
@@ -215,7 +223,7 @@ function resolveVideoPath(uuid, filename, quality) {
   const vp9TwoPassFile = path.join(thumbDir, uuid+'_2pass_vp9_compressed_video.webm');
   if (fs.existsSync(vp9TwoPassFile)) return vp9TwoPassFile;
 
-  const twoPassFile = path.join(thumbDir, uuid+'_2pass_compressed_video.webm');
+  const twoPassFile = path.join(thumbDir, uuid+'_2pass_vp8_compressed_video.webm');
   if (fs.existsSync(twoPassFile)) return twoPassFile;
 
   const compressedFile = path.join(thumbDir, uuid+'_compressed_video.webm');
