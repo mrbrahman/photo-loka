@@ -36,7 +36,7 @@ export async function getMetadata(file){
   // console.log(tags);
 
   return {
-    description: (tags.ImageDescription || ' ').trim(),
+    description: tags.ImageDescription ? tags.ImageDescription.trim() : null,
     filesize: tags.FileSize||null,
     ext: tags.FileName.split(".").pop().toLowerCase(),
     mimetype: tags.MIMEType||null,
