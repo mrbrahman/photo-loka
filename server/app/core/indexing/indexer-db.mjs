@@ -162,7 +162,7 @@ const updateFilenameInDb = db.prepare(updateFilenameStatement);
 
 function transformDataToMetadataRow(row){
   ['faces','objects','keywords','xmpregion','geolocation_api_json'].forEach(c=>{
-    row[c] = JSON.stringify(row[c])
+    row[c] = row[c] != null ? JSON.stringify(row[c]) : null
   });
 
   return row;
