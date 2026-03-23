@@ -4,6 +4,8 @@ import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/compone
 import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/rating/rating.js';
 
 import './components/pl-slide.js';
+import './components/pl-slide-media.js';
+import './components/pl-item-info.js';
 
 const IMAGE_DISPLAY_DURATION = 7000;
 
