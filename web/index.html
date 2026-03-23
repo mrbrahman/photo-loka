@@ -48,9 +48,12 @@
       padding: 0;
     }
 
+    /* Single source of truth for viewport sizing.
+       Using dvh/dvw (dynamic viewport) so mobile browser chrome is accounted for.
+       All children should use 100% to inherit from here. */
     #app-root {
-      width: 100vw;
-      height: 100vh;
+      width: 100dvw;
+      height: 100dvh;
     }
   </style>
 

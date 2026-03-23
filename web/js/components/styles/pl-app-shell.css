@@ -1,15 +1,16 @@
+/* Viewport sizing is set on #app-root using dvh/dvw. Inherit from there. */
 :host {
   display: block;
-  height: 100vh;
-  width: 100vw;
+  height: 100%;
+  width: 100%;
 }
 
 #app-container {
   display: grid;
   grid-template-columns: 1fr;
   grid-template-rows: var(--progress-bar-height, 4px) 60px 1fr;
-  height: 100vh;
-  width: 100vw;
+  height: 100%;
+  width: 100%;
 }
 
 /* --- Progress Bar --- */
