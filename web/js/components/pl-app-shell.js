@@ -251,6 +251,13 @@ class PlAppShell extends HTMLElement {
   // --- Router ---
 
   #initAppRouter() {
+    this.#router.hooks({
+      before: (done) => {
+        this.shadowRoot.getElementById('nav-search-box').value = '';
+        done();
+      }
+    });
+
     this.#router.on('/', async () => {
       if (document.querySelector('pl-slideshow')) {
         document.querySelector('pl-slideshow').remove();
@@ -283,6 +290,7 @@ class PlAppShell extends HTMLElement {
       }
 
       this.#setActiveMenuItem(null);
+      this.shadowRoot.getElementById('nav-search-box').value = params.data.searchText;
       this.#showProgressBar();
 
       try {
