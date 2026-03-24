@@ -256,53 +256,95 @@ class PlAlbum extends HTMLElement {
     }
     return 6;
   }
+
+  #getMinThumbWidth(){
+    if (this.width <= 640) {
+      return 120;
+    } else if (this.width <= 1280) {
+      return 120;
+    } else if (this.width <= 1920) {
+      return 130;
+    }
+    return 140;
+  }
   
+  #flushRow(row, rowAspectRatio, minAspectRatio, trX, trY, isLastRow){
+    // clamp only the last row to prevent it from being absurdly tall
+    if (isLastRow) rowAspectRatio = Math.max(rowAspectRatio, minAspectRatio);
+
+    let totalWidthOfImages = this.width - (this.gutterspace * row.length-1) - this.gutterspace * 2;
+    let rowHeight = totalWidthOfImages / rowAspectRatio;
+
+    // add gutter space to the Y axis
+    trY += this.gutterspace;
+
+    // create layout objects for all entries in this row
+    for(let r of row){
+      trX += this.gutterspace;
+
+      let o = {
+        id: r.data.id,
+        width: r.data.ar * rowHeight,
+        height: rowHeight,
+        offsetHeight: trY, // will be useful when painting
+        trX: trX + 'px',
+        trY: trY + 'px'
+      };
+
+      // update layout
+      r.layout = o;
+
+      trX += r.data.ar * rowHeight; // add the current element width
+    }
+
+    trY += rowHeight;
+    return trY;
+  }
+
   #doLayout(){
-    let minAspectRatio = this.#getMinAspectRatio(), row = [], rowAspectRatio = 0, 
+    let minAspectRatio = this.#getMinAspectRatio(), minThumbWidth = this.#getMinThumbWidth(),
+      row = [], rowAspectRatio = 0, minAR = Infinity,
       trX = 0, trY = this.album_name_height;
 
     this.data.forEach((d,i)=>{
       row.push(d);
       rowAspectRatio += d.data.ar;
-      
-      if (rowAspectRatio >= minAspectRatio || i+1 == this.data.length){
-        // we've reached the max items possible in this row, or this is the last element
-        
-        // calculate row height
-        // total width of images in this row = width of screen - space between images - space at the 2 ends
-        
-        // make sure the last image has reasonable height (not too big)
-        rowAspectRatio = Math.max(rowAspectRatio, minAspectRatio);
-        
-        let totalWidthOfImages = this.width - (this.gutterspace * row.length-1) - this.gutterspace * 2;
-        let rowHeight = totalWidthOfImages / rowAspectRatio;
-        
-        // add gutter space to the Y axis
-        trY += this.gutterspace;
-        
-        // create layout objects for all entries in this row
-        for(let r of row){
-          trX += this.gutterspace;
-          
-          let o = {
-            id: r.data.id,
-            width: r.data.ar * rowHeight,
-            height: rowHeight,
-            offsetHeight: trY, // will be useful when painting
-            trX: trX + 'px',
-            trY: trY + 'px'
-          };
-          
-          // update layout
-          r.layout = o;
-          
-          trX += r.data.ar * rowHeight; // add the current element width
+      minAR = Math.min(minAR, d.data.ar);
+
+      // check if adding this item would cramp the row
+      let isCramped = false;
+      if (row.length > 1) {
+        let tentativeTotalWidth = this.width - (this.gutterspace * row.length-1) - this.gutterspace * 2;
+        let tentativeRowHeight = tentativeTotalWidth / rowAspectRatio;
+        isCramped = minAR * tentativeRowHeight < minThumbWidth;
+      }
+
+      if (rowAspectRatio >= minAspectRatio || i+1 == this.data.length || isCramped){
+        if (isCramped) {
+          // flush row WITHOUT the current item
+          row.pop();
+          rowAspectRatio -= d.data.ar;
+
+          trY = this.#flushRow(row, rowAspectRatio, minAspectRatio, 0, trY, false);
+
+          // start new row with the current item
+          row = [d];
+          rowAspectRatio = d.data.ar;
+          minAR = d.data.ar;
+
+          // check if this item alone fills a row
+          if (rowAspectRatio >= minAspectRatio || i+1 == this.data.length) {
+            trY = this.#flushRow(row, rowAspectRatio, minAspectRatio, 0, trY, i+1 == this.data.length);
+            row = [];
+            rowAspectRatio = 0;
+            minAR = Infinity;
+          }
+        } else {
+          trY = this.#flushRow(row, rowAspectRatio, minAspectRatio, 0, trY, i+1 == this.data.length);
+          row = [];
+          rowAspectRatio = 0;
+          minAR = Infinity;
         }
-        // reset values
-        trX = 0;
-        trY += rowHeight;      
-        row = []; 
-        rowAspectRatio = 0;
       }
     });
 
