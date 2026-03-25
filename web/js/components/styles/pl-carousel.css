@@ -10,11 +10,11 @@
 }
 #container {
   position: absolute;
-  background: white;
+  background: var(--bg-page);
   border-radius: 8px;
   padding: 10px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-  border: 1px solid #ccc;
+  box-shadow: 0 4px 20px var(--shadow-heavy);
+  border: 1px solid var(--border-input);
   pointer-events: auto;
 }
 #carousel-wrapper {
@@ -67,8 +67,8 @@ pl-thumb {
   border: none;
   font-size: 24px;
   cursor: pointer;
-  color: #666;
+  color: var(--text-secondary);
 }
 #close-btn:hover {
-  color: #000;
+  color: var(--text-primary);
 }

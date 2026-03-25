@@ -32,8 +32,8 @@ sl-progress-bar.hide {
   align-items: center;
   max-width: 100%;
   padding: 10px 4px 10px 4px;
-  background-color: white;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  background-color: var(--bg-page);
+  box-shadow: 0 1px 3px var(--shadow-light);
 }
 
 #nav-header > .nav-item {
@@ -60,10 +60,12 @@ sl-progress-bar.hide {
   min-width: 0;
   height: 40px;
   border-radius: 20px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--border-input);
   font-size: medium;
   font-family: inherit;
   padding: 0 16px;
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
 }
 
 #nav-header > #nav-search-box:focus {
@@ -75,6 +77,7 @@ sl-progress-bar.hide {
 #nav-header > #nav-title {
   font-weight: bold;
   white-space: nowrap;
+  color: var(--text-primary);
 }
 
 #logo {
@@ -101,8 +104,8 @@ sl-progress-bar.hide {
 #sidebar {
   display: flex;
   flex-direction: column;
-  background-color: #fafafa;
-  border-right: 1px solid #e4e4e7;
+  background-color: var(--bg-surface);
+  border-right: 1px solid var(--border-primary);
   overflow-y: auto;
   overflow-x: hidden;
   padding-top: 4px;
@@ -120,7 +123,7 @@ sl-progress-bar.hide {
 
 .sidebar-section-label {
   font-size: 0.7rem;
-  color: #888;
+  color: var(--text-muted);
   text-transform: uppercase;
   font-weight: 600;
   letter-spacing: 0.05em;
@@ -133,7 +136,7 @@ sl-progress-bar.hide {
   gap: 12px;
   padding: 8px 16px;
   cursor: pointer;
-  color: #444;
+  color: var(--text-secondary);
   text-decoration: none;
   font-size: 0.9rem;
   border-radius: 6px;
@@ -142,16 +145,16 @@ sl-progress-bar.hide {
 }
 
 .sidebar-item:hover {
-  background-color: #e8e8ec;
+  background-color: var(--sidebar-hover);
 }
 
 .sidebar-item.active {
-  background-color: #dbeafe;
-  color: #1d4ed8;
+  background-color: var(--sidebar-active-bg);
+  color: var(--sidebar-active-text);
 }
 
 .sidebar-item.active sl-icon {
-  color: #1d4ed8;
+  color: var(--sidebar-active-text);
 }
 
 .sidebar-item[disabled] {
@@ -189,14 +192,14 @@ sl-progress-bar.hide {
 
   #sidebar.open {
     transform: translateX(0);
-    box-shadow: 4px 0 12px rgba(0, 0, 0, 0.15);
+    box-shadow: 4px 0 12px var(--shadow-medium);
   }
 
   #sidebar-backdrop {
     display: none;
     position: absolute;
     inset: 0;
-    background: rgba(0, 0, 0, 0.3);
+    background: var(--backdrop-bg);
     z-index: 1000;
   }
 
@@ -233,4 +236,5 @@ sl-progress-bar.hide {
   overflow-x: hidden;
   overflow-y: hidden;
   position: relative;
+  background-color: var(--bg-page);
 }

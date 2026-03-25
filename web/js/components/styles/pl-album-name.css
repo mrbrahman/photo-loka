@@ -5,7 +5,7 @@
   grid-template-columns: auto 1fr auto;
   /* grid-column-gap: 1px; */
   align-items: center;
-  background-color: white;
+  background-color: var(--bg-page);
   z-index: 1;
   /* "auto" does not transition yet 
     see 
@@ -39,12 +39,12 @@
 
 #album-name:hover {
   cursor: text;
-  background: #fafafa;
-  outline: 2px solid #eee;
+  background: var(--bg-surface);
+  outline: 2px solid var(--border-secondary);
 }
 
 #album-name:focus {
-  background: #efefef;
+  background: var(--bg-surface-alt);
   outline: 2px solid green;
   transition: all 0.3s; /* want transition to happen only during focus, and not hover */
 }

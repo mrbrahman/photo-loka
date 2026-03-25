@@ -10,7 +10,7 @@ sl-input::part(input)::placeholder {
   margin-bottom: 0.75rem;
   border: 1px solid var(--sl-color-neutral-200);
   border-radius: var(--sl-border-radius-medium);
-  background: white;
+  background: var(--bg-page);
 }
 .row-summary {
   display: flex;

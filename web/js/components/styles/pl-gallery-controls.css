@@ -12,9 +12,9 @@
   grid-template-rows: 1fr;
   grid-template-columns: auto 1fr;
   align-items: center;
-  box-shadow: 0 0 5px #333;
+  box-shadow: 0 0 5px var(--shadow-heavy);
   border-radius: 5px;
-  background-color: white;
+  background-color: var(--bg-page);
 }
 
 .col {

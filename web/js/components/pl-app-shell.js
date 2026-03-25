@@ -1,5 +1,6 @@
 import { notify } from '../utils.mjs';
 import { authenticatedFetch } from '../authn.mjs';
+import { getTheme, toggleTheme } from '../theme.mjs';
 
 import sheet from "./styles/pl-app-shell.css" with { type: "css" };
 
@@ -92,6 +93,10 @@ class PlAppShell extends HTMLElement {
                 <sl-icon name="gear"></sl-icon>
                 <span>Settings</span>
               </a>
+              <a class="sidebar-item" id="theme-toggle">
+                <sl-icon id="theme-icon" name="moon"></sl-icon>
+                <span id="theme-label">Dark mode</span>
+              </a>
             </div>
           </nav>
 
@@ -118,6 +123,7 @@ class PlAppShell extends HTMLElement {
 
     this.#initAppRouter();
     this.#attachEventListeners();
+    this.#updateThemeToggle();
   }
 
   #attachEventListeners() {
@@ -167,6 +173,12 @@ class PlAppShell extends HTMLElement {
       .addEventListener('click', () => {
         this.dispatchEvent(new CustomEvent('pl-logout-request', { bubbles: true }));
       });
+
+    // Theme toggle
+    this.shadowRoot.getElementById('theme-toggle').addEventListener('click', () => {
+      toggleTheme();
+      this.#updateThemeToggle();
+    });
 
     // Global events
     this.handleSlideshowRequest = (evt) => {
@@ -236,7 +248,7 @@ class PlAppShell extends HTMLElement {
     this.#mainContent.style.overflowY = 'hidden';
 
     if (data.length === 0) {
-      this.#mainContent.innerHTML = '<div style="padding: 2rem; text-align: center;">No results found</div>';
+      this.#mainContent.innerHTML = '<div style="padding: 2rem; text-align: center; color: var(--text-secondary);">No results found</div>';
       return;
     }
 
@@ -376,6 +388,12 @@ class PlAppShell extends HTMLElement {
       this.#progressBar.classList.add("hide");
       this.#progressBar.toggleAttribute("indeterminate");
     }, timeout)
+  }
+
+  #updateThemeToggle() {
+    const isDark = getTheme() === 'dark';
+    this.shadowRoot.getElementById('theme-icon').name = isDark ? 'sun' : 'moon';
+    this.shadowRoot.getElementById('theme-label').textContent = isDark ? 'Light mode' : 'Dark mode';
   }
 }
 

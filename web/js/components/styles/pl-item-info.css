@@ -5,8 +5,8 @@
 
   display: block;
   height: 100%;
-  background: white;
-  border-left: 1px solid #e0e0e0;
+  background: var(--bg-page);
+  border-left: 1px solid var(--border-primary);
 }
 
 #panel {
@@ -20,15 +20,15 @@
   align-items: center;
   justify-content: space-between;
   padding: 6px 12px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--border-secondary);
   font-size: 1.6rem;
   font-weight: 500;
-  color: #333;
+  color: var(--text-primary);
   flex-shrink: 0;
 }
 
 #header sl-icon-button::part(base) {
-  color: #666;
+  color: var(--text-secondary);
   padding: 4px;
 }
 
@@ -41,7 +41,7 @@
 .loading {
   text-align: center;
   padding: 40px 0;
-  color: #888;
+  color: var(--text-muted);
 }
 
 /* Rows */
@@ -73,7 +73,7 @@
 .row-icon {
   flex-shrink: 0;
   font-size: 1.15rem;
-  color: #555;
+  color: var(--text-icon);
   margin-top: 2px;
 }
 
@@ -84,39 +84,40 @@
 
 .meta-sub {
   font-size: var(--font-secondary);
-  color: #888;
+  color: var(--text-muted);
   margin-top: 2px;
 }
 
 /* Filename (dir + editable stem + ext) */
 .filename-wrap {
   font-size: var(--font-secondary);
-  color: #888;
+  color: var(--text-muted);
   word-break: break-all;
   margin-top: 2px;
   line-height: 1.5;
 }
 
 #filename {
-  border: 1px solid #eee;
+  border: 1px solid var(--border-secondary);
   border-radius: 3px;
-  color: #444;
+  color: var(--text-secondary);
   padding: 0 2px;
   outline: none;
   transition: border-color 0.2s;
+  background: transparent;
 }
 
 #filename:focus {
-  border-color: #bbb;
+  border-color: var(--border-input-focus);
 }
 
 /* Description */
 #description {
   width: 100%;
   background: transparent;
-  border: 1px solid #eee;
+  border: 1px solid var(--border-secondary);
   border-radius: 4px;
-  color: #333;
+  color: var(--text-primary);
   font-family: inherit;
   font-size: var(--font-primary);
   padding: 4px 6px;
@@ -128,17 +129,17 @@
 
 #description:focus {
   outline: none;
-  border-color: #bbb;
+  border-color: var(--border-input-focus);
 }
 
 #description::placeholder {
-  color: #aaa;
+  color: var(--text-placeholder);
 }
 
 /* Shared status styles */
 .field-status {
   font-size: var(--font-tertiary);
-  color: #888;
+  color: var(--text-muted);
   margin-top: 2px;
   min-height: 1em;
   padding-left: 6px;
@@ -159,11 +160,11 @@
   display: flex;
   justify-content: space-between;
   font-size: var(--font-secondary);
-  color: #666;
+  color: var(--text-secondary);
 }
 
 .date-label {
-  color: #888;
+  color: var(--text-muted);
   flex-shrink: 0;
   margin-right: 12px;
 }
@@ -183,7 +184,7 @@
 
 #geo-address {
   font-size: var(--font-primary);
-  color: #444;
+  color: var(--text-secondary);
 }
 
 /* People / Faces */
@@ -205,24 +206,24 @@
   height: 58px;
   border-radius: 50%;
   object-fit: cover;
-  background: #eee;
+  background: var(--bg-tag);
 }
 
 .face-placeholder {
   width: 58px;
   height: 58px;
   border-radius: 50%;
-  background: #eee;
+  background: var(--bg-tag);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #999;
+  color: var(--text-muted);
   font-size: 1.2rem;
 }
 
 .face-name {
   font-size: var(--font-tertiary);
-  color: #555;
+  color: var(--text-icon);
   max-width: 64px;
   text-align: center;
   overflow: wrap;
@@ -238,8 +239,8 @@
 }
 
 .keyword-tag {
-  background: #f0f0f0;
-  color: #444;
+  background: var(--bg-tag);
+  color: var(--text-secondary);
   padding: 3px 12px;
   border-radius: 14px;
   font-size: var(--font-secondary);

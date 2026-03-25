@@ -13,8 +13,24 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="apple-touch-icon" href="assets/R3-resized.png">
 
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/themes/light.css" />
+  <link rel="stylesheet" href="css/theme-vars.css" />
+  <link id="sl-theme-light" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/themes/light.css" />
+  <link id="sl-theme-dark" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/themes/dark.css" disabled />
   <script data-shoelace="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/"></script>
+
+  <!-- Early theme init to prevent flash of wrong theme -->
+  <script>
+    (function() {
+      var t = localStorage.getItem('rr-theme') ||
+              (matchMedia('(prefers-color-scheme:dark)').matches ? 'dark' : 'light');
+      if (t === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        document.documentElement.classList.add('sl-theme-dark');
+        document.getElementById('sl-theme-light').disabled = true;
+        document.getElementById('sl-theme-dark').disabled = false;
+      }
+    })();
+  </script>
 
   <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

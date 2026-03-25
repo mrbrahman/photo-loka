@@ -1,3 +1,7 @@
+// Theme (also loaded via <script> in index.html for early init, but import here
+// ensures the module is in the graph for any component that needs toggleTheme)
+import './theme.mjs';
+
 // Import Shoelace components
 import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/icon/icon.js';
 import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/icon-button/icon-button.js';

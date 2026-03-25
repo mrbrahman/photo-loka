@@ -10,13 +10,13 @@
   align-items: center;
   min-height: 100dvh;
   padding: 1rem;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, var(--login-gradient-start) 0%, var(--login-gradient-end) 100%);
   font-family: 'Lato', sans-serif;
 }
 
 /* The central white card holding the form */
 .login-card {
-  background: white;
+  background: var(--login-card-bg);
   padding: 2rem;
   /* Reduced base padding for mobile */
   border-radius: 12px;
@@ -43,12 +43,12 @@
 h1 {
   margin: 0 0 0.5rem 0;
   font-size: 1.8rem;
-  color: #333;
+  color: var(--text-primary);
 }
 
 .tagline {
   margin: 0 0 2rem 0;
-  color: #666;
+  color: var(--text-secondary);
   font-size: 0.95rem;
 }
 

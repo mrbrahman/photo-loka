@@ -1,0 +1,87 @@
+/* Theme variables - single source of truth for all theme colors.
+   CSS custom properties inherit through Shadow DOM boundaries,
+   so all web components can use these without extra plumbing. */
+
+:root {
+  color-scheme: light dark;
+
+  /* Backgrounds */
+  --bg-page: white;
+  --bg-surface: #fafafa;
+  --bg-surface-alt: #efefef;
+  --bg-tag: #f0f0f0;
+  --bg-thumb: whitesmoke;
+  --bg-thumb-img: darkgrey;
+
+  /* Text */
+  --text-primary: #333;
+  --text-secondary: #666;
+  --text-muted: #888;
+  --text-icon: #555;
+  --text-placeholder: #aaa;
+
+  /* Borders */
+  --border-primary: #e0e0e0;
+  --border-secondary: #eee;
+  --border-input: #ccc;
+  --border-input-focus: #bbb;
+
+  /* Shadows */
+  --shadow-light: rgba(0, 0, 0, 0.1);
+  --shadow-medium: rgba(0, 0, 0, 0.15);
+  --shadow-heavy: rgba(0, 0, 0, 0.5);
+
+  /* Sidebar */
+  --sidebar-hover: #e8e8ec;
+  --sidebar-active-bg: #dbeafe;
+  --sidebar-active-text: #1d4ed8;
+
+  /* Backdrop */
+  --backdrop-bg: rgba(0, 0, 0, 0.3);
+
+  /* Login */
+  --login-gradient-start: #667eea;
+  --login-gradient-end: #764ba2;
+  --login-card-bg: white;
+}
+
+:root[data-theme="dark"] {
+  /* Backgrounds */
+  --bg-page: #1e1e2e;
+  --bg-surface: #181825;
+  --bg-surface-alt: #313244;
+  --bg-tag: #313244;
+  --bg-thumb: #2a2a3e;
+  --bg-thumb-img: #444;
+
+  /* Text */
+  --text-primary: #cdd6f4;
+  --text-secondary: #a6adc8;
+  --text-muted: #7f849c;
+  --text-icon: #9399b2;
+  --text-placeholder: #6c7086;
+
+  /* Borders */
+  --border-primary: #45475a;
+  --border-secondary: #313244;
+  --border-input: #585b70;
+  --border-input-focus: #7f849c;
+
+  /* Shadows */
+  --shadow-light: rgba(0, 0, 0, 0.3);
+  --shadow-medium: rgba(0, 0, 0, 0.4);
+  --shadow-heavy: rgba(0, 0, 0, 0.7);
+
+  /* Sidebar */
+  --sidebar-hover: #313244;
+  --sidebar-active-bg: #1e3a5f;
+  --sidebar-active-text: #89b4fa;
+
+  /* Backdrop */
+  --backdrop-bg: rgba(0, 0, 0, 0.5);
+
+  /* Login */
+  --login-gradient-start: #1e1e2e;
+  --login-gradient-end: #2d1b4e;
+  --login-card-bg: #1e1e2e;
+}
