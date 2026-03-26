@@ -33,7 +33,6 @@ import './components/pl-slide-media.js';
 import './components/pl-slide.js';
 import './components/pl-slideshow.js';
 import './components/pl-map.js';
-import './components/pl-carousel.js';
 import './components/pl-item-info.js';
 import './components/pl-frame-item.js';
 import './components/pl-frame-manager.js';

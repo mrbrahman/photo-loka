@@ -187,7 +187,12 @@ class PlAppShell extends HTMLElement {
     };
 
     this.handleSlideshowClosed = () => {
-      this.#router.navigate(this.#state.prevLink[0].url);
+      // Restore the URL to what it was before the slideshow opened,
+      // but don't execute the route handler (callHandler: false).
+      // This avoids re-fetching data and re-rendering the page underneath.
+      // The slideshow cleanup (remove element, restore opacity) is handled
+      // by the leave hook on the /slideshow route, which still fires.
+      this.#router.navigate(this.#state.prevLink[0].url, { callHandler: false, updateState: true });
     };
 
     this.handleMapItemClick = async (evt) => {
@@ -271,13 +276,6 @@ class PlAppShell extends HTMLElement {
     });
 
     this.#router.on('/', async () => {
-      if (document.querySelector('pl-slideshow')) {
-        document.querySelector('pl-slideshow').remove();
-        this.shadowRoot.getElementById('nav-header').style.opacity = 1;
-        this.style.opacity = 1;
-        return;
-      }
-
       this.#setActiveMenuItem('/');
       this.#showProgressBar();
 
@@ -294,13 +292,6 @@ class PlAppShell extends HTMLElement {
     });
 
     this.#router.on('/search/:searchText', async (params) => {
-      if (document.querySelector('pl-slideshow')) {
-        document.querySelector('pl-slideshow').remove();
-        this.shadowRoot.getElementById('nav-header').style.opacity = 1;
-        this.style.opacity = 1;
-        return;
-      }
-
       this.#setActiveMenuItem(null);
       this.shadowRoot.getElementById('nav-search-box').value = params.data.searchText;
       this.#showProgressBar();
@@ -343,20 +334,35 @@ class PlAppShell extends HTMLElement {
       this.#mainContent.appendChild(framesManager);
     });
 
-    this.#router.on('/slideshow/:startFrom', (params) => {
-      this.#state.prevLink = this.#router.lastResolved();
+    this.#router.on(
+      '/slideshow/:startFrom',
+      (params) => {
+        this.#state.prevLink = this.#router.lastResolved();
 
-      this.shadowRoot.getElementById('nav-header').style.opacity = 0;
-      this.style.opacity = 0;
+        this.shadowRoot.getElementById('nav-header').style.opacity = 0;
+        this.style.opacity = 0;
 
-      const slideshow = Object.assign(document.createElement('pl-slideshow'), {
-        data: this.#state.galleryData,
-        startFrom: params.data.startFrom,
-        buffer: 1
-      });
+        const slideshow = Object.assign(document.createElement('pl-slideshow'), {
+          data: this.#state.galleryData,
+          startFrom: params.data.startFrom,
+          buffer: 1
+        });
 
-      document.getElementById('app-root').appendChild(slideshow);
-    });
+        document.getElementById('app-root').appendChild(slideshow);
+      },
+      {
+        // Navigo calls this hook whenever navigation moves away from /slideshow.
+        // This is the single place for slideshow cleanup - no other route needs
+        // to know about it. Must call done() to let the navigation proceed.
+        leave: (done) => {
+          const slideshow = document.querySelector('pl-slideshow');
+          if (slideshow) slideshow.remove();
+          this.shadowRoot.getElementById('nav-header').style.opacity = 1;
+          this.style.opacity = 1;
+          done();
+        }
+      }
+    );
 
     // IMPORTANT: Deferred resolve to handle the redirect scenario.
     //

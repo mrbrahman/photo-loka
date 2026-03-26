@@ -24,6 +24,7 @@ class PlMap extends HTMLElement {
     this.shadowRoot.adoptedStyleSheets = [sheet, leafletSheet];
     this.map = null;
     this.markers = null;
+    this.activeMarkerEl = null;
   }
 
   connectedCallback() {
@@ -108,7 +109,15 @@ class PlMap extends HTMLElement {
 
       bounds.push([lat, lng]);
 
-      const marker = L.marker([lat, lng], { count });
+      const sizeClass = count < 10 ? 'small' : count < 100 ? 'medium' : 'large';
+      const marker = L.marker([lat, lng], {
+        count,
+        icon: new L.DivIcon({
+          html: `<div><span>${count}</span></div>`,
+          className: `marker-cluster marker-cluster-${sizeClass}`,
+          iconSize: new L.Point(40, 40)
+        })
+      });
       
       // Create popup content
       const popupContent = this.createPopupContent(item);
@@ -142,8 +151,23 @@ class PlMap extends HTMLElement {
     `;
   }
 
+  setActiveMarker(layer) {
+    // Remove previous active marker highlight
+    if (this.activeMarkerEl) {
+      this.activeMarkerEl.classList.remove('marker-active');
+    }
+
+    // Get the icon DOM element for the clicked marker/cluster
+    const el = layer.getElement?.();
+    if (el) {
+      el.classList.add('marker-active');
+      this.activeMarkerEl = el;
+    }
+  }
+
   async handleClusterClick(clickedOn, cluster) {
-    
+    const latlng = cluster.getLatLng();
+
     let coordinates = [];
     if (clickedOn === 'cluster') {
       const markers = cluster.getAllChildMarkers();
@@ -151,12 +175,15 @@ class PlMap extends HTMLElement {
         lat: marker.getLatLng().lat.toFixed(4),
         lng: marker.getLatLng().lng.toFixed(4)
       }));
-    } else { // single marker (i.e. just one gps point)
+    } else {
       coordinates = [{
-        lat: cluster.getLatLng().lat.toFixed(4), 
-        lng: cluster.getLatLng().lng.toFixed(4)
+        lat: latlng.lat.toFixed(4), 
+        lng: latlng.lng.toFixed(4)
       }];
     }
+
+    // Highlight the clicked marker/cluster
+    this.setActiveMarker(cluster);
 
     try {
       const response = await fetch('/api/searchByGpsCoordinates', {
@@ -165,22 +192,74 @@ class PlMap extends HTMLElement {
         body: JSON.stringify({ collection_id: 1, coordinates })
       });
       const data = await response.json();
-      
-      // Get click position on the map
-      const mapContainer = this.shadowRoot.querySelector('#map');
-      const mapRect = mapContainer.getBoundingClientRect();
-      const markerPixel = this.map.latLngToContainerPoint(cluster.getLatLng());
-      
-      let carousel = Object.assign(document.createElement('pl-carousel'), {
-        data: data,
-        clickX: mapRect.left + markerPixel.x,
-        clickY: mapRect.top + markerPixel.y
-      });
-      
-      const appContainer = document.getElementById('app') || document.body;
-      appContainer.appendChild(carousel);
+
+      this.showGalleryPanel(data, latlng);
     } catch (error) {
-      console.error('Error loading GPS data for carousel:', error);
+      console.error('Error loading GPS data for gallery:', error);
+    }
+  }
+
+  showGalleryPanel(data, latlng) {
+    const container = this.shadowRoot.querySelector('#map-container');
+    let panel = this.shadowRoot.querySelector('#gallery-panel');
+
+    if (panel) {
+      // Replace existing gallery content
+      const wrapper = panel.querySelector('#gallery-wrapper');
+      wrapper.innerHTML = '';
+      const gallery = Object.assign(document.createElement('pl-gallery'), { data });
+      wrapper.appendChild(gallery);
+
+      // Update header text
+      panel.querySelector('#gallery-header span').textContent =
+        `Photos near (${latlng.lat.toFixed(4)}, ${latlng.lng.toFixed(4)})`;
+    } else {
+      // Create gallery panel
+      panel = document.createElement('div');
+      panel.id = 'gallery-panel';
+      panel.innerHTML = `
+        <div id="gallery-header">
+          <span>Photos near (${latlng.lat.toFixed(4)}, ${latlng.lng.toFixed(4)})</span>
+          <button id="gallery-close">\u2715</button>
+        </div>
+        <div id="gallery-wrapper"></div>
+      `;
+
+      const gallery = Object.assign(document.createElement('pl-gallery'), { data });
+      panel.querySelector('#gallery-wrapper').appendChild(gallery);
+
+      container.appendChild(panel);
+      container.classList.add('split');
+
+      panel.querySelector('#gallery-close').addEventListener('click', () => {
+        this.closeGalleryPanel();
+      });
+    }
+
+    // Let the map adjust to its new size, then center on clicked point
+    setTimeout(() => {
+      this.map.invalidateSize();
+      this.map.panTo(latlng);
+    }, 50);
+  }
+
+  closeGalleryPanel() {
+    const container = this.shadowRoot.querySelector('#map-container');
+    const panel = this.shadowRoot.querySelector('#gallery-panel');
+
+    if (panel) {
+      panel.remove();
+      container.classList.remove('split');
+
+      // Remove active marker highlight
+      if (this.activeMarkerEl) {
+        this.activeMarkerEl.classList.remove('marker-active');
+        this.activeMarkerEl = null;
+      }
+
+      setTimeout(() => {
+        this.map.invalidateSize();
+      }, 50);
     }
   }
 

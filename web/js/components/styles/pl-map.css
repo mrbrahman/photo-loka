@@ -2,11 +2,73 @@
   width: 100%;
   height: 100%;
   position: relative;
+  display: flex;
+  flex-direction: row;
 }
+
+#map-container.split {
+  flex-direction: row;
+}
+
 #map {
   width: 100%;
   height: 100%;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
 }
+
+#gallery-panel {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 2px solid #ccc;
+}
+
+#gallery-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: #333;
+  color: #eee;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+#gallery-header span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#gallery-header button {
+  background: none;
+  border: none;
+  color: #eee;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+
+#gallery-header button:hover {
+  color: #fff;
+}
+
+#gallery-wrapper {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#gallery-wrapper pl-gallery {
+  display: block;
+  height: 100%;
+}
+
 .custom-popup {
   max-width: 200px;
 }
@@ -23,4 +85,39 @@
 .custom-popup .album {
   font-weight: bold;
   margin-bottom: 4px;
+}
+
+/* Pulsing ring on active marker/cluster */
+.marker-active {
+  animation: pulse-ring 1.5s ease-out infinite;
+  border-radius: 50%;
+  box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.6);
+}
+
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.6);
+  }
+  70% {
+    box-shadow: 0 0 0 12px rgba(59, 130, 246, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+  }
+}
+
+@media (max-width: 768px) {
+  #map-container.split {
+    flex-direction: column;
+  }
+
+  #map-container.split #map {
+    flex: 35;
+  }
+
+  #gallery-panel {
+    flex: 65;
+    border-left: none;
+    border-top: 2px solid #ccc;
+  }
 }

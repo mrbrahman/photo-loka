@@ -239,6 +239,6 @@ export async function searchByGpsCoordinates(collection_id, coordinates, trashed
   ).join(', ');
   
   let searchStr = `raw:"(round(gps_lat,4), round(gps_long, 4)) in (${coordFilters})"`;
-  return await runSearch(collection_id, searchStr, trashed, false);
+  return await runSearch(collection_id, searchStr, trashed, true);
 }
 
