@@ -12,8 +12,18 @@ class PlMap extends HTMLElement {
       <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
       <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
       
-      <div id="map-container">
+      <div id="container">
         <div id="map"></div>
+        <div id="gallery-panel">
+          <div id="gallery-header">
+            <span id="gallery-title"></span>
+            <div id="gallery-actions">
+              <sl-icon-button id="gallery-expand" name="arrows-fullscreen" label="Expand"></sl-icon-button>
+              <sl-icon-button id="gallery-close" name="x-lg" label="Close"></sl-icon-button>
+            </div>
+          </div>
+          <div id="gallery-wrapper"></div>
+        </div>
       </div>
     `;
   }
@@ -29,6 +39,15 @@ class PlMap extends HTMLElement {
 
   connectedCallback() {
     this.shadowRoot.appendChild(this.constructor.template.content.cloneNode(true));
+
+    this.shadowRoot.getElementById('gallery-close').addEventListener('click', () => {
+      this.closeGalleryPanel();
+    });
+
+    this.shadowRoot.getElementById('gallery-expand').addEventListener('click', () => {
+      this.toggleExpand();
+    });
+
     this.initMap();
   }
 
@@ -39,7 +58,7 @@ class PlMap extends HTMLElement {
       return;
     }
 
-    const mapElement = this.shadowRoot.querySelector('#map');
+    const mapElement = this.shadowRoot.getElementById('map');
     
     // Initialize map
     this.map = L.map(mapElement).setView([40.7128, -74.0060], 2);
@@ -200,43 +219,30 @@ class PlMap extends HTMLElement {
   }
 
   showGalleryPanel(data, latlng) {
-    const container = this.shadowRoot.querySelector('#map-container');
-    let panel = this.shadowRoot.querySelector('#gallery-panel');
+    const container = this.shadowRoot.getElementById('container');
+    const wrapper = this.shadowRoot.getElementById('gallery-wrapper');
+    const isFirstOpen = !container.classList.contains('split');
 
-    if (panel) {
-      // Replace existing gallery content
-      const wrapper = panel.querySelector('#gallery-wrapper');
-      wrapper.innerHTML = '';
-      const gallery = Object.assign(document.createElement('pl-gallery'), { data });
-      wrapper.appendChild(gallery);
+    // Update header text
+    this.shadowRoot.getElementById('gallery-title').textContent =
+      `Photos near (${latlng.lat.toFixed(4)}, ${latlng.lng.toFixed(4)})`;
 
-      // Update header text
-      panel.querySelector('#gallery-header span').textContent =
-        `Photos near (${latlng.lat.toFixed(4)}, ${latlng.lng.toFixed(4)})`;
-    } else {
-      // Create gallery panel
-      panel = document.createElement('div');
-      panel.id = 'gallery-panel';
-      panel.innerHTML = `
-        <div id="gallery-header">
-          <span>Photos near (${latlng.lat.toFixed(4)}, ${latlng.lng.toFixed(4)})</span>
-          <button id="gallery-close">\u2715</button>
-        </div>
-        <div id="gallery-wrapper"></div>
-      `;
+    // Clear previous gallery
+    wrapper.innerHTML = '';
 
-      const gallery = Object.assign(document.createElement('pl-gallery'), { data });
-      panel.querySelector('#gallery-wrapper').appendChild(gallery);
-
-      container.appendChild(panel);
+    if (isFirstOpen) {
+      // Show the panel first so it gets dimensions
       container.classList.add('split');
 
-      panel.querySelector('#gallery-close').addEventListener('click', () => {
-        this.closeGalleryPanel();
+      // Defer gallery creation to next frame so the panel has its final dimensions
+      requestAnimationFrame(() => {
+        wrapper.appendChild(Object.assign(document.createElement('pl-gallery'), { data }));
       });
+    } else {
+      // Panel already visible - safe to create gallery immediately
+      wrapper.appendChild(Object.assign(document.createElement('pl-gallery'), { data }));
     }
 
-    // Let the map adjust to its new size, then center on clicked point
     setTimeout(() => {
       this.map.invalidateSize();
       this.map.panTo(latlng);
@@ -244,35 +250,48 @@ class PlMap extends HTMLElement {
   }
 
   closeGalleryPanel() {
-    const container = this.shadowRoot.querySelector('#map-container');
-    const panel = this.shadowRoot.querySelector('#gallery-panel');
+    const container = this.shadowRoot.getElementById('container');
 
-    if (panel) {
-      panel.remove();
-      container.classList.remove('split');
+    // Clear gallery content
+    this.shadowRoot.getElementById('gallery-wrapper').innerHTML = '';
 
-      // Remove active marker highlight
-      if (this.activeMarkerEl) {
-        this.activeMarkerEl.classList.remove('marker-active');
-        this.activeMarkerEl = null;
-      }
+    // Collapse panel and reset expand state
+    container.classList.remove('split', 'expanded');
 
+    // Reset expand button icon
+    this.shadowRoot.getElementById('gallery-expand').name = 'arrows-fullscreen';
+
+    // Remove active marker highlight
+    if (this.activeMarkerEl) {
+      this.activeMarkerEl.classList.remove('marker-active');
+      this.activeMarkerEl = null;
+    }
+
+    setTimeout(() => {
+      this.map.invalidateSize();
+    }, 50);
+  }
+
+  toggleExpand() {
+    const container = this.shadowRoot.getElementById('container');
+    const expandBtn = this.shadowRoot.getElementById('gallery-expand');
+    const isExpanded = container.classList.toggle('expanded');
+
+    expandBtn.name = isExpanded ? 'fullscreen-exit' : 'arrows-fullscreen';
+
+    if (!isExpanded) {
+      // Collapsing back to split - map needs to recalculate
       setTimeout(() => {
         this.map.invalidateSize();
       }, 50);
     }
-  }
 
-  openItem(uuid) {
-    // Dispatch event to open item in slideshow
-    this.dispatchEvent(new CustomEvent('pl-map-item-click', {
-      detail: { uuid },
-      bubbles: true
-    }));
+    // Gallery needs to re-layout to the new width
+    window.dispatchEvent(new Event('resize'));
   }
 
   showNoDataMessage() {
-    const mapElement = this.shadowRoot.querySelector('#map');
+    const mapElement = this.shadowRoot.getElementById('map');
     mapElement.innerHTML = `
       <div style="display: flex; align-items: center; justify-content: center; height: 100%; color: #666;">
         <div style="text-align: center;">
@@ -284,7 +303,7 @@ class PlMap extends HTMLElement {
   }
 
   showErrorMessage() {
-    const mapElement = this.shadowRoot.querySelector('#map');
+    const mapElement = this.shadowRoot.getElementById('map');
     mapElement.innerHTML = `
       <div style="display: flex; align-items: center; justify-content: center; height: 100%; color: #666;">
         <div style="text-align: center;">

@@ -1,4 +1,4 @@
-#map-container {
+#container {
   width: 100%;
   height: 100%;
   position: relative;
@@ -6,25 +6,32 @@
   flex-direction: row;
 }
 
-#map-container.split {
-  flex-direction: row;
-}
-
 #map {
-  width: 100%;
-  height: 100%;
   flex: 1;
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
 }
 
 #gallery-panel {
-  flex: 1;
+  flex: 0;
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  border-left: 2px solid #ccc;
+  border-left: 0 solid #ccc;
+}
+
+/* When expanded, shrink map to zero so gallery takes full space */
+#container.split.expanded #map {
+  flex: 0;
+  overflow: hidden;
+}
+
+#container.split #gallery-panel {
+  flex: 1;
+  border-left-width: 2px;
 }
 
 #gallery-header {
@@ -38,23 +45,23 @@
   flex-shrink: 0;
 }
 
-#gallery-header span {
+#gallery-title {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-#gallery-header button {
-  background: none;
-  border: none;
-  color: #eee;
-  font-size: 1.2rem;
-  cursor: pointer;
-  padding: 0 4px;
+#gallery-actions {
+  display: flex;
   flex-shrink: 0;
 }
 
-#gallery-header button:hover {
+#gallery-actions sl-icon-button {
+  color: #eee;
+  font-size: 1rem;
+}
+
+#gallery-actions sl-icon-button:hover {
   color: #fff;
 }
 
@@ -107,17 +114,22 @@
 }
 
 @media (max-width: 768px) {
-  #map-container.split {
+  #container {
     flex-direction: column;
   }
 
-  #map-container.split #map {
+  #container.split #map {
     flex: 35;
   }
 
   #gallery-panel {
-    flex: 65;
     border-left: none;
-    border-top: 2px solid #ccc;
+    border-top: 0 solid #ccc;
+  }
+
+  #container.split #gallery-panel {
+    flex: 65;
+    border-left-width: 0;
+    border-top-width: 2px;
   }
 }
