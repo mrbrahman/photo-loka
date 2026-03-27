@@ -71,6 +71,7 @@ class PlMap extends HTMLElement {
     // Initialize marker cluster group with custom icon function
     this.markers = L.markerClusterGroup({
       chunkedLoading: true,
+      removeOutsideVisibleBounds: false,
       maxClusterRadius: 50,
       zoomToBoundsOnClick: false,
       spiderfyOnMaxZoom: false,
