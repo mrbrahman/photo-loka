@@ -3,7 +3,7 @@ import { createLogger } from '#utils/logger';
 
 const logger = createLogger(import.meta.url);
 
-export const restrictSearchCols = ['album', 'description', 'keywords', 'faces', 'objects', 'mediatype', 'make', 'model', 'geo_address'];
+export const restrictSearchCols = ['album', 'filename', 'description', 'keywords', 'faces', 'objects', 'mediatype', 'make', 'model', 'geo_address'];
 
 // aliases: the right side (realCol) can also be known by the left side (alias)
 export const aliases = {
