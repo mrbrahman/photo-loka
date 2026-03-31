@@ -45,7 +45,7 @@
 
 #album-name:focus {
   background: var(--bg-surface-alt);
-  outline: 2px solid green;
+  outline: 2px solid var(--status-saved);
   transition: all 0.3s; /* want transition to happen only during focus, and not hover */
 }
 
@@ -65,11 +65,11 @@ sl-icon {
   transform: scale(1.5);
 }
 .select-some {
-  color: grey;
+  color: var(--text-muted);
   transform: scale(1.5);
 }
 .select-none {
-  color: grey;
+  color: var(--text-muted);
 }
 
 #edit-controls {
@@ -81,6 +81,6 @@ sl-icon {
   color: #35b035;
 }
 #cancel {
-  color: grey;
+  color: var(--text-muted);
   margin-right: 5px;
 }

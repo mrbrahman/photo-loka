@@ -145,9 +145,9 @@
   padding-left: 6px;
 }
 
-.field-status.saving { color: #b08800; }
-.field-status.saved { color: #2e7d32; }
-.field-status.error { color: #c62828; }
+.field-status.saving { color: var(--status-saving); }
+.field-status.saved { color: var(--status-saved); }
+.field-status.error { color: var(--status-error); }
 
 /* Dates */
 .dates-list {

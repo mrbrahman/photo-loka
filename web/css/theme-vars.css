@@ -39,6 +39,11 @@
   /* Backdrop */
   --backdrop-bg: rgba(0, 0, 0, 0.3);
 
+  /* Status */
+  --status-saving: #b08800;
+  --status-saved: #2e7d32;
+  --status-error: #c62828;
+
   /* Login */
   --login-gradient-start: #667eea;
   --login-gradient-end: #764ba2;
@@ -79,6 +84,11 @@
 
   /* Backdrop */
   --backdrop-bg: rgba(0, 0, 0, 0.5);
+
+  /* Status */
+  --status-saving: #e0a800;
+  --status-saved: #66bb6a;
+  --status-error: #ef5350;
 
   /* Login */
   --login-gradient-start: #1e1e2e;
