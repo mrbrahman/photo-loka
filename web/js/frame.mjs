@@ -16,6 +16,23 @@ let paused = false;
 let itemTimer = null;
 let errorDiv = null;
 let eventSource = null;
+let wakeLock = null;
+
+async function requestWakeLock() {
+  try {
+    if ('wakeLock' in navigator) {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; });
+    }
+  } catch (e) { /* silently ignore */ }
+}
+
+function releaseWakeLock() {
+  if (wakeLock) {
+    wakeLock.release();
+    wakeLock = null;
+  }
+}
 
 async function fetchNextItem() {
   const res = await fetch('/frame/getNext');
@@ -57,6 +74,7 @@ function setupSSE() {
       console.log('Server reconnected, resuming slideshow');
       paused = false;
       clearError();
+      requestWakeLock();
       let currentSlide = document.querySelector('pl-slide[data-visible]');
       if (currentSlide?.item?.data?.type?.startsWith('image')) {
         itemTimer = setTimeout(loop, IMAGE_DISPLAY_DURATION);
@@ -74,6 +92,7 @@ function setupSSE() {
       if (paused) {
         paused = false;
         clearError();
+        requestWakeLock();
         let currentSlide = document.querySelector('pl-slide[data-visible]');
         if (currentSlide?.item?.data?.type?.startsWith('image')) {
           itemTimer = setTimeout(loop, IMAGE_DISPLAY_DURATION);
@@ -85,6 +104,7 @@ function setupSSE() {
       console.log('Pause signal received from server');
       if (!paused) {
         paused = true;
+        releaseWakeLock();
         if (itemTimer) {
           clearTimeout(itemTimer);
           itemTimer = null;
@@ -163,6 +183,7 @@ document.addEventListener('visibilitychange', () => {
   // console.log(`${(new Date()).toTimeString()} Visibility changed: ${document.hidden ? 'hidden' : 'visible'}`);
   if (document.hidden) {
     paused = true;
+    releaseWakeLock();
     if (itemTimer) {
       clearTimeout(itemTimer);
       itemTimer = null;
@@ -170,6 +191,7 @@ document.addEventListener('visibilitychange', () => {
 
   } else if (paused) {
     paused = false;
+    requestWakeLock();
     let currentSlide = document.querySelector('pl-slide[data-visible]');
     if (currentSlide) {
       // For images, restart the timer
@@ -185,5 +207,6 @@ document.addEventListener('visibilitychange', () => {
 });
 
 setupSSE();
+requestWakeLock();
 loop();
 
