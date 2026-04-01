@@ -1,5 +1,6 @@
 import sheet from "./styles/pl-map.css" with { type: "css" };
 import leafletSheet from "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" with { type: "css" };
+import { authenticatedFetch } from '../authn.mjs';
 
 class PlMap extends HTMLElement {
 
@@ -28,13 +29,17 @@ class PlMap extends HTMLElement {
     `;
   }
 
+  #map;
+  #markers;
+  #activeMarkerEl;
+
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
     this.shadowRoot.adoptedStyleSheets = [sheet, leafletSheet];
-    this.map = null;
-    this.markers = null;
-    this.activeMarkerEl = null;
+    this.#map = null;
+    this.#markers = null;
+    this.#activeMarkerEl = null;
   }
 
   connectedCallback() {
@@ -61,15 +66,15 @@ class PlMap extends HTMLElement {
     const mapElement = this.shadowRoot.getElementById('map');
     
     // Initialize map
-    this.map = L.map(mapElement).setView([40.7128, -74.0060], 2);
+    this.#map = L.map(mapElement).setView([40.7128, -74.0060], 2);
 
     // Add tile layer
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '(c) OpenStreetMap contributors'
-    }).addTo(this.map);
+    }).addTo(this.#map);
 
     // Initialize marker cluster group with custom icon function
-    this.markers = L.markerClusterGroup({
+    this.#markers = L.markerClusterGroup({
       chunkedLoading: true,
       removeOutsideVisibleBounds: false,
       maxClusterRadius: 50,
@@ -88,10 +93,10 @@ class PlMap extends HTMLElement {
     });
 
     // Add cluster click handler
-    this.markers.on('clusterclick', (e) => {
+    this.#markers.on('clusterclick', (e) => {
       this.handleClusterClick('cluster', e.layer);
     });
-    this.markers.on('click', (e) => {
+    this.#markers.on('click', (e) => {
       this.handleClusterClick('marker', e.layer);
     });
 
@@ -101,7 +106,7 @@ class PlMap extends HTMLElement {
 
   async loadGpsData() {
     try {
-      const response = await fetch('/api/getGpsCoordinates');
+      const response = await authenticatedFetch('/api/getGpsCoordinates');
       const data = await response.json();
       
       if (data.length === 0) {
@@ -139,49 +144,28 @@ class PlMap extends HTMLElement {
         })
       });
       
-      // Create popup content
-      const popupContent = this.createPopupContent(item);
-      marker.bindPopup(popupContent);
-      marker.on('mouseover', function(e) {
-        this.openPopup();
-      });
-      marker.on('mouseout', function(e) {
-        this.closePopup();
-      });
-
-      this.markers.addLayer(marker);
+      this.#markers.addLayer(marker);
     });
 
-    this.map.addLayer(this.markers);
+    this.#map.addLayer(this.#markers);
 
     // Fit map to show all markers
     if (bounds.length > 0) {
-      this.map.fitBounds(bounds, { padding: [20, 20] });
+      this.#map.fitBounds(bounds, { padding: [20, 20] });
     }
-  }
-
-  createPopupContent(item) {
-    return `
-      <div class="custom-popup">
-        <div class="info">
-          <div class="album">${item.count} photos at this location</div>
-          <div>Lat: ${item.lat}, Lng: ${item.lng}</div>
-        </div>
-      </div>
-    `;
   }
 
   setActiveMarker(layer) {
     // Remove previous active marker highlight
-    if (this.activeMarkerEl) {
-      this.activeMarkerEl.classList.remove('marker-active');
+    if (this.#activeMarkerEl) {
+      this.#activeMarkerEl.classList.remove('marker-active');
     }
 
     // Get the icon DOM element for the clicked marker/cluster
     const el = layer.getElement?.();
     if (el) {
       el.classList.add('marker-active');
-      this.activeMarkerEl = el;
+      this.#activeMarkerEl = el;
     }
   }
 
@@ -206,7 +190,7 @@ class PlMap extends HTMLElement {
     this.setActiveMarker(cluster);
 
     try {
-      const response = await fetch('/api/searchByGpsCoordinates', {
+      const response = await authenticatedFetch('/api/searchByGpsCoordinates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ collection_id: 1, coordinates })
@@ -245,8 +229,8 @@ class PlMap extends HTMLElement {
     }
 
     setTimeout(() => {
-      this.map.invalidateSize();
-      this.map.panTo(latlng);
+      this.#map.invalidateSize();
+      this.#map.panTo(latlng);
     }, 50);
   }
 
@@ -263,13 +247,13 @@ class PlMap extends HTMLElement {
     this.shadowRoot.getElementById('gallery-expand').name = 'arrows-fullscreen';
 
     // Remove active marker highlight
-    if (this.activeMarkerEl) {
-      this.activeMarkerEl.classList.remove('marker-active');
-      this.activeMarkerEl = null;
+    if (this.#activeMarkerEl) {
+      this.#activeMarkerEl.classList.remove('marker-active');
+      this.#activeMarkerEl = null;
     }
 
     setTimeout(() => {
-      this.map.invalidateSize();
+      this.#map.invalidateSize();
     }, 50);
   }
 
@@ -283,7 +267,7 @@ class PlMap extends HTMLElement {
     if (!isExpanded) {
       // Collapsing back to split - map needs to recalculate
       setTimeout(() => {
-        this.map.invalidateSize();
+        this.#map.invalidateSize();
       }, 50);
     }
 
