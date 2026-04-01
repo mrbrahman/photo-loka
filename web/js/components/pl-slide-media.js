@@ -208,6 +208,8 @@ class PlSlideMedia extends HTMLElement {
   }
   get slideshowMode() { return this.#slideshowMode; }
 
+  get zoomLevel() { return this.#zoomLevel; }
+
   resetZoom() {
     this.#resetZoom();
   }

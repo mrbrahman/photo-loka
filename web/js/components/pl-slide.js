@@ -3,6 +3,7 @@ import sheet from "./styles/pl-slide.css" with { type: "css" };
 class PlSlide extends HTMLElement {
   #albumname; #item; #play; #slideshowMode; #infoPanelOpen = false;
   #hasNext = false; #hasPrev = false; #handleEscape;
+  #touchStartX = 0; #touchStartY = 0; #swipeThreshold = 50;
 
   static template = document.createElement('template');
   static {
@@ -55,6 +56,14 @@ class PlSlide extends HTMLElement {
     // Update nav button visibility
     this.#updateNavVisibility();
 
+    // Swipe gestures for navigation are handled here (in pl-slide) rather than in
+    // pl-slideshow, because pl-slide-media has its own touch handlers for image
+    // zoom/pan. When an image is zoomed in, single-finger touch is used for panning,
+    // and we need to avoid interpreting that as a swipe. Since pl-slide has access
+    // to pl-slide-media's zoom state, it can make that distinction.
+    this.addEventListener('touchstart', this.#handleTouchStart, {passive: true});
+    this.addEventListener('touchend', this.#handleTouchEnd);
+
     // Listen for info toggle from media's "i" button
     this.addEventListener('pl-info-toggle-requested', () => {
       this.infoPanelOpen = !this.#infoPanelOpen;
@@ -89,6 +98,32 @@ class PlSlide extends HTMLElement {
 
   disconnectedCallback() {
     if (this.#handleEscape) window.removeEventListener('keyup', this.#handleEscape);
+    this.removeEventListener('touchstart', this.#handleTouchStart);
+    this.removeEventListener('touchend', this.#handleTouchEnd);
+  }
+
+  #handleTouchStart = (evt) => {
+    if (evt.touches.length !== 1) return;
+    this.#touchStartX = evt.touches[0].screenX;
+    this.#touchStartY = evt.touches[0].screenY;
+  }
+
+  #handleTouchEnd = (evt) => {
+    // Skip swipe nav if image is zoomed in (touch is used for panning)
+    let media = this.shadowRoot.querySelector('pl-slide-media');
+    if (media?.zoomLevel > 1) return;
+
+    let dx = evt.changedTouches[0].screenX - this.#touchStartX;
+    let dy = evt.changedTouches[0].screenY - this.#touchStartY;
+
+    if (Math.abs(dy) > Math.abs(dx)) return;
+    if (Math.abs(dx) < this.#swipeThreshold) return;
+
+    if (dx < 0 && this.#hasNext) {
+      this.dispatchEvent(new Event('pl-nav-next', {composed: true, bubbles: true}));
+    } else if (dx > 0 && this.#hasPrev) {
+      this.dispatchEvent(new Event('pl-nav-prev', {composed: true, bubbles: true}));
+    }
   }
 
   attributeChangedCallback(name, oldVal, newVal) {
