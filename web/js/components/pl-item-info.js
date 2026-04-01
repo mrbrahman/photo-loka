@@ -105,6 +105,16 @@ class PlItemInfo extends HTMLElement {
 
     // Filename save on blur / enter
     let fnInput = this.shadowRoot.getElementById('filename');
+    // Since the element is always contenteditable, clicking it causes the browser to
+    // both fire focus and place cursor at click position. rAF defers our cursor placement
+    // to after the browser finishes processing the click
+    fnInput.addEventListener('focus', () => {
+      requestAnimationFrame(() => {
+        let sel = window.getSelection();
+        sel.selectAllChildren(fnInput);
+        sel.collapseToEnd();
+      });
+    });
     fnInput.addEventListener('blur', () => this.#saveFilename());
     fnInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); fnInput.blur(); } });
 
