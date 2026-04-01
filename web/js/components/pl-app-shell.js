@@ -269,8 +269,14 @@ class PlAppShell extends HTMLElement {
 
   #initAppRouter() {
     this.#router.hooks({
-      before: (done) => {
-        this.shadowRoot.getElementById('nav-search-box').value = '';
+      before: (done, match) => {
+        // Clear search box on navigation, except:
+        // - slideshow: search box should persist so it's there when user comes back
+        // - search: returning from slideshow uses callHandler:false (to avoid re-fetch),
+        //   so the /search handler won't run to restore the value -> don't clear it
+        if (!match.url.startsWith('slideshow/') && !match.url.startsWith('search/')) {
+          this.shadowRoot.getElementById('nav-search-box').value = '';
+        }
         done();
       }
     });
