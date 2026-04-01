@@ -233,12 +233,8 @@ export async function getGpsCoordinates(){
   return await asyncAll(sql);
 }
 
-export async function searchByGpsCoordinates(collection_id, coordinates, trashed = false) {
-  let coordFilters = coordinates.map(coord => 
-    `(${coord.lat}, ${coord.lng})`
-  ).join(', ');
-  
-  let searchStr = `raw:"(round(gps_lat,4), round(gps_long, 4)) in (${coordFilters})"`;
+export async function searchByGpsCoordinates(collection_id, bounds, trashed = false) {
+  let searchStr = `raw:"round(gps_lat, 4) between ${bounds.sw.lat} and ${bounds.ne.lat} and round(gps_long, 4) between ${bounds.sw.lng} and ${bounds.ne.lng}"`;
   return await runSearch(collection_id, searchStr, trashed, true);
 }
 

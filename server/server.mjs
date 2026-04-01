@@ -219,8 +219,8 @@ apiRouter.get('/searchForExistingAlbums', async function(req,res){
 });
 
 apiRouter.post('/searchByGpsCoordinates', async function(req,res){
-  let {collection_id, coordinates} = req.body;
-  res.json(await s.search.searchByGpsCoordinates(collection_id, coordinates));
+  let {collection_id, bounds} = req.body;
+  res.json(await s.search.searchByGpsCoordinates(collection_id, bounds));
 });
 
 // *****************************************

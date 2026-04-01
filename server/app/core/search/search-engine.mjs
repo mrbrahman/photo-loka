@@ -22,6 +22,6 @@ export async function getGpsCoordinates() {
   return await db.getGpsCoordinates();
 }
 
-export async function searchByGpsCoordinates(collection_id, coordinates){
-  return await db.searchByGpsCoordinates(collection_id, coordinates);
+export async function searchByGpsCoordinates(collection_id, bounds){
+  return await db.searchByGpsCoordinates(collection_id, bounds);
 }

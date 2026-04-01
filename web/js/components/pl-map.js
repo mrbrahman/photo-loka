@@ -172,18 +172,18 @@ class PlMap extends HTMLElement {
   async handleClusterClick(clickedOn, cluster) {
     const latlng = cluster.getLatLng();
 
-    let coordinates = [];
+    let bounds;
     if (clickedOn === 'cluster') {
-      const markers = cluster.getAllChildMarkers();
-      coordinates = markers.map(marker => ({
-        lat: marker.getLatLng().lat.toFixed(4),
-        lng: marker.getLatLng().lng.toFixed(4)
-      }));
+      const b = cluster.getBounds();
+      bounds = {
+        sw: { lat: b.getSouthWest().lat, lng: b.getSouthWest().lng },
+        ne: { lat: b.getNorthEast().lat, lng: b.getNorthEast().lng }
+      };
     } else {
-      coordinates = [{
-        lat: latlng.lat.toFixed(4), 
-        lng: latlng.lng.toFixed(4)
-      }];
+      bounds = {
+        sw: { lat: latlng.lat, lng: latlng.lng },
+        ne: { lat: latlng.lat, lng: latlng.lng }
+      };
     }
 
     // Highlight the clicked marker/cluster
@@ -193,7 +193,7 @@ class PlMap extends HTMLElement {
       const response = await authenticatedFetch('/api/searchByGpsCoordinates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ collection_id: 1, coordinates })
+        body: JSON.stringify({ collection_id: 1, bounds })
       });
       const data = await response.json();
 
