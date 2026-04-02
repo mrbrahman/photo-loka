@@ -116,7 +116,7 @@ class PlGallery extends HTMLElement {
 
     this.addEventListener('pl-slideshow-closed', (evt)=>{
       evt.stopPropagation();
-      this.closeSlideshow();
+      this.closeSlideshow(evt.detail.currentItemId);
     })
 
     this.shadowRoot.getElementById('gallery')
@@ -605,15 +605,81 @@ class PlGallery extends HTMLElement {
   // button triggers a route change (e.g. from /slideshow/<uuid> back to /).
   // The #showGallery method in app-shell detects the existing gallery and calls this
   // instead of rebuilding the gallery from scratch, preserving scroll position.
-  closeSlideshow() {
+  //
+  // DESIGN: Animates the slideshow shrinking into the thumbnail's position in the gallery,
+  // giving the visual impression that the photo "goes back" to where it came from.
+  // Uses transform scale + translate (GPU composited) rather than animating dimensions.
+  closeSlideshow(currentItemId) {
     let slideshow = this.shadowRoot.querySelector('pl-slideshow');
     if (!slideshow) return;
-    slideshow.remove();
+
+    // Resolve current item id if not provided (e.g. called from app-shell back button)
+    if (!currentItemId) {
+      let active = slideshow.shadowRoot?.querySelector('#slides [data-pos="0"]');
+      if (active) {
+        let idx = active.dataset.idx.split(',').map(Number);
+        currentItemId = slideshow.data[idx[0]]?.items[idx[1]]?.data?.id;
+      }
+    }
+
+    // Pause video if playing, using pl-slide's play setter (same pattern as #next/#prev)
+    let active = slideshow.shadowRoot?.querySelector('#slides [data-pos="0"]');
+    if (active?.dataset.type?.startsWith('video')) active.play = false;
+
+    // Restore nav buttons so they are visible as gallery appears through the fading slideshow
     this.shadowRoot.getElementById('album-nav-btns').style.display = '';
 
-    this.dispatchEvent(new Event('pl-gallery-slideshow-closed', {
-      composed: true, bubbles: true
-    }));
+    let thumbRect = currentItemId ? this.#getThumbRect(currentItemId) : null;
+
+    if (!thumbRect) {
+      // Fallback: no animation, just remove
+      slideshow.remove();
+      this.dispatchEvent(new Event('pl-gallery-slideshow-closed', { composed: true, bubbles: true }));
+      return;
+    }
+
+    // Animate: shrink slideshow from full viewport to thumbnail position
+    let thumbCenterX = thumbRect.x + thumbRect.w / 2;
+    let thumbCenterY = thumbRect.y + thumbRect.h / 2;
+    let scaleX = thumbRect.w / window.innerWidth;
+    let scaleY = thumbRect.h / window.innerHeight;
+    // translate so the scaled center lands on the thumbnail center
+    let tx = thumbCenterX - window.innerWidth / 2;
+    let ty = thumbCenterY - window.innerHeight / 2;
+
+    let anim = slideshow.animate([
+      { transform: 'translate(0px, 0px) scale(1)', opacity: 1 },
+      { transform: `translate(${tx}px, ${ty}px) scale(${scaleX}, ${scaleY})`, opacity: 0 }
+    ], {
+      duration: 200,
+      easing: 'ease-in',
+      fill: 'forwards'
+    });
+
+    anim.finished.then(() => {
+      slideshow.remove();
+      this.dispatchEvent(new Event('pl-gallery-slideshow-closed', { composed: true, bubbles: true }));
+    });
+  }
+
+  // Returns the thumbnail's screen-space rect {x, y, w, h} for the given item id,
+  // or null if not found.
+  #getThumbRect(id) {
+    let gallery = this.shadowRoot.getElementById('gallery');
+    let galleryRect = gallery.getBoundingClientRect();
+
+    for (let album of this.#albums) {
+      let item = album.data.find(x => x.data.id === id);
+      if (item) {
+        return {
+          x: galleryRect.left + parseFloat(item.layout.trX),
+          y: galleryRect.top + album.offsetTop + item.layout.offsetHeight - gallery.scrollTop,
+          w: item.layout.width,
+          h: item.layout.height
+        };
+      }
+    }
+    return null;
   }
 
   // DESIGN: Scrolls the gallery to the item's position using album.offsetTop (the album's
