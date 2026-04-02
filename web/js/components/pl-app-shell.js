@@ -8,9 +8,7 @@ import sheet from "./styles/pl-app-shell.css" with { type: "css" };
 class PlAppShell extends HTMLElement {
 
   #state = {
-    collection_id: 1,
-    galleryData: null,
-    prevLink: null
+    collection_id: 1
   };
 
   #router = null;
@@ -180,51 +178,59 @@ class PlAppShell extends HTMLElement {
       this.#updateThemeToggle();
     });
 
-    // Global events
-    this.handleSlideshowRequest = (evt) => {
-      this.#state.galleryData = evt.detail.data;
-      this.#router.navigate(`/slideshow/${evt.detail.startFrom}`);
+    // DESIGN: URL update strategy for slideshow state.
+    //
+    // We use history.pushState/replaceState instead of Navigo's router.navigate() because
+    // this app has a dual-router architecture (global router in router.mjs + inner router
+    // here). Using router.navigate() triggers hashchange events that cause both routers to
+    // re-evaluate, leading to route matching errors.
+    //
+    // pushState/replaceState silently update the URL without triggering hashchange or
+    // popstate events. The only time popstate fires is when the user presses the browser
+    // back button, which is exactly when we want Navigo to resolve and handle the route.
+    //
+    // - Open: pushState - creates a history entry so the back button can close the slideshow
+    // - Changed (slide navigation): replaceState - updates the UUID in the URL without
+    //   creating history entries (user shouldn't have to press back 50 times for 50 slides)
+    // - Closed (Escape/close button): replaceState - restores the gallery URL without
+    //   creating a forward history entry
+    this.handleSlideshowOpened = (evt) => {
+      let hash = window.location.hash.replace(/\/slideshow\/.*$/, '');
+      history.pushState(null, '', `${hash}/slideshow/${evt.detail.currentItemId}`);
+    };
+
+    this.handleSlideshowChanged = (evt) => {
+      let hash = window.location.hash.replace(/\/slideshow\/.*$/, '');
+      history.replaceState(null, '', `${hash}/slideshow/${evt.detail.currentItemId}`);
     };
 
     this.handleSlideshowClosed = () => {
-      // Restore the URL to what it was before the slideshow opened,
-      // but don't execute the route handler (callHandler: false).
-      // This avoids re-fetching data and re-rendering the page underneath.
-      // The slideshow cleanup (remove element, restore opacity) is handled
-      // by the leave hook on the /slideshow route, which still fires.
-      this.#router.navigate(this.#state.prevLink[0].url, { callHandler: false, updateState: true });
+      let hash = window.location.hash.replace(/\/slideshow\/.*$/, '');
+      history.replaceState(null, '', hash || '#/app');
     };
 
-    this.handleMapItemClick = async (evt) => {
-      try {
-        const response = await authenticatedFetch('/api/search', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            collection_id: this.#state.collection_id,
-            searchText: `uuid:${evt.detail.uuid}`
-          })
-        });
-
-        const result = await response.json();
-        if (result.length > 0 && result[0].items.length > 0) {
-          this.#state.galleryData = result;
-          this.#router.navigate(`/slideshow/0`);
-        }
-      } catch (error) {
-        console.error('Error loading item for slideshow:', error);
+    // DESIGN: Since we use pushState (not Navigo's navigate) to add the slideshow URL
+    // to history, Navigo doesn't know about this entry and won't re-resolve on popstate.
+    // We listen for popstate ourselves: when the back button is pressed and the URL no
+    // longer contains /slideshow/, we find the gallery and close its slideshow.
+    this.handlePopState = () => {
+      if (!window.location.hash.includes('/slideshow/')) {
+        let gallery = this.#mainContent.querySelector('pl-gallery');
+        if (gallery) gallery.closeSlideshow();
       }
     };
 
-    document.addEventListener('pl-slideshow-request', this.handleSlideshowRequest);
-    document.addEventListener('pl-slideshow-closed', this.handleSlideshowClosed);
-    document.addEventListener('pl-map-item-click', this.handleMapItemClick);
+    document.addEventListener('pl-gallery-slideshow-opened', this.handleSlideshowOpened);
+    document.addEventListener('pl-gallery-slideshow-changed', this.handleSlideshowChanged);
+    document.addEventListener('pl-gallery-slideshow-closed', this.handleSlideshowClosed);
+    window.addEventListener('popstate', this.handlePopState);
   }
 
   disconnectedCallback() {
-    document.removeEventListener('pl-slideshow-request', this.handleSlideshowRequest);
-    document.removeEventListener('pl-slideshow-closed', this.handleSlideshowClosed);
-    document.removeEventListener('pl-map-item-click', this.handleMapItemClick);
+    document.removeEventListener('pl-gallery-slideshow-opened', this.handleSlideshowOpened);
+    document.removeEventListener('pl-gallery-slideshow-changed', this.handleSlideshowChanged);
+    document.removeEventListener('pl-gallery-slideshow-closed', this.handleSlideshowClosed);
+    window.removeEventListener('popstate', this.handlePopState);
     this.#router.destroy();
   }
 
@@ -248,8 +254,7 @@ class PlAppShell extends HTMLElement {
 
   // --- Gallery ---
 
-  #showGallery(data) {
-    this.#state.galleryData = data;
+  #showGallery(data, slideshowItemId) {
     this.#mainContent.style.overflowY = 'hidden';
 
     if (data.length === 0) {
@@ -261,25 +266,39 @@ class PlAppShell extends HTMLElement {
     this.#mainContent.innerHTML = '';
     this.#mainContent.appendChild(gallery);
 
+    if (slideshowItemId) {
+      // Defer so gallery has time to render and compute layout
+      requestAnimationFrame(() => gallery.openSlideshow(slideshowItemId));
+    }
+
     const totalItems = data.map(x => x.items.length).reduce((a, c) => a + c, 0);
     notify(`Found ${data.length.toLocaleString()} albums containing ${totalItems.toLocaleString()} items`);
   }
+
 
   // --- Router ---
 
   #initAppRouter() {
     this.#router.hooks({
       before: (done, match) => {
-        // Clear search box on navigation, except:
-        // - slideshow: search box should persist so it's there when user comes back
-        // - search: returning from slideshow uses callHandler:false (to avoid re-fetch),
-        //   so the /search handler won't run to restore the value -> don't clear it
-        if (!match.url.startsWith('slideshow/') && !match.url.startsWith('search/')) {
+        // Clear search box on navigation, except for search routes
+        // (returning from slideshow uses callHandler:false so the /search handler
+        // won't run to restore the value -> don't clear it)
+        if (!match.url.startsWith('search/')) {
           this.shadowRoot.getElementById('nav-search-box').value = '';
         }
         done();
       }
     });
+
+    // DESIGN: Separate routes for base and slideshow variants are needed because Navigo's
+    // string routes don't support optional segments. We can't express "/ with optional
+    // /slideshow/:id suffix" in a single string route. Regex routes were attempted but
+    // don't work reliably with Navigo's base path stripping in the dual-router setup.
+    //
+    // The slideshow routes (e.g. /slideshow/:itemId) handle direct URL visits - they
+    // fetch the data and pass the slideshowItemId to #showGallery, which creates the
+    // gallery and then opens the slideshow via requestAnimationFrame.
 
     this.#router.on('/', async () => {
       this.#setActiveMenuItem('/');
@@ -297,9 +316,27 @@ class PlAppShell extends HTMLElement {
       }
     });
 
+    this.#router.on('/slideshow/:itemId', async (params) => {
+      this.#setActiveMenuItem('/');
+      this.#showProgressBar();
+
+      try {
+        const res = await authenticatedFetch('/api/getAll');
+        if (!res.ok) throw await res.json().catch(() => ({error: {message: `${res.status} ${res.statusText}`}}));
+        const result = await res.json();
+        this.#showGallery(result, params.data.itemId);
+      } catch (err) {
+        notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
+      } finally {
+        this.#hideProgressBar();
+      }
+    });
+
     this.#router.on('/search/:searchText', async (params) => {
       this.#setActiveMenuItem(null);
-      this.shadowRoot.getElementById('nav-search-box').value = params.data.searchText;
+      let searchText = params.data.searchText;
+
+      this.shadowRoot.getElementById('nav-search-box').value = searchText;
       this.#showProgressBar();
 
       try {
@@ -308,13 +345,40 @@ class PlAppShell extends HTMLElement {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             collection_id: this.#state.collection_id,
-            searchText: params.data.searchText
+            searchText
           })
         });
 
         if (!res.ok) throw await res.json().catch(() => ({error: {message: `${res.status} ${res.statusText}`}}));
         const result = await res.json();
         this.#showGallery(result);
+      } catch (err) {
+        notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
+      } finally {
+        this.#hideProgressBar();
+      }
+    });
+
+    this.#router.on('/search/:searchText/slideshow/:itemId', async (params) => {
+      this.#setActiveMenuItem(null);
+      let searchText = params.data.searchText;
+
+      this.shadowRoot.getElementById('nav-search-box').value = searchText;
+      this.#showProgressBar();
+
+      try {
+        const res = await authenticatedFetch('/api/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            collection_id: this.#state.collection_id,
+            searchText
+          })
+        });
+
+        if (!res.ok) throw await res.json().catch(() => ({error: {message: `${res.status} ${res.statusText}`}}));
+        const result = await res.json();
+        this.#showGallery(result, params.data.itemId);
       } catch (err) {
         notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
       } finally {
@@ -339,36 +403,6 @@ class PlAppShell extends HTMLElement {
       this.#mainContent.style.overflowY = 'auto';
       this.#mainContent.appendChild(framesManager);
     });
-
-    this.#router.on(
-      '/slideshow/:startFrom',
-      (params) => {
-        this.#state.prevLink = this.#router.lastResolved();
-
-        this.shadowRoot.getElementById('nav-header').style.opacity = 0;
-        this.style.opacity = 0;
-
-        const slideshow = Object.assign(document.createElement('pl-slideshow'), {
-          data: this.#state.galleryData,
-          startFrom: params.data.startFrom,
-          buffer: 1
-        });
-
-        document.getElementById('app-root').appendChild(slideshow);
-      },
-      {
-        // Navigo calls this hook whenever navigation moves away from /slideshow.
-        // This is the single place for slideshow cleanup - no other route needs
-        // to know about it. Must call done() to let the navigation proceed.
-        leave: (done) => {
-          const slideshow = document.querySelector('pl-slideshow');
-          if (slideshow) slideshow.remove();
-          this.shadowRoot.getElementById('nav-header').style.opacity = 1;
-          this.style.opacity = 1;
-          done();
-        }
-      }
-    );
 
     // IMPORTANT: Deferred resolve to handle the redirect scenario.
     //

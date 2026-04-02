@@ -83,22 +83,40 @@ class PlGallery extends HTMLElement {
       this.#updateNavBtnState();
     });
 
+  // DESIGN: The slideshow is a "view mode" of the gallery, not a separate page.
+  // pl-gallery owns the slideshow lifecycle: creates it as a child in its shadow DOM,
+  // listens to its events, and removes it on close. This keeps the gallery's scroll
+  // position and DOM intact while the slideshow is open, enabling incremental scroll
+  // sync as the user navigates slides.
+
+  // DESIGN: pl-slideshow-item-changed bubbles up from the child slideshow on every
+  // next/prev navigation. Gallery intercepts it to:
+  //   1. Scroll the gallery to the current item (invisible to user, since slideshow
+  //      covers the viewport via position:fixed). This ensures the gallery is already
+  //      scrolled to the right place when the slideshow closes.
+  //   2. Re-dispatch as pl-gallery-slideshow-changed for app-shell to update the URL.
+
+  // DESIGN: pl-slideshow-closed bubbles up when user presses Escape or the close button.
+  // Gallery intercepts it to remove the slideshow and restore nav buttons.
+  // The pl-gallery-slideshow-closed event then bubbles to app-shell for URL cleanup.
+
     this.addEventListener('pl-gallery-item-clicked', (evt)=>{
       evt.stopPropagation();
+      this.openSlideshow(evt.detail.id);
+    })
 
-      this.dispatchEvent(new CustomEvent('pl-slideshow-request', {
-        composed: true,
-        bubbles: true,
-        detail: {
-          data: this.#albums.map(x=>{
-            return {
-              album: x.album_name, 
-              items: x.data
-            }
-          }),
-          startFrom: evt.detail.id
-        }
-      }))
+    this.addEventListener('pl-slideshow-item-changed', (evt)=>{
+      evt.stopPropagation();
+      this.#scrollToItem(evt.detail.currentItemId);
+      this.dispatchEvent(new CustomEvent('pl-gallery-slideshow-changed', {
+        composed: true, bubbles: true,
+        detail: { currentItemId: evt.detail.currentItemId }
+      }));
+    })
+
+    this.addEventListener('pl-slideshow-closed', (evt)=>{
+      evt.stopPropagation();
+      this.closeSlideshow();
     })
 
     this.shadowRoot.getElementById('gallery')
@@ -552,6 +570,68 @@ class PlGallery extends HTMLElement {
   set data_src(_){
     this._data_src = _;
     // TODO: do a fetch and set this.#data
+  }
+
+  // DESIGN: openSlideshow is public so app-shell can call it for direct URL visits
+  // (e.g. user pastes #/app/slideshow/<uuid> into browser).
+  openSlideshow(startFromId) {
+    // don't open if already open
+    if (this.shadowRoot.querySelector('pl-slideshow')) return;
+
+    let slideshowData = this.#albums.map(x => ({
+      album: x.album_name,
+      items: x.data
+    }));
+
+    let slideshow = Object.assign(document.createElement('pl-slideshow'), {
+      data: slideshowData,
+      startFrom: startFromId,
+      buffer: 1
+    });
+
+    this.shadowRoot.getElementById('album-nav-btns').style.display = 'none';
+    this.shadowRoot.appendChild(slideshow);
+
+    this.dispatchEvent(new CustomEvent('pl-gallery-slideshow-opened', {
+      composed: true, bubbles: true,
+      detail: { currentItemId: startFromId }
+    }));
+  }
+
+  // DESIGN: closeSlideshow is public so app-shell can call it when the browser back
+  // button triggers a route change (e.g. from /slideshow/<uuid> back to /).
+  // The #showGallery method in app-shell detects the existing gallery and calls this
+  // instead of rebuilding the gallery from scratch, preserving scroll position.
+  closeSlideshow() {
+    let slideshow = this.shadowRoot.querySelector('pl-slideshow');
+    if (!slideshow) return;
+    slideshow.remove();
+    this.shadowRoot.getElementById('album-nav-btns').style.display = '';
+
+    this.dispatchEvent(new Event('pl-gallery-slideshow-closed', {
+      composed: true, bubbles: true
+    }));
+  }
+
+  // DESIGN: Scrolls the gallery to the item's position using album.offsetTop (the album's
+  // absolute position in the gallery) + item.layout.offsetHeight (the item's Y offset within
+  // the album, computed during layout). Since the gallery is underneath the slideshow
+  // (covered by position:fixed), this scroll is invisible to the user. The existing
+  // throttled scroll handler takes care of selectively painting thumbnails around the
+  // new scroll position.
+  #scrollToItem(id) {
+    for (let album of this.#albums) {
+      let item = album.data.find(x => x.data.id === id);
+      if (item) {
+        let gallery = this.shadowRoot.getElementById('gallery');
+        let targetTop = album.offsetTop + item.layout.offsetHeight;
+        // Center the item's row in the viewport. scrollTo automatically
+        // clamps to valid scroll range, so no manual bounds checking needed.
+        let centered = targetTop - (gallery.clientHeight - item.layout.height) / 2;
+        gallery.scrollTo({ top: centered });
+        break;
+      }
+    }
   }
 
 }

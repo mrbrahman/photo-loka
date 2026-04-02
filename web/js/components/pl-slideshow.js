@@ -10,7 +10,6 @@ class PlSlideshow extends HTMLElement {
   // mouseover features (TBD what to show?)
   // lock feature (need a new component for keypad)
   // general cleanup of code, naming of functions, route params etc
-  // change URL when item is shown (/item/<uuid>) without putting in history
 
   static template = document.createElement('template');
   static {
@@ -187,8 +186,30 @@ class PlSlideshow extends HTMLElement {
   }
 
 
+  #getCurrentItemId() {
+    let active = this.shadowRoot.getElementById('slides').querySelector('[data-pos="0"]');
+    if (!active) return null;
+    let idx = active.dataset.idx.split(',').map(Number);
+    return this.data[idx[0]].items[idx[1]].data.id;
+  }
+
+  // DESIGN: Emits the current item's id so the parent (pl-gallery) can sync its
+  // scroll position and update the URL. This is dispatched at the end of every
+  // #next() and #prev() call. Uses composed:true to cross shadow DOM boundaries.
+  #emitItemChanged() {
+    this.dispatchEvent(new CustomEvent('pl-slideshow-item-changed', {
+      composed: true, bubbles: true,
+      detail: { currentItemId: this.#getCurrentItemId() }
+    }));
+  }
+
+  // DESIGN: Includes currentItemId in the close event so the parent knows which
+  // item was last viewed. Uses composed:true to cross shadow DOM boundaries.
   #slideshowClosed = ()=>{
-    this.dispatchEvent(new Event('pl-slideshow-closed', {composed: true, bubbles: true}));
+    this.dispatchEvent(new CustomEvent('pl-slideshow-closed', {
+      composed: true, bubbles: true,
+      detail: { currentItemId: this.#getCurrentItemId() }
+    }));
   }
 
   #handleRightArrow = (evt)=>{
@@ -210,6 +231,8 @@ class PlSlideshow extends HTMLElement {
       }
     }
   }
+
+
 
   // Adapted from https://stackoverflow.com/a/16102526/8098748
   #getIndexOfK(arr, k) {
@@ -329,6 +352,7 @@ class PlSlideshow extends HTMLElement {
       window.addEventListener('keydown', this.#handleLeftArrow);
     }
 
+    this.#emitItemChanged();
   }
 
   #prev(){
@@ -394,6 +418,7 @@ class PlSlideshow extends HTMLElement {
       window.addEventListener('keydown', this.#handleRightArrow);
     }
 
+    this.#emitItemChanged();
   }
 
   disconnectedCallback() {
