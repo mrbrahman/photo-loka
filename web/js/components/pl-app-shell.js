@@ -1,6 +1,7 @@
 import { notify } from '../utils.mjs';
 import { authenticatedFetch } from '../authn.mjs';
 import { getTheme, toggleTheme } from '../theme.mjs';
+import { router } from '../router.mjs';
 
 import sheet from "./styles/pl-app-shell.css" with { type: "css" };
 
@@ -11,7 +12,6 @@ class PlAppShell extends HTMLElement {
     collection_id: 1
   };
 
-  #router = null;
   #mainContent = null; #progressBar = null; #sidebar = null; #backdrop = null;
 
   static template = document.createElement('template');
@@ -109,7 +109,6 @@ class PlAppShell extends HTMLElement {
   constructor() {
     super().attachShadow({ mode: 'open' });
     this.shadowRoot.adoptedStyleSheets = [sheet];
-    this.#router = new Navigo('/app', { hash: true });
   }
 
   connectedCallback() {
@@ -119,27 +118,27 @@ class PlAppShell extends HTMLElement {
     this.#sidebar = this.shadowRoot.getElementById('sidebar');
     this.#backdrop = this.shadowRoot.getElementById('sidebar-backdrop');
 
-    this.#initAppRouter();
     this.#attachEventListeners();
     this.#updateThemeToggle();
   }
 
   #attachEventListeners() {
     // Hamburger toggle
-      const hamburgerBtn = this.shadowRoot.getElementById("hamburger-btn");
-      hamburgerBtn.addEventListener('click', () => {
+    const hamburgerBtn = this.shadowRoot.getElementById("hamburger-btn");
+    hamburgerBtn.addEventListener('click', () => {
       hamburgerBtn.classList.add('spin');
       hamburgerBtn.addEventListener('animationend', () => hamburgerBtn.classList.remove('spin'), { once: true });
       this.#toggleSidebar();
     });
+
     // Backdrop click closes sidebar
     this.#backdrop.addEventListener('click', () => this.#closeSidebar());
 
-    // Sidebar navigation
+    // Sidebar navigation — use the single global router
     this.#sidebar.querySelectorAll('.sidebar-item[data-route]:not([disabled])').forEach(item => {
       item.addEventListener('click', (e) => {
         e.preventDefault();
-        this.#router.navigate(item.dataset.route);
+        router.navigate('/app' + item.dataset.route);
         this.#closeSidebar();
       });
     });
@@ -147,11 +146,11 @@ class PlAppShell extends HTMLElement {
     // Logo and title navigation
     this.shadowRoot.getElementById('nav-logo').addEventListener('click', (e) => {
       e.preventDefault();
-      this.#router.navigate('/');
+      router.navigate('/app');
     });
     this.shadowRoot.getElementById('nav-title').addEventListener('click', (e) => {
       e.preventDefault();
-      this.#router.navigate('/');
+      router.navigate('/app');
     });
 
     // Search
@@ -160,7 +159,7 @@ class PlAppShell extends HTMLElement {
       if (e.key === 'Enter') {
         const searchText = searchBox.value.trim();
         if (searchText) {
-          this.#router.navigate(`/search/${encodeURIComponent(searchText)}`);
+          router.navigate(`/app/search/${encodeURIComponent(searchText)}`);
           searchBox.blur();
         }
       }
@@ -178,60 +177,81 @@ class PlAppShell extends HTMLElement {
       this.#updateThemeToggle();
     });
 
-    // DESIGN: URL update strategy for slideshow state.
-    //
-    // We use history.pushState/replaceState instead of Navigo's router.navigate() because
-    // this app has a dual-router architecture (global router in router.mjs + inner router
-    // here). Using router.navigate() triggers hashchange events that cause both routers to
-    // re-evaluate, leading to route matching errors.
-    //
-    // pushState/replaceState silently update the URL without triggering hashchange or
-    // popstate events. The only time popstate fires is when the user presses the browser
-    // back button, which is exactly when we want Navigo to resolve and handle the route.
-    //
-    // - Open: pushState - creates a history entry so the back button can close the slideshow
-    // - Changed (slide navigation): replaceState - updates the UUID in the URL without
-    //   creating history entries (user shouldn't have to press back 50 times for 50 slides)
-    // - Closed (Escape/close button): replaceState - restores the gallery URL without
-    //   creating a forward history entry
+    // Slideshow URL management — uses callHandler:false to update URL without re-triggering route
     this.handleSlideshowOpened = (evt) => {
-      let hash = window.location.hash.replace(/\/slideshow\/.*$/, '');
-      history.pushState(null, '', `${hash}/slideshow/${evt.detail.currentItemId}`);
+      const base = window.location.hash.replace(/^#/, '').replace(/\/slideshow\/.*$/, '');
+      router.navigate(`${base}/slideshow/${evt.detail.currentItemId}`, { callHandler: false, updateState: true });
     };
 
     this.handleSlideshowChanged = (evt) => {
-      let hash = window.location.hash.replace(/\/slideshow\/.*$/, '');
-      history.replaceState(null, '', `${hash}/slideshow/${evt.detail.currentItemId}`);
+      const base = window.location.hash.replace(/^#/, '').replace(/\/slideshow\/.*$/, '');
+      const newHash = `#${base}/slideshow/${evt.detail.currentItemId}`;
+      history.replaceState(null, '', newHash);
     };
 
     this.handleSlideshowClosed = () => {
-      let hash = window.location.hash.replace(/\/slideshow\/.*$/, '');
-      history.replaceState(null, '', hash || '#/app');
-    };
-
-    // DESIGN: Since we use pushState (not Navigo's navigate) to add the slideshow URL
-    // to history, Navigo doesn't know about this entry and won't re-resolve on popstate.
-    // We listen for popstate ourselves: when the back button is pressed and the URL no
-    // longer contains /slideshow/, we find the gallery and close its slideshow.
-    this.handlePopState = () => {
-      if (!window.location.hash.includes('/slideshow/')) {
-        let gallery = this.#mainContent.querySelector('pl-gallery');
-        if (gallery) gallery.closeSlideshow();
-      }
+      const base = window.location.hash.replace(/^#/, '').replace(/\/slideshow\/.*$/, '') || '/app';
+      router.navigate(base, { callHandler: false, updateState: true });
     };
 
     document.addEventListener('pl-gallery-slideshow-opened', this.handleSlideshowOpened);
     document.addEventListener('pl-gallery-slideshow-changed', this.handleSlideshowChanged);
     document.addEventListener('pl-gallery-slideshow-closed', this.handleSlideshowClosed);
-    window.addEventListener('popstate', this.handlePopState);
   }
 
   disconnectedCallback() {
     document.removeEventListener('pl-gallery-slideshow-opened', this.handleSlideshowOpened);
     document.removeEventListener('pl-gallery-slideshow-changed', this.handleSlideshowChanged);
     document.removeEventListener('pl-gallery-slideshow-closed', this.handleSlideshowClosed);
-    window.removeEventListener('popstate', this.handlePopState);
-    this.#router.destroy();
+  }
+
+  // --- Routing ---
+
+  route(view, params = {}) {
+    const { slideshowItemId, searchText } = params;
+
+    if (!searchText) {
+      this.shadowRoot.getElementById('nav-search-box').value = '';
+    }
+
+    // If a slideshow is open and no new slideshow requested, just close it
+    // and reinstate the gallery underneath (handles back-button without re-fetching)
+    const gallery = this.#mainContent.querySelector('pl-gallery');
+    if (gallery?.isSlideshowOpen && !slideshowItemId) {
+      gallery.closeSlideshow();
+      return;
+    }
+
+    switch (view) {
+      case 'gallery':
+        this.#setActiveMenuItem('/');
+        this.#loadGallery(() => authenticatedFetch('/api/getAll'), slideshowItemId, view);
+        break;
+
+      case 'search':
+        this.#setActiveMenuItem(null);
+        this.shadowRoot.getElementById('nav-search-box').value = searchText;
+        this.#loadGallery(() => authenticatedFetch('/api/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ collection_id: this.#state.collection_id, searchText })
+        }), slideshowItemId, view);
+        break;
+
+      case 'map':
+        this.#setActiveMenuItem('/map');
+        this.#mainContent.innerHTML = '';
+        this.#mainContent.style.overflowY = 'hidden';
+        this.#mainContent.appendChild(document.createElement('pl-map'));
+        break;
+
+      case 'frames':
+        this.#setActiveMenuItem('/frames');
+        this.#mainContent.innerHTML = '';
+        this.#mainContent.style.overflowY = 'auto';
+        this.#mainContent.appendChild(document.createElement('pl-frame-manager'));
+        break;
+    }
   }
 
   // --- Sidebar ---
@@ -254,7 +274,21 @@ class PlAppShell extends HTMLElement {
 
   // --- Gallery ---
 
-  #showGallery(data, slideshowItemId) {
+  async #loadGallery(fetchFn, slideshowItemId, routePath) {
+    this.#showProgressBar();
+    try {
+      const res = await fetchFn();
+      if (!res.ok) throw await res.json().catch(() => ({error: {message: `${res.status} ${res.statusText}`}}));
+      const data = await res.json();
+      this.#showGallery(data, slideshowItemId, routePath);
+    } catch (err) {
+      notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
+    } finally {
+      this.#hideProgressBar();
+    }
+  }
+
+  #showGallery(data, slideshowItemId, routePath) {
     this.#mainContent.style.overflowY = 'hidden';
 
     if (data.length === 0) {
@@ -263,11 +297,11 @@ class PlAppShell extends HTMLElement {
     }
 
     const gallery = Object.assign(document.createElement('pl-gallery'), { data });
+    gallery.dataset.view = routePath;
     this.#mainContent.innerHTML = '';
     this.#mainContent.appendChild(gallery);
 
     if (slideshowItemId) {
-      // Defer so gallery has time to render and compute layout
       requestAnimationFrame(() => gallery.openSlideshow(slideshowItemId));
     }
 
@@ -275,165 +309,18 @@ class PlAppShell extends HTMLElement {
     notify(`Found ${data.length.toLocaleString()} albums containing ${totalItems.toLocaleString()} items`);
   }
 
+  // --- Progress Bar ---
 
-  // --- Router ---
-
-  #initAppRouter() {
-    this.#router.hooks({
-      before: (done, match) => {
-        // Clear search box on navigation, except for search routes
-        // (returning from slideshow uses callHandler:false so the /search handler
-        // won't run to restore the value -> don't clear it)
-        if (!match.url.startsWith('search/')) {
-          this.shadowRoot.getElementById('nav-search-box').value = '';
-        }
-        done();
-      }
-    });
-
-    // DESIGN: Separate routes for base and slideshow variants are needed because Navigo's
-    // string routes don't support optional segments. We can't express "/ with optional
-    // /slideshow/:id suffix" in a single string route. Regex routes were attempted but
-    // don't work reliably with Navigo's base path stripping in the dual-router setup.
-    //
-    // The slideshow routes (e.g. /slideshow/:itemId) handle direct URL visits - they
-    // fetch the data and pass the slideshowItemId to #showGallery, which creates the
-    // gallery and then opens the slideshow via requestAnimationFrame.
-
-    this.#router.on('/', async () => {
-      this.#setActiveMenuItem('/');
-      this.#showProgressBar();
-
-      try {
-        const res = await authenticatedFetch('/api/getAll');
-        if (!res.ok) throw await res.json().catch(() => ({error: {message: `${res.status} ${res.statusText}`}}));
-        const result = await res.json();
-        this.#showGallery(result);
-      } catch (err) {
-        notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
-      } finally {
-        this.#hideProgressBar();
-      }
-    });
-
-    this.#router.on('/slideshow/:itemId', async (params) => {
-      this.#setActiveMenuItem('/');
-      this.#showProgressBar();
-
-      try {
-        const res = await authenticatedFetch('/api/getAll');
-        if (!res.ok) throw await res.json().catch(() => ({error: {message: `${res.status} ${res.statusText}`}}));
-        const result = await res.json();
-        this.#showGallery(result, params.data.itemId);
-      } catch (err) {
-        notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
-      } finally {
-        this.#hideProgressBar();
-      }
-    });
-
-    this.#router.on('/search/:searchText', async (params) => {
-      this.#setActiveMenuItem(null);
-      let searchText = params.data.searchText;
-
-      this.shadowRoot.getElementById('nav-search-box').value = searchText;
-      this.#showProgressBar();
-
-      try {
-        const res = await authenticatedFetch('/api/search', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            collection_id: this.#state.collection_id,
-            searchText
-          })
-        });
-
-        if (!res.ok) throw await res.json().catch(() => ({error: {message: `${res.status} ${res.statusText}`}}));
-        const result = await res.json();
-        this.#showGallery(result);
-      } catch (err) {
-        notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
-      } finally {
-        this.#hideProgressBar();
-      }
-    });
-
-    this.#router.on('/search/:searchText/slideshow/:itemId', async (params) => {
-      this.#setActiveMenuItem(null);
-      let searchText = params.data.searchText;
-
-      this.shadowRoot.getElementById('nav-search-box').value = searchText;
-      this.#showProgressBar();
-
-      try {
-        const res = await authenticatedFetch('/api/search', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            collection_id: this.#state.collection_id,
-            searchText
-          })
-        });
-
-        if (!res.ok) throw await res.json().catch(() => ({error: {message: `${res.status} ${res.statusText}`}}));
-        const result = await res.json();
-        this.#showGallery(result, params.data.itemId);
-      } catch (err) {
-        notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
-      } finally {
-        this.#hideProgressBar();
-      }
-    });
-
-    this.#router.on('/map', () => {
-      this.#setActiveMenuItem('/map');
-      const mapComponent = document.createElement('pl-map');
-
-      this.#mainContent.innerHTML = '';
-      this.#mainContent.style.overflowY = 'hidden';
-      this.#mainContent.appendChild(mapComponent);
-    });
-
-    this.#router.on('/frames', () => {
-      this.#setActiveMenuItem('/frames');
-      const framesManager = document.createElement('pl-frame-manager');
-
-      this.#mainContent.innerHTML = '';
-      this.#mainContent.style.overflowY = 'auto';
-      this.#mainContent.appendChild(framesManager);
-    });
-
-    // IMPORTANT: Deferred resolve to handle the redirect scenario.
-    //
-    // When an already-authenticated user visits without a hash (e.g. just "http://host:9000"),
-    // the global router's "/" route calls router.navigate('/app'). Navigo fires the matching
-    // "/app*" handler *synchronously* within that navigate() call - before the URL hash has
-    // actually updated from "#/" to "#/app". That handler creates this <pl-app-shell> element
-    // and appends it to the DOM, which triggers connectedCallback → #initAppRouter.
-    //
-    // If we call this.#router.resolve() synchronously here, the inner router (base: '/app')
-    // reads the hash which is still "#/" (the old value), can't match it, and logs:
-    //   'Navigo: "/" didn't match any of the registered routes'
-    //
-    // queueMicrotask defers resolve() to run after the current call stack completes, by which
-    // time the hash has updated to "#/app" and the inner router correctly resolves "/".
-    //
-    // This does NOT affect direct visits (e.g. refreshing on "#/app") - the hash is already
-    // correct in those cases, so the deferred resolve simply works as before.
-    queueMicrotask(() => this.#router.resolve());
-  }
-
-  #showProgressBar(){
+  #showProgressBar() {
     this.#progressBar.toggleAttribute("indeterminate");
     this.#progressBar.classList.remove("hide");
   }
 
-  #hideProgressBar(timeout=500){
-    setTimeout(()=>{
+  #hideProgressBar(timeout = 500) {
+    setTimeout(() => {
       this.#progressBar.classList.add("hide");
       this.#progressBar.toggleAttribute("indeterminate");
-    }, timeout)
+    }, timeout);
   }
 
   #updateThemeToggle() {
@@ -444,3 +331,4 @@ class PlAppShell extends HTMLElement {
 }
 
 customElements.define('pl-app-shell', PlAppShell);
+

@@ -572,11 +572,14 @@ class PlGallery extends HTMLElement {
     // TODO: do a fetch and set this.#data
   }
 
+  get isSlideshowOpen() {
+    return !!this.shadowRoot.querySelector('pl-slideshow');
+  }
+
   // DESIGN: openSlideshow is public so app-shell can call it for direct URL visits
   // (e.g. user pastes #/app/slideshow/<uuid> into browser).
   openSlideshow(startFromId) {
-    // don't open if already open
-    if (this.shadowRoot.querySelector('pl-slideshow')) return;
+    if (this.isSlideshowOpen) return;
 
     let slideshowData = this.#albums.map(x => ({
       album: x.album_name,
