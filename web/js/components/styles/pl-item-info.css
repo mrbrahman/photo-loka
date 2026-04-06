@@ -48,7 +48,7 @@
 #info-body {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 25px;
 }
 
 #desc-section {
@@ -82,18 +82,20 @@
   min-width: 0;
 }
 
-.meta-sub {
+.row-header {
+  font-size: var(--font-primary);
+  color: var(--text-primary);
+}
+
+.row-detail {
   font-size: var(--font-secondary);
   color: var(--text-muted);
-  margin-top: 2px;
+  margin-top: 8px;
 }
 
 /* Filename (dir + editable stem + ext) */
 .filename-wrap {
-  font-size: var(--font-secondary);
-  color: var(--text-muted);
   word-break: break-all;
-  margin-top: 2px;
   line-height: 1.5;
 }
 
@@ -140,9 +142,16 @@
 .field-status {
   font-size: var(--font-tertiary);
   color: var(--text-muted);
-  margin-top: 2px;
-  min-height: 1em;
   padding-left: 6px;
+  overflow: hidden;
+  max-height: 0;
+  transition: max-height 0.2s ease, margin-top 0.2s ease;
+  margin-top: 0;
+}
+
+.field-status:not(:empty) {
+  max-height: 1.5em;
+  margin-top: 2px;
 }
 
 .field-status.saving { color: var(--status-saving); }
@@ -163,6 +172,10 @@
   color: var(--text-secondary);
 }
 
+.date-row-minor {
+  font-size: var(--font-tertiary);
+}
+
 .date-label {
   color: var(--text-muted);
   flex-shrink: 0;
@@ -180,11 +193,6 @@
   border-radius: 8px;
   overflow: hidden;
   margin-top: 8px;
-}
-
-#geo-address {
-  font-size: var(--font-primary);
-  color: var(--text-secondary);
 }
 
 /* People / Faces */

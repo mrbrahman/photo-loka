@@ -35,24 +35,23 @@ class PlItemInfo extends HTMLElement {
               </div>
             </div>
 
-            <!-- Camera -->
-            <div class="info-row" id="camera-row" hidden>
-              <sl-icon name="camera-fill" class="row-icon"></sl-icon>
-              <div class="row-content">
-                <div id="camera-name"></div>
-                <div id="camera-meta" class="meta-sub"></div>
-              </div>
-            </div>
-
             <!-- File -->
             <div class="info-row" id="file-row">
               <sl-icon id="file-icon" name="image-fill" class="row-icon"></sl-icon>
               <div class="row-content">
-                <div id="file-meta"></div>
-                <div class="filename-wrap">
+                <div class="filename-wrap row-header">
                   <span id="file-dir"></span><span id="filename" contenteditable spellcheck="false"></span><span id="file-ext"></span>
                 </div>
                 <div id="filename-status" class="field-status"></div>
+                <div id="file-meta" class="row-detail"></div>
+              </div>
+            </div>
+
+            <!-- Camera -->
+            <div class="info-row" id="camera-row" hidden>
+              <sl-icon name="camera-fill" class="row-icon"></sl-icon>
+              <div class="row-content">
+                <div id="camera-name" class="row-header"></div>
               </div>
             </div>
 
@@ -68,7 +67,7 @@ class PlItemInfo extends HTMLElement {
             <div class="info-row" id="location-row" hidden>
               <sl-icon name="geo-alt-fill" class="row-icon"></sl-icon>
               <div class="row-content">
-                <div id="geo-address"></div>
+                <div id="geo-address" class="row-header"></div>
                 <div id="map-container"></div>
               </div>
             </div>
@@ -77,7 +76,8 @@ class PlItemInfo extends HTMLElement {
             <div class="info-row" id="dates-row">
               <sl-icon name="calendar3" class="row-icon"></sl-icon>
               <div class="row-content">
-                <div id="dates-list" class="dates-list"></div>
+                <div id="date-header" class="row-header"></div>
+                <div id="dates-list" class="dates-list row-detail"></div>
               </div>
             </div>
 
@@ -192,10 +192,6 @@ class PlItemInfo extends HTMLElement {
     if (d.make || d.model) {
       cameraRow.hidden = false;
       this.shadowRoot.getElementById('camera-name').textContent = [d.make, d.model].filter(Boolean).join(' ');
-      let cameraMeta = [];
-      if (d.image_width && d.image_height) cameraMeta.push(`${d.image_width} x ${d.image_height}`);
-      if (d.duration) cameraMeta.push(this.#formatDuration(d.duration));
-      this.shadowRoot.getElementById('camera-meta').textContent = cameraMeta.join('  •  ');
     } else {
       cameraRow.hidden = true;
     }
@@ -205,10 +201,8 @@ class PlItemInfo extends HTMLElement {
     if (d.mediatype) fileParts.push(d.mediatype);
     if (d.ext) fileParts.push(d.ext.toUpperCase());
     if (d.filesize) fileParts.push(this.#formatFileSize(d.filesize));
-    if (!d.make && !d.model) {
-      if (d.image_width && d.image_height) fileParts.push(`${d.image_width} x ${d.image_height}`);
-      if (d.duration) fileParts.push(this.#formatDuration(d.duration));
-    }
+    if (d.image_width && d.image_height) fileParts.push(`${d.image_width} x ${d.image_height}`);
+    if (d.duration) fileParts.push(this.#formatDuration(d.duration));
     this.shadowRoot.getElementById('file-meta').textContent = fileParts.join('  •  ');
 
     // File icon based on media type
@@ -218,37 +212,27 @@ class PlItemInfo extends HTMLElement {
     else fileIcon.name = 'image-fill';
 
     // Dates
+    this.shadowRoot.getElementById('date-header').textContent = d.file_date ? this.#formatDate(d.file_date) : '';
+
     let datesList = this.shadowRoot.getElementById('dates-list');
     datesList.innerHTML = '';
-    let mediaDates = [
-      ['Datetime Original (images)', d.datetime_original],
-      ['Create Date (videos)', d.create_date],
-      ['File Modify Date', d.file_modify_date],
-      ['(Effective) File date', d.file_date],
-    ].filter(([, v]) => v);
-
-    let systemDates = [
+    let allDates = [
       ['Indexed Date', d.indexed_dt],
+      ['Datetime Original', d.datetime_original],
+      ['Create Date', d.create_date],
+      ['File Modify Date', d.file_modify_date],
       ['Trashed Date', d.trashed_dt],
     ].filter(([, v]) => v);
 
-    for (let [label, val] of mediaDates) {
+    for (let i = 0; i < allDates.length; i++) {
+      if (i === 1 && allDates[0][0] === 'Indexed Date') {
+        let spacer = document.createElement('div');
+        spacer.style.height = '6px';
+        datesList.appendChild(spacer);
+      }
       let row = document.createElement('div');
-      row.className = 'date-row';
-      row.innerHTML = `<span class="date-label">${label}</span><span class="date-value">${this.#formatDate(val)}</span>`;
-      datesList.appendChild(row);
-    }
-
-    if (mediaDates.length && systemDates.length) {
-      let spacer = document.createElement('div');
-      spacer.style.height = '6px';
-      datesList.appendChild(spacer);
-    }
-
-    for (let [label, val] of systemDates) {
-      let row = document.createElement('div');
-      row.className = 'date-row';
-      row.innerHTML = `<span class="date-label">${label}</span><span class="date-value">${this.#formatDate(val)}</span>`;
+      row.className = allDates[i][0] === 'Indexed Date' ? 'date-row' : 'date-row date-row-minor';
+      row.innerHTML = `<span class="date-label">${allDates[i][0]}</span><span class="date-value">${this.#formatDate(allDates[i][1])}</span>`;
       datesList.appendChild(row);
     }
 
@@ -420,12 +404,20 @@ class PlItemInfo extends HTMLElement {
   #formatDate(dateStr) {
     if (!dateStr) return '';
     try {
-      let d = new Date(dateStr);
+      let m = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})([+-]\d{2}:\d{2})?/);
+      if (!m) return dateStr;
+
+      let d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]));
       if (isNaN(d)) return dateStr;
-      return d.toLocaleString(undefined, {
+
+      let formatted = d.toLocaleString(undefined, {
+        timeZone: 'UTC',
         weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
         hour: 'numeric', minute: '2-digit'
       });
+
+      if (m[7]) formatted += ` (GMT${m[7]})`;
+      return formatted;
     } catch { return dateStr; }
   }
 }
