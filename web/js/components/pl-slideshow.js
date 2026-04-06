@@ -206,10 +206,22 @@ class PlSlideshow extends HTMLElement {
   // DESIGN: Includes currentItemId in the close event so the parent knows which
   // item was last viewed. Uses composed:true to cross shadow DOM boundaries.
   #slideshowClosed = ()=>{
-    this.dispatchEvent(new CustomEvent('pl-slideshow-closed', {
-      composed: true, bubbles: true,
-      detail: { currentItemId: this.#getCurrentItemId() }
-    }));
+    let emitClose = () => {
+      this.dispatchEvent(new CustomEvent('pl-slideshow-closed', {
+        composed: true, bubbles: true,
+        detail: { currentItemId: this.#getCurrentItemId() }
+      }));
+    };
+
+    // Close info panel first if open, wait for its transition (300ms), then close slideshow
+    if (this.#infoPanelOpen) {
+      let active = this.shadowRoot.querySelector('#slides [data-pos="0"]');
+      if (active) active.infoPanelOpen = false;
+      this.#infoPanelOpen = false;
+      setTimeout(emitClose, 300);
+    } else {
+      emitClose();
+    }
   }
 
   #handleRightArrow = (evt)=>{
