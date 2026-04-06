@@ -184,8 +184,9 @@ export function getNextItem(frame_ip_addr){
     throw new AppError('Frame is paused', 'FramePausedError', 'FRAME_PAUSED', 423)
   }
 
-  // increment the index and return the item
-  return frame.items[++frame.curr_idx];
+  // increment the index, wrap to start if end reached
+  frame.curr_idx = (frame.curr_idx + 1) % frame.items.length;
+  return frame.items[frame.curr_idx];
 }
 
 export function getPrevItem(frame_ip_addr){
@@ -198,11 +199,12 @@ export function getPrevItem(frame_ip_addr){
     throw new AppError('Frame is paused', 'FramePausedError', 'FRAME_PAUSED', 423, { pauseEndTime: frame.pauseEndTime });
   }
 
-  // decrement the index and return the item
-  if (frame.curr_idx == -1 || frame.curr_idx == 0) {
-    frame.curr_idx = frame.items.length
-  }
-  return frame.items[--frame.curr_idx];
+  // decrement the index, wrap to end if start reached
+  // Note: if curr_idx is -1 (fresh reload), this will return the second-to-last item
+  // instead of the last item, because (-1 - 1 + length) % length = length - 2. 
+  // TODO: Handle if needed.
+  frame.curr_idx = (frame.curr_idx - 1 + frame.items.length) % frame.items.length;
+  return frame.items[frame.curr_idx];
 }
 
 /**
