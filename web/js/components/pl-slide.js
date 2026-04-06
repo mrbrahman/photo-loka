@@ -187,6 +187,22 @@ class PlSlide extends HTMLElement {
   }
   get hasPrev() { return this.#hasPrev; }
 
+  get mediaRect() {
+    return this.shadowRoot.querySelector('pl-slide-media')?.mediaRect ?? null;
+  }
+
+  hideChrome() {
+    let nav = this.shadowRoot.getElementById('navigation');
+    if (nav) nav.style.visibility = 'hidden';
+    let media = this.shadowRoot.querySelector('pl-slide-media');
+    if (media) {
+      let albumname = media.shadowRoot.getElementById('albumname');
+      let actions = media.shadowRoot.getElementById('actions');
+      if (albumname) albumname.style.visibility = 'hidden';
+      if (actions) actions.style.visibility = 'hidden';
+    }
+  }
+
   set albumname(_) { this.#albumname = _; }
   get albumname() { return this.#albumname; }
 

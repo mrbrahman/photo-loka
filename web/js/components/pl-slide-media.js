@@ -210,6 +210,11 @@ class PlSlideMedia extends HTMLElement {
 
   get zoomLevel() { return this.#zoomLevel; }
 
+  get mediaRect() {
+    let el = this.shadowRoot.querySelector('#media img, #media video');
+    return el?.getBoundingClientRect() ?? null;
+  }
+
   resetZoom() {
     this.#resetZoom();
   }

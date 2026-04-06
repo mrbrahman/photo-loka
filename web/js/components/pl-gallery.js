@@ -622,34 +622,36 @@ class PlGallery extends HTMLElement {
       }
     }
 
-    // Pause video if playing, using pl-slide's play setter (same pattern as #next/#prev)
-    let active = slideshow.shadowRoot?.querySelector('#slides [data-pos="0"]');
-    if (active?.dataset.type?.startsWith('video')) active.play = false;
-
-    // Restore nav buttons so they are visible as gallery appears through the fading slideshow
+    // Restore nav buttons so they are visible as gallery appears
     this.shadowRoot.getElementById('album-nav-btns').style.display = '';
 
     let thumbRect = currentItemId ? this.#getThumbRect(currentItemId) : null;
 
-    if (!thumbRect) {
-      // Fallback: no animation, just remove
+    // prepareForDismiss pauses video, hides chrome, removes black background,
+    // and returns the actual rendered media rect
+    let mediaRect = slideshow.prepareForDismiss();
+
+    if (!thumbRect || !mediaRect) {
       slideshow.remove();
       this.dispatchEvent(new Event('pl-gallery-slideshow-closed', { composed: true, bubbles: true }));
       return;
     }
 
-    // Animate: shrink slideshow from full viewport to thumbnail position
+    // Animate: shrink from media's rendered position to thumbnail position.
+    // Both are the same photo so aspect ratio matches -> uniform scale.
+    let mediaCenterX = mediaRect.left + mediaRect.width / 2;
+    let mediaCenterY = mediaRect.top + mediaRect.height / 2;
     let thumbCenterX = thumbRect.x + thumbRect.w / 2;
     let thumbCenterY = thumbRect.y + thumbRect.h / 2;
-    let scaleX = thumbRect.w / window.innerWidth;
-    let scaleY = thumbRect.h / window.innerHeight;
-    // translate so the scaled center lands on the thumbnail center
-    let tx = thumbCenterX - window.innerWidth / 2;
-    let ty = thumbCenterY - window.innerHeight / 2;
+    let scale = thumbRect.w / mediaRect.width;
+    let tx = thumbCenterX - mediaCenterX;
+    let ty = thumbCenterY - mediaCenterY;
+
+    slideshow.style.transformOrigin = `${mediaCenterX}px ${mediaCenterY}px`;
 
     let anim = slideshow.animate([
-      { transform: 'translate(0px, 0px) scale(1)', opacity: 1 },
-      { transform: `translate(${tx}px, ${ty}px) scale(${scaleX}, ${scaleY})`, opacity: 0 }
+      { transform: 'translate(0px, 0px) scale(1)' },
+      { transform: `translate(${tx}px, ${ty}px) scale(${scale})` }
     ], {
       duration: 200,
       easing: 'ease-in',

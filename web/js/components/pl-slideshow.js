@@ -477,6 +477,24 @@ class PlSlideshow extends HTMLElement {
     return this.#loop;
   }
 
+  get activeMediaRect() {
+    let active = this.shadowRoot.querySelector('#slides [data-pos="0"]');
+    return active?.mediaRect ?? null;
+  }
+
+  prepareForDismiss() {
+    let active = this.shadowRoot.querySelector('#slides [data-pos="0"]');
+    if (!active) return null;
+    // Pause video
+    if (active.dataset.type?.startsWith('video')) active.play = false;
+    // Hide chrome
+    active.hideChrome();
+    // Remove black background
+    let container = this.shadowRoot.getElementById('container');
+    if (container) container.style.backgroundColor = 'transparent';
+    return active.mediaRect;
+  }
+
 }
 
 window.customElements.define('pl-slideshow', PlSlideshow);
