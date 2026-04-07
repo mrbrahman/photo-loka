@@ -105,6 +105,10 @@ export async function saveFaceRecognitionResults(uuid, response) {
   await asyncRun(`UPDATE metadata SET faces = ? WHERE uuid = ?`, JSON.stringify(names), uuid);
 }
 
+export async function getClusterIdByUuidAndName(uuid, personName) {
+  return await asyncGet(`SELECT cluster_id FROM face_recognition WHERE uuid = ? AND person_name = ?`, uuid, personName);
+}
+
 export async function getFacesByUuid(uuid) {
   return await asyncAll(`SELECT * FROM face_recognition WHERE uuid = ?`, uuid);
 }

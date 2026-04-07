@@ -26,6 +26,10 @@ export async function processFaceRecognition(uuid, imagePath, orientation, xmpRe
   return result;
 }
 
+export async function getClusterIdByUuidAndName(uuid, personName) {
+  return await mlDb.getClusterIdByUuidAndName(uuid, personName);
+}
+
 export async function getFacesByUuid(uuid) {
   return await mlDb.getFacesByUuid(uuid);
 }

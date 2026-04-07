@@ -203,10 +203,10 @@ apiRouter.get('/getFaceThumbnail', authenticateMediaAccess, async function(req,r
   try {
     let {uuid, name} = req.query;
     // Look up cluster_id from face_recognition table
-    let faces = await s.ml.getFacesByUuid(uuid);
-    let face = faces.find(f => f.person_name === name);
-    if (!face) return res.status(404).end();
-    let filePath = path.join(config.facesDir, face.cluster_id, `${uuid}.jpg`);
+    let row = await s.ml.getClusterIdByUuidAndName(uuid, name);
+    let filePath = row
+      ? path.join(config.facesDir, row.cluster_id, `${uuid}.jpg`)
+      : path.join(config.facesDir, name, `${uuid}.jpg`); // fallback to legacy name-based path
     if (!fs.existsSync(filePath)) return res.status(404).end();
     res.sendFile(path.resolve(filePath));
   } catch (error) {
