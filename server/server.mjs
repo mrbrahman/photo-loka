@@ -199,10 +199,14 @@ apiRouter.get('/getItemInfo', async function(req,res,next){
   }
 });
 
-apiRouter.get('/getFaceThumbnail', authenticateMediaAccess, function(req,res,next){
+apiRouter.get('/getFaceThumbnail', authenticateMediaAccess, async function(req,res,next){
   try {
     let {uuid, name} = req.query;
-    let filePath = path.join(config.facesDir, name, `${uuid}.jpg`);
+    // Look up cluster_id from face_recognition table
+    let faces = await s.ml.getFacesByUuid(uuid);
+    let face = faces.find(f => f.person_name === name);
+    if (!face) return res.status(404).end();
+    let filePath = path.join(config.facesDir, face.cluster_id, `${uuid}.jpg`);
     if (!fs.existsSync(filePath)) return res.status(404).end();
     res.sendFile(path.resolve(filePath));
   } catch (error) {
@@ -548,6 +552,35 @@ s.frame.frameEvents.on('frame-paused', ({frame_ip_addr}) => {
     logger.info(`Sent pause event to frame: ${frame_ip_addr}`);
   } else {
     logger.warn(`No SSE client found for frame: ${frame_ip_addr}`);
+  }
+});
+
+// *****************************************
+// face recognition (ML)
+// *****************************************
+
+apiRouter.post('/recognizeFaces/:uuid', async function(req,res,next){
+  try {
+    const result = await s.ml.processFaceRecognition(req.params.uuid);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.get('/getFaces/:uuid', async function(req,res,next){
+  try {
+    res.json(await s.ml.getFacesByUuid(req.params.uuid));
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.get('/getFacesByPerson', async function(req,res,next){
+  try {
+    res.json(await s.ml.getFacesByPerson(req.query.name));
+  } catch (error) {
+    next(error);
   }
 });
 

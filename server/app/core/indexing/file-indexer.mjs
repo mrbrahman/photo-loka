@@ -13,6 +13,7 @@ import { addToIndexQueue } from './queue-manager.mjs';
 
 import * as db from './indexer-db.mjs';
 import { enqueue as enqueueReverseGeoEncoding } from '#geo/geo-encoder';
+import { processFaceRecognition } from '#ml/ml-manager';
 import {config} from '#config';
 
 const logger = createLogger(import.meta.url);
@@ -105,27 +106,14 @@ export async function indexFile(collection, sourceFileName, uuid, inPlace){
       throw `ERROR during video compression for file: ${sourceFileName}: ${error}`;
     }
 
-    // Step 6: face region extraction (if present)
-    // TODO: is this really needed? revisit during face recognition implementation
-    if (p.xmpregion
-      && p.xmpregion.RegionList.filter(d => d.Type == 'Face').length > 0
-      && p.xmpregion.AppliedToDimensions.Unit == 'pixel') // TODO: don't know what to do with others just yet
-    {
-      let { W, H } = p.xmpregion.AppliedToDimensions;
-      if (W != p.ImageWidth || H != p.ImageHeight) {
-        // TODO: what should we do when RegionAppliedToDimensions don't match image height and width?
-        logger.warn(`${imageFileName} has different region dimensions! Actual ${p.ImageWidth}x${p.ImageWidth} vs ${W}x${H}`);
-      }
-      try{
-        p.parsedFaces = await faceExtractor.extractFaceRegions(p.uuid, buf, p.xmpregion);
-      } catch(error){
-        throw `ERROR during extractFaceRegions for file: ${sourceFileName}: ${error}`;
-      }
-    }
+    // Step 6: face region extraction - skipped, now handled by ML face recognition (Step 9)
   }
 
   // grab the country code before sending to DB (as DB converts it to JSON string)
   let countryCode = p.geolocation_api_json?.GeolocationCountryCode
+
+  // save xmpregion before DB insert mutates it to a JSON string
+  let xmpregionRaw = p.xmpregion;
   
   // Step 8: Make an entry in db
   await db.insertMetadataRow(p);
@@ -136,6 +124,11 @@ export async function indexFile(collection, sourceFileName, uuid, inPlace){
   // Step 7: Queue reverse geo encoding if GPS coordinates are available and location is in US
   if (p.gps_lat && p.gps_long && countryCode === 'US') {
     enqueueReverseGeoEncoding(p.uuid, p.gps_lat, p.gps_long);
+  }
+
+  // Step 9: Queue face recognition for images
+  if (p.mediatype === 'image') {
+    addToIndexQueue(processFaceRecognition, [p.uuid, p.filename, p.orientation, xmpregionRaw], 'normal');
   }
 
   logger.info(`Indexing of ${sourceFileName} finished in ${fmtTime(performance.now()-fileStart)}`);

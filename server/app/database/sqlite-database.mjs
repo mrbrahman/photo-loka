@@ -36,6 +36,11 @@ if(currentVersion < 2){
   db.pragma("user_version = 2");
 }
 
+if(currentVersion < 3){
+  addFaceRecognitionTables();
+  db.pragma("user_version = 3");
+}
+
 // define a json_patch_agg SQL aggregate function, which is similar to the SQLite provided
 // json_patch function, however this is an aggregate function
 // this is used in merging all exif updates required to be done on a file in 'exif_updates' table
@@ -147,6 +152,58 @@ function initialDbSetup() {
     );
   `)
   var info = stmt.run();
+}
+
+function addFaceRecognitionTables() {
+  logger.info("adding face recognition tables ... ");
+
+  db.prepare(`
+    CREATE TABLE face_recognition (
+      uuid TEXT NOT NULL,                       -- links to metadata table
+      face_idx INTEGER NOT NULL,                -- 0-based index of face within the image
+      person_name TEXT,                         -- final resolved name (input_name || cluster_name)
+      gender TEXT,                              -- M/F
+      age INTEGER,
+      confidence REAL,                          -- face detection confidence (0-1)
+      bbox TEXT,                                -- JSON [x1,y1,x2,y2] pixel coords
+      landmarks TEXT,                           -- JSON {left_eye, right_eye, nose, left_mouth, right_mouth}
+      pose TEXT,                                -- JSON {pitch, yaw, roll}
+      cluster_id TEXT,                          -- unique cluster ID from ML service
+      cluster_name TEXT,                        -- name assigned to this cluster (if any)
+      cluster_confidence REAL,                  -- match confidence to existing cluster
+      cluster_consensus_count INTEGER,          -- how many existing faces agreed on match
+      cluster_reference_image_ids TEXT,         -- JSON array of image IDs of matched faces in cluster
+      cluster_is_new INTEGER,                   -- 1 if this face started a new cluster
+      cluster_centroid TEXT,                    -- JSON [x, y] normalized centroid of face in image
+      input_face_matched INTEGER,               -- 1 if detected face matched an XMP region
+      input_face_name TEXT,                     -- name from XMP region
+      input_face_confidence REAL,               -- centroid distance match confidence
+      input_face_match_strategy TEXT,           -- e.g. 'centroid_distance'
+      input_face_bbox TEXT,                     -- JSON [x1,y1,x2,y2] original XMP region in pixels
+      input_face_centroid TEXT,                 -- JSON [x, y] original XMP centroid (normalized)
+      name_mismatch INTEGER,                    -- 1 if cluster name differs from XMP input name
+      created_tm TEXT DEFAULT (datetime('now','localtime')),
+      PRIMARY KEY (uuid, face_idx)
+    )
+  `).run();
+
+  db.prepare('CREATE INDEX idx_face_recog_person ON face_recognition(person_name)').run();
+  db.prepare('CREATE INDEX idx_face_recog_cluster ON face_recognition(cluster_id)').run();
+
+  db.prepare(`
+    CREATE TABLE face_recognition_unmatched (
+      uuid TEXT NOT NULL,                       -- links to metadata table
+      face_idx INTEGER NOT NULL,                -- 0-based index within unmatched list
+      name TEXT,                                -- name from XMP region that couldn't be matched
+      x REAL,                                   -- normalized x coordinate
+      y REAL,                                   -- normalized y coordinate
+      w REAL,                                   -- normalized width
+      h REAL,                                   -- normalized height
+      centroid TEXT,                             -- JSON [x, y] normalized centroid
+      created_tm TEXT DEFAULT (datetime('now','localtime')),
+      PRIMARY KEY (uuid, face_idx)
+    )
+  `).run();
 }
 
 function addAuthenticationTables() {

@@ -32,7 +32,7 @@ export async function indexCollection(collection_id, firstTime=false){
     if(files['added'].length > 0){
       bulkAddToIndexQueue(
         files['added'].map(f=>{
-          return [indexFile, [c, f, null, true]];
+          return [indexFile, [c, f, null, true], 'high'];
         })
       );
     }
@@ -40,7 +40,7 @@ export async function indexCollection(collection_id, firstTime=false){
     if(files['changed'].length > 0){
       bulkAddToIndexQueue(
         files['changed'].map(f=>{
-          return [indexFile, [c, f.filename, f.uuid, true]];
+          return [indexFile, [c, f.filename, f.uuid, true], 'high'];
         })
       );
     }

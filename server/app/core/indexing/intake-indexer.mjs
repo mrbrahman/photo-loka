@@ -64,7 +64,7 @@ async function enqueueNewFiles(collection, dirPath, staleDays = null) {
       
       bulkAddToIndexQueue(
         pendingFiles.map(f=>{
-          return [indexFile, [collection, f, null, false]];
+          return [indexFile, [collection, f, null, false], 'high'];
         })
       );
     }

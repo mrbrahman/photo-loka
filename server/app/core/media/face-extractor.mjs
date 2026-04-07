@@ -9,6 +9,47 @@ const logger = createLogger(import.meta.url);
 
 let facesDir = config.facesDir;
 
+export async function extractFaceThumbnailsFromML(uuid, imagePath, faces) {
+  let start = performance.now();
+  
+  // Rotate image to display orientation first (ML bbox is in rotated space)
+  const rotatedBuf = await sharp(imagePath, { failOnError: false }).rotate().toBuffer();
+  const { width: imgW, height: imgH } = await sharp(rotatedBuf).metadata();
+
+  let promises = [];
+  for (const face of faces) {
+    const clusterId = face.cluster.cluster_id;
+    const [x1, y1, x2, y2] = face.bbox;
+    const bw = x2 - x1;
+    const bh = y2 - y1;
+
+    // Pad by 40% of max dimension, then square up
+    const pad = Math.max(bw, bh) * 0.4;
+    const cx = (x1 + x2) / 2;
+    const cy = (y1 + y2) / 2;
+    const half = (Math.max(bw, bh) + pad * 2) / 2;
+
+    let left = Math.max(0, Math.floor(cx - half));
+    let top = Math.max(0, Math.floor(cy - half));
+    let right = Math.min(imgW, Math.ceil(cx + half));
+    let bottom = Math.min(imgH, Math.ceil(cy + half));
+
+    let faceDir = path.join(facesDir, clusterId);
+    if (!fs.existsSync(faceDir)) {
+      fs.mkdirSync(faceDir, { recursive: true });
+    }
+
+    promises.push(
+      sharp(rotatedBuf)
+        .extract({ left, top, width: right - left, height: bottom - top })
+        .toFile(path.join(faceDir, `${uuid}.jpg`))
+    );
+  }
+
+  await Promise.all(promises);
+  logger.info(`faces: For ${uuid} extracted ${promises.length} ML face thumbnails in ${fmtTime(performance.now()-start)}`);
+}
+
 export async function extractFaceRegions(uuid, buf, xmpregion) {
   let start = performance.now();
   

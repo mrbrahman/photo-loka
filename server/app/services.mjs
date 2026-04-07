@@ -23,3 +23,5 @@ export * as watcher     from '#jobs/file-watcher-job';
 export * as jobs        from '#jobs/scheduled-indexing-job';
 
 export * as backup      from '#backup/backup-manager';
+
+export * as ml          from '#ml/ml-manager';

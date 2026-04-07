@@ -66,7 +66,7 @@ export function startWatcherForCollection(collection){
         }
 
         logger.info(`watcher: ${file} is added`);
-        addToIndexQueue(indexFile, [collection, file, null, false]);
+        addToIndexQueue(indexFile, [collection, file, null, false], 'high');
       })
     ;
     
