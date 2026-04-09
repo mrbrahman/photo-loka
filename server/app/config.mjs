@@ -58,6 +58,7 @@ config.maxConcurrency = 4;
 
 // ML service
 config.mlServiceUrl = process.env.ML_SERVICE_URL || 'http://localhost:8000';
+config.performFaceRecognition = true;
 
 // TODO: store and and read these from db?
 

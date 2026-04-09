@@ -128,7 +128,11 @@ export async function indexFile(collection, sourceFileName, uuid, inPlace){
 
   // Step 9: Queue face recognition for images
   if (p.mediatype === 'image') {
-    addToIndexQueue(processFaceRecognition, [p.uuid, p.filename, p.orientation, xmpregionRaw], 'normal');
+    if (config.performFaceRecognition) {
+      addToIndexQueue(processFaceRecognition, [p.uuid, p.filename, p.orientation, xmpregionRaw], 'normal');
+    } else {
+      logger.info(`Skipping face recognition as per config for file: ${p.uuid} ${p.filename}`);
+    }
   }
 
   logger.info(`Indexing of ${sourceFileName} finished in ${fmtTime(performance.now()-fileStart)}`);
