@@ -202,41 +202,10 @@
   gap: 12px;
 }
 
-.face-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-}
-
-.face-thumb {
-  width: 58px;
-  height: 58px;
-  border-radius: 50%;
-  object-fit: cover;
-  background: var(--bg-tag);
-}
-
-.face-placeholder {
-  width: 58px;
-  height: 58px;
-  border-radius: 50%;
-  background: var(--bg-tag);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-muted);
-  font-size: 1.2rem;
-}
-
-.face-name {
+.sub-header {
   font-size: var(--font-tertiary);
-  color: var(--text-icon);
-  max-width: 64px;
-  text-align: center;
-  overflow: wrap;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  color: var(--text-muted);
+  margin: 12px 0 6px;
 }
 
 /* Keywords */

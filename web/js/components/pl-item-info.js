@@ -32,6 +32,10 @@ class PlItemInfo extends HTMLElement {
               <sl-icon name="people" class="row-icon"></sl-icon>
               <div class="row-content">
                 <div id="faces-list" class="faces-list"></div>
+                <div id="also-detected" hidden>
+                  <div class="sub-header">Also detected</div>
+                  <div id="unnamed-faces-list" class="faces-list"></div>
+                </div>
               </div>
             </div>
 
@@ -259,30 +263,45 @@ class PlItemInfo extends HTMLElement {
     // People
     let peopleSection = this.shadowRoot.getElementById('people-row');
     let facesList = this.shadowRoot.getElementById('faces-list');
+    let unnamedList = this.shadowRoot.getElementById('unnamed-faces-list');
+    let alsoDetected = this.shadowRoot.getElementById('also-detected');
     facesList.innerHTML = '';
-    let faces = this.#parseFaces(d.faces);
-    if (faces.length > 0) {
+    unnamedList.innerHTML = '';
+
+    let faceDetails = this.#parseFaceDetails(d.face_details);
+    let namedFaces = faceDetails.filter(f => f.person_name);
+    let unnamedFaces = faceDetails.filter(f => !f.person_name);
+
+    if (faceDetails.length > 0) {
       peopleSection.hidden = false;
-      for (let name of faces) {
-        let item = document.createElement('div');
-        item.className = 'face-item';
-
-        let img = Object.assign(document.createElement('img'), {
-          className: 'face-thumb',
-          src: `/api/getFaceThumbnail?uuid=${this.#uuid}&name=${encodeURIComponent(name)}`,
-        });
-        img.onerror = () => {
-          let placeholder = Object.assign(document.createElement('div'), { className: 'face-placeholder' });
-          placeholder.innerHTML = '&#128100;';
-          item.replaceChild(placeholder, img);
-        };
-
-        let label = Object.assign(document.createElement('div'), { className: 'face-name', textContent: name, title: name });
-        item.append(img, label);
-        facesList.appendChild(item);
+      for (let face of namedFaces) {
+        facesList.appendChild(this.#createFaceThumb(face));
+      }
+      if (unnamedFaces.length > 0) {
+        alsoDetected.hidden = false;
+        for (let face of unnamedFaces) {
+          unnamedList.appendChild(this.#createFaceThumb(face));
+        }
+      } else {
+        alsoDetected.hidden = true;
       }
     } else {
-      peopleSection.hidden = true;
+      // Legacy fallback ??? no face_recognition data
+      let faces = this.#parseFaces(d.faces);
+      if (faces.length > 0) {
+        peopleSection.hidden = false;
+        alsoDetected.hidden = true;
+        for (let name of faces) {
+          let el = document.createElement('pl-face-thumb');
+          el.setAttribute('uuid', this.#uuid);
+          el.setAttribute('person-name', name);
+          el.setAttribute('legacy', '');
+          facesList.appendChild(el);
+        }
+      } else {
+        peopleSection.hidden = true;
+        alsoDetected.hidden = true;
+      }
     }
 
     // Keywords
@@ -374,6 +393,43 @@ class PlItemInfo extends HTMLElement {
       if (Array.isArray(parsed)) return parsed.filter(Boolean);
     } catch {}
     return [];
+  }
+
+  #parseFaceDetails(faceDetails) {
+    try {
+      let parsed = typeof faceDetails === 'string' ? JSON.parse(faceDetails) : faceDetails;
+      if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].cluster_id) return parsed;
+    } catch {}
+    return [];
+  }
+
+  #createFaceThumb(face) {
+    let el = document.createElement('pl-face-thumb');
+    el.setAttribute('uuid', this.#uuid);
+    el.setAttribute('cluster-id', face.cluster_id);
+    el.setAttribute('face-idx', face.face_idx);
+    if (face.person_name) el.setAttribute('person-name', face.person_name);
+    el.addEventListener('pl-face-named', () => {
+      // Move from unnamed to named list
+      this.shadowRoot.getElementById('faces-list').appendChild(el);
+      let unnamedList = this.shadowRoot.getElementById('unnamed-faces-list');
+      if (unnamedList.children.length === 0) {
+        this.shadowRoot.getElementById('also-detected').hidden = true;
+      }
+    });
+    el.addEventListener('pl-face-dismissed', () => {
+      el.remove();
+      let unnamedList = this.shadowRoot.getElementById('unnamed-faces-list');
+      if (unnamedList.children.length === 0) {
+        this.shadowRoot.getElementById('also-detected').hidden = true;
+      }
+      // Hide entire people section if no faces left
+      let facesList = this.shadowRoot.getElementById('faces-list');
+      if (facesList.children.length === 0 && unnamedList.children.length === 0) {
+        this.shadowRoot.getElementById('people-row').hidden = true;
+      }
+    });
+    return el;
   }
 
   #parseKeywords(keywords) {

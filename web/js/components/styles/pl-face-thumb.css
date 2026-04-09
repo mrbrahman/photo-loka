@@ -1,0 +1,63 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  position: relative;
+}
+
+#dismiss {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  font-size: 0.65rem;
+  color: var(--text-muted);
+}
+
+#thumb {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--bg-tag);
+}
+
+#placeholder {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: var(--bg-tag);
+  text-align: center;
+  line-height: 58px;
+  color: var(--text-muted);
+  font-size: 1.2rem;
+}
+
+#name {
+  font-size: var(--font-tertiary, 0.7rem);
+  color: var(--text-icon);
+  max-width: 80px;
+  text-align: center;
+  word-wrap: break-word;
+  outline: none;
+  border-radius: 3px;
+  padding: 1px 3px;
+  transition: border-color 0.2s;
+  border: 1px solid transparent;
+}
+
+#name:focus {
+  border-color: var(--border-input-focus);
+  color: var(--text-primary);
+}
+
+.face-name-empty:not(:focus)::before {
+  content: attr(data-placeholder);
+  color: var(--text-placeholder);
+}
+
+.suggestions-popup sl-menu {
+  max-height: 150px;
+  overflow-y: auto;
+  min-width: 120px;
+}
