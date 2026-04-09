@@ -31,3 +31,38 @@ export async function recognizeFaces(uuid, imagePath, orientation, xmpRegions) {
 
   return await response.json();
 }
+
+export async function nameFaceCluster(clusterId, name) {
+  const response = await fetch(`${config.mlServiceUrl}/faces/${clusterId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`ML service error ${response.status}: ${text}`);
+  }
+  return await response.json();
+}
+
+export async function updatePersonName(oldName, newName) {
+  const response = await fetch(`${config.mlServiceUrl}/faces/update-name`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ old_name: oldName, new_name: newName }),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`ML service error ${response.status}: ${text}`);
+  }
+  return await response.json();
+}
+
+export async function getFaceSuggestions(clusterId) {
+  const response = await fetch(`${config.mlServiceUrl}/faces/suggestions?cluster_id=${encodeURIComponent(clusterId)}`);
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`ML service error ${response.status}: ${text}`);
+  }
+  return await response.json();
+}

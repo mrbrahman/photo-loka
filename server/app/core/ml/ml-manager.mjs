@@ -1,4 +1,4 @@
-import { recognizeFaces } from './ml-client.mjs';
+import { recognizeFaces, nameFaceCluster as mlNameCluster, updatePersonName as mlUpdatePersonName, getFaceSuggestions as mlGetFaceSuggestions } from './ml-client.mjs';
 import * as mlDb from './ml-db.mjs';
 import { extractFaceThumbnailsFromML } from '#media/face-extractor';
 import { createLogger } from '#utils/logger';
@@ -40,4 +40,32 @@ export async function getFacesByPerson(personName) {
 
 export async function getUnmatchedByUuid(uuid) {
   return await mlDb.getUnmatchedByUuid(uuid);
+}
+
+export async function nameFaceCluster(clusterId, name) {
+  await mlNameCluster(clusterId, name);
+  const count = await mlDb.nameFaceCluster(clusterId, name);
+  logger.info(`Named cluster ${clusterId} as '${name}', ${count} faces updated`);
+  return count;
+}
+
+export async function updatePersonName(oldName, newName) {
+  await mlUpdatePersonName(oldName, newName);
+  const count = await mlDb.updatePersonName(oldName, newName);
+  logger.info(`Renamed '${oldName}' to '${newName}', ${count} faces updated`);
+  return count;
+}
+
+export async function getFaceSuggestions(clusterId) {
+  return await mlGetFaceSuggestions(clusterId);
+}
+
+export async function dismissCluster(clusterId) {
+  await mlDb.dismissCluster(clusterId);
+  logger.info(`Dismissed cluster ${clusterId}`);
+}
+
+export async function undismissCluster(clusterId) {
+  await mlDb.undismissCluster(clusterId);
+  logger.info(`Undismissed cluster ${clusterId}`);
 }

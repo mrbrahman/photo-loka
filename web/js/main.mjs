@@ -19,6 +19,7 @@ import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/compone
 import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/details/details.js';
 import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/badge/badge.js';
 import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/divider/divider.js';
+import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/popup/popup.js';
 
 
 // Import app components
@@ -34,6 +35,7 @@ import './components/pl-slide.js';
 import './components/pl-slideshow.js';
 import './components/pl-map.js';
 import './components/pl-item-info.js';
+import './components/pl-face-thumb.js';
 import './components/pl-frame-item.js';
 import './components/pl-frame-manager.js';
 

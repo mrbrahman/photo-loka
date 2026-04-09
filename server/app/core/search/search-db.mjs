@@ -209,7 +209,17 @@ export async function getItemInfo(uuid){
       make, model,
       gps_lat, gps_long, gps_alt, geo_address,
       datetime_original, create_date, file_modify_date, file_date,
-      indexed_dt, trashed_dt
+      indexed_dt, trashed_dt,
+      (select json_group_array(json_object(
+        'face_idx', fr.face_idx,
+        'cluster_id', fr.cluster_id,
+        'person_name', fr.person_name,
+        'confidence', fr.confidence,
+        'gender', fr.gender,
+        'age', fr.age
+      )) from face_recognition fr where fr.uuid = metadata.uuid
+        and fr.cluster_id not in (select cluster_id from face_dismissed_clusters)
+      ) as face_details
     from metadata
     where uuid = ?
   `;

@@ -31,7 +31,8 @@ const morganMiddleware = morgan(
   ':method :url :status :response-time ms - q::query b::body',
   {
     skip: (req) => 
-         req.url.includes('/getThumbnail'),
+         req.url.includes('/getThumbnail')
+      || req.url.includes('getFaceThumbnail'),
       // || req.url.includes('/getImage')
       // || req.url.includes('/getVideo')
       // || req.url.includes('/getNext')
@@ -201,12 +202,18 @@ apiRouter.get('/getItemInfo', async function(req,res,next){
 
 apiRouter.get('/getFaceThumbnail', authenticateMediaAccess, async function(req,res,next){
   try {
-    let {uuid, name} = req.query;
-    // Look up cluster_id from face_recognition table
-    let row = await s.ml.getClusterIdByUuidAndName(uuid, name);
-    let filePath = row
-      ? path.join(config.facesDir, row.cluster_id, `${uuid}.jpg`)
-      : path.join(config.facesDir, name, `${uuid}.jpg`); // fallback to legacy name-based path
+    let {uuid, name, cluster_id} = req.query;
+    let filePath;
+    if (cluster_id) {
+      // Direct cluster_id lookup (unnamed faces)
+      filePath = path.join(config.facesDir, cluster_id, `${uuid}.jpg`);
+    } else {
+      // Look up cluster_id from face_recognition table by name
+      let row = await s.ml.getClusterIdByUuidAndName(uuid, name);
+      filePath = row
+        ? path.join(config.facesDir, row.cluster_id, `${uuid}.jpg`)
+        : path.join(config.facesDir, name, `${uuid}.jpg`); // fallback to legacy name-based path
+    }
     if (!fs.existsSync(filePath)) return res.status(404).end();
     res.sendFile(path.resolve(filePath));
   } catch (error) {
@@ -579,6 +586,41 @@ apiRouter.get('/getFaces/:uuid', async function(req,res,next){
 apiRouter.get('/getFacesByPerson', async function(req,res,next){
   try {
     res.json(await s.ml.getFacesByPerson(req.query.name));
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.put('/nameFaceCluster/:clusterId', async function(req,res,next){
+  try {
+    const count = await s.ml.nameFaceCluster(req.params.clusterId, req.body.name);
+    res.json({ success: true, count });
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.put('/updatePersonName', async function(req,res,next){
+  try {
+    const count = await s.ml.updatePersonName(req.body.oldName, req.body.newName);
+    res.json({ success: true, count });
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.get('/faceSuggestions/:clusterId', async function(req,res,next){
+  try {
+    res.json(await s.ml.getFaceSuggestions(req.params.clusterId));
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.put('/dismissFaceCluster/:clusterId', async function(req,res,next){
+  try {
+    await s.ml.dismissCluster(req.params.clusterId);
+    res.json({ success: true });
   } catch (error) {
     next(error);
   }

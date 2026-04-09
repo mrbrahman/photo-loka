@@ -120,3 +120,39 @@ export async function getFacesByPerson(personName) {
 export async function getUnmatchedByUuid(uuid) {
   return await asyncAll(`SELECT * FROM face_recognition_unmatched WHERE uuid = ?`, uuid);
 }
+
+export async function nameFaceCluster(clusterId, name) {
+  const result = await asyncRun(`UPDATE face_recognition SET person_name = ? WHERE cluster_id = ?`, name, clusterId);
+
+  await asyncRun(`
+    UPDATE metadata SET faces = (
+      SELECT json_group_array(person_name)
+      FROM face_recognition
+      WHERE uuid = metadata.uuid AND person_name IS NOT NULL
+    ) WHERE uuid IN (SELECT DISTINCT uuid FROM face_recognition WHERE cluster_id = ?)
+  `, clusterId);
+
+  return result.changes;
+}
+
+export async function updatePersonName(oldName, newName) {
+  const result = await asyncRun(`UPDATE face_recognition SET person_name = ? WHERE person_name = ?`, newName, oldName);
+
+  await asyncRun(`
+    UPDATE metadata SET faces = (
+      SELECT json_group_array(person_name)
+      FROM face_recognition
+      WHERE uuid = metadata.uuid AND person_name IS NOT NULL
+    ) WHERE uuid IN (SELECT DISTINCT uuid FROM face_recognition WHERE person_name = ?)
+  `, newName);
+
+  return result.changes;
+}
+
+export async function dismissCluster(clusterId) {
+  await asyncRun(`INSERT OR IGNORE INTO face_dismissed_clusters (cluster_id) VALUES (?)`, clusterId);
+}
+
+export async function undismissCluster(clusterId) {
+  await asyncRun(`DELETE FROM face_dismissed_clusters WHERE cluster_id = ?`, clusterId);
+}

@@ -56,8 +56,3 @@
   color: var(--text-placeholder);
 }
 
-.suggestions-popup sl-menu {
-  max-height: 150px;
-  overflow-y: auto;
-  min-width: 120px;
-}

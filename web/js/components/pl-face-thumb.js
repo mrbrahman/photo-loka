@@ -100,16 +100,18 @@ class PlFaceThumb extends HTMLElement {
       this.#removeSuggestionsPopup();
 
       let popup = document.createElement('sl-popup');
-      popup.className = 'suggestions-popup';
+      popup.id = 'suggestions';
       popup.anchor = label;
       popup.placement = 'bottom';
       popup.active = true;
+      popup.hoist = true;
       popup.distance = 4;
 
       let menu = document.createElement('sl-menu');
+      menu.style.cssText = 'max-height:150px;overflow-y:auto;min-width:120px;';
       for (let s of suggestions) {
         let menuItem = document.createElement('sl-menu-item');
-        menuItem.textContent = typeof s === 'string' ? s : (s.name || s.cluster_id);
+        menuItem.textContent = s.suggested_name;
         menuItem.addEventListener('click', () => {
           label.textContent = menuItem.textContent;
           this.#removeSuggestionsPopup();
@@ -204,7 +206,7 @@ class PlFaceThumb extends HTMLElement {
   }
 
   #removeSuggestionsPopup() {
-    let existing = this.shadowRoot.querySelector('.suggestions-popup');
+    let existing = this.shadowRoot.getElementById('suggestions');
     if (existing) existing.remove();
   }
 }

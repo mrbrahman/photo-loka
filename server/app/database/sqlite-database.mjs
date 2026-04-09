@@ -41,6 +41,11 @@ if(currentVersion < 3){
   db.pragma("user_version = 3");
 }
 
+if(currentVersion < 4){
+  addFaceDismissedTable();
+  db.pragma("user_version = 4");
+}
+
 // define a json_patch_agg SQL aggregate function, which is similar to the SQLite provided
 // json_patch function, however this is an aggregate function
 // this is used in merging all exif updates required to be done on a file in 'exif_updates' table
@@ -202,6 +207,17 @@ function addFaceRecognitionTables() {
       centroid TEXT,                             -- JSON [x, y] normalized centroid
       created_tm TEXT DEFAULT (datetime('now','localtime')),
       PRIMARY KEY (uuid, face_idx)
+    )
+  `).run();
+}
+
+function addFaceDismissedTable() {
+  logger.info("adding face dismissed clusters table ... ");
+
+  db.prepare(`
+    CREATE TABLE face_dismissed_clusters (
+      cluster_id TEXT PRIMARY KEY,              -- dismissed at cluster level, hides across all images
+      dismissed_tm TEXT DEFAULT (datetime('now','localtime'))
     )
   `).run();
 }
