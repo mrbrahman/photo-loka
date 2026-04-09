@@ -4,8 +4,9 @@ import { basename } from 'path';
 // Usage: const logger = createLogger(import.meta.url);
 const LOG_LEVELS = { error: 0, warn: 1, info: 2, debug: 3, trace: 4 };
 const currentLevel = LOG_LEVELS[process.env.LOG_LEVEL] ?? LOG_LEVELS.info;
-// Colors auto-disable in systemd/pipes to avoid ANSI codes in logs
-const useColors = process.env.NO_COLOR !== '1' && process.stdout.isTTY;
+const useColors = process.env.NO_COLOR !== '1';
+// journalctl adds its own timestamps, so only show ours in TTY
+const ts = () => process.stdout.isTTY ? `${timestamp()} ` : '';
 
 const colors = {
   info: '\x1b[36m',   // cyan
@@ -47,32 +48,32 @@ export function createLogger(fileUrl) {
   return {
     info: (...args) => {
       if (currentLevel >= LOG_LEVELS.info) {
-        const level = useColors ? `${timestamp()} ${colors.info}INFO${colors.reset}` : 'INFO';
-        console.log(`${level}: ${prefix}${getUserPrefix()}`, ...args);
+        const level = useColors ? `${colors.info}INFO${colors.reset}` : 'INFO';
+        console.log(`${ts()}${level}: ${prefix}${getUserPrefix()}`, ...args);
       }
     },
     error: (...args) => {
       if (currentLevel >= LOG_LEVELS.error) {
-        const level = useColors ? `${timestamp()} ${colors.error}ERROR${colors.reset}` : 'ERROR';
-        console.error(`${level}: ${prefix}${getUserPrefix()}`, ...args);
+        const level = useColors ? `${colors.error}ERROR${colors.reset}` : 'ERROR';
+        console.error(`${ts()}${level}: ${prefix}${getUserPrefix()}`, ...args);
       }
     },
     warn: (...args) => {
       if (currentLevel >= LOG_LEVELS.warn) {
-        const level = useColors ? `${timestamp()} ${colors.warn}WARN${colors.reset}` : 'WARN';
-        console.warn(`${level}: ${prefix}${getUserPrefix()}`, ...args);
+        const level = useColors ? `${colors.warn}WARN${colors.reset}` : 'WARN';
+        console.warn(`${ts()}${level}: ${prefix}${getUserPrefix()}`, ...args);
       }
     },
     debug: (...args) => {
       if (currentLevel >= LOG_LEVELS.debug) {
-        const level = useColors ? `${timestamp()} ${colors.debug}DEBUG${colors.reset}` : 'DEBUG';
-        console.log(`${level}: ${prefix}${getUserPrefix()}`, ...args);
+        const level = useColors ? `${colors.debug}DEBUG${colors.reset}` : 'DEBUG';
+        console.log(`${ts()}${level}: ${prefix}${getUserPrefix()}`, ...args);
       }
     },
     trace: (...args) => {
       if (currentLevel >= LOG_LEVELS.trace) {
-        const level = useColors ? `${timestamp()} ${colors.trace}TRACE${colors.reset}` : 'TRACE';
-        console.log(`${level}: ${prefix}${getUserPrefix()}`, ...args);
+        const level = useColors ? `${colors.trace}TRACE${colors.reset}` : 'TRACE';
+        console.log(`${ts()}${level}: ${prefix}${getUserPrefix()}`, ...args);
       }
     }
   };
