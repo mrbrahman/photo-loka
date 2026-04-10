@@ -254,3 +254,5 @@ function addAuthenticationTables() {
   db.prepare('CREATE INDEX idx_refresh_tokens_hash ON refresh_tokens(token_hash)').run();
   db.prepare('CREATE INDEX idx_refresh_tokens_expires ON refresh_tokens(expires_at)').run();
 }
+
+

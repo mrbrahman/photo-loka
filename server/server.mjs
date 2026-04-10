@@ -9,7 +9,7 @@ import morgan from 'morgan';
 import { createLogger } from './app/utils/logger.mjs';
 import { AppError } from './app/utils/app-error.mjs';
 
-import {config} from './app/config.mjs';
+import {config, getRuntimeConfig, updateRuntimeConfig} from '#config';
 import * as s from './app/services.mjs';
 import { authenticateToken, authenticateMediaAccess } from './middleware/authn-middleware.mjs';
 import * as authnService from './app/infrastructure/authn/authn-service.mjs';
@@ -621,6 +621,24 @@ apiRouter.put('/dismissFaceCluster/:clusterId', async function(req,res,next){
   try {
     await s.ml.dismissCluster(req.params.clusterId);
     res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// *****************************************
+// runtime config
+// *****************************************
+
+apiRouter.get('/getConfig', function(req,res){
+  res.json(getRuntimeConfig());
+});
+
+apiRouter.put('/updateConfig', function(req,res,next){
+  try {
+    const {key, value} = req.body;
+    updateRuntimeConfig(key, value);
+    res.json({ key, value: config[key] });
   } catch (error) {
     next(error);
   }

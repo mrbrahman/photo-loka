@@ -1,0 +1,15 @@
+{
+  "startFileWatcherAtStartup": true,
+  "scanFilesForChangesAndIndexAtStartup": false,
+  "filesDeletedThreshold": 5,
+  "enableScheduledIndexing": true,
+  "staleDays": 0,
+  "performVideoCompression": true,
+  "auditFiles": true,
+  "geonamesHourlyLimit": 1000,
+  "geonamesDailyLimit": 10000,
+  "videoEncoder": "libvpx-vp9",
+  "indexerMode": "static",
+  "maxConcurrency": 4,
+  "performFaceRecognition": true
+}

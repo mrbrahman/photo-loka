@@ -1,6 +1,6 @@
 import {EventEmitter} from 'events';
 import { ParallelProcesses } from '#utils/parallel-processes';
-import {config} from '#config';
+import {config, updateRuntimeConfig} from '#config';
 import { createLogger } from '#utils/logger';
 import { fmtTime } from '#utils/time-format';
 import * as systemMonitor from '#infra/system-monitor';
@@ -54,13 +54,8 @@ export function resumeIndexer(){
 
 export function updateIndexerConcurrency(concurrency){
   let c = Number(concurrency)
-  // update indexerQueue
   indexerQueue.maxConcurrency = c;
-
-  // update config
-  config.maxIndexerConcurrency=c;
-
-  // TODO permananet storage?
+  updateRuntimeConfig('maxConcurrency', c);
 }
 
 export const indexerStatus = ()=>indexerQueue.status();
