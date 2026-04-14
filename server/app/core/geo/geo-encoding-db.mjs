@@ -1,9 +1,9 @@
 import { asyncGet, asyncRun } from '#db/db-pool';
 import fs from 'fs';
 import path from 'path';
-import { config } from '#config';
+import { startupConfig } from '#startup-config';
 
-const rateLimitFile = path.join(path.dirname(config.dbFile), 'rate_limit_state.json');
+const rateLimitFile = path.join(path.dirname(startupConfig.dbFile), 'rate_limit_state.json');
 
 export async function findExactGeoMatch(gps_lat, gps_long) {
   return await asyncGet(`

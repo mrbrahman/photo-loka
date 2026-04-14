@@ -3,7 +3,8 @@ import os from 'os';
 import path from 'path';
 import fs from 'fs';
 import {glob} from 'glob';
-import {config} from '#config';
+import {config} from '#runtime-config';
+import {startupConfig} from '#startup-config';
 import {getFileName} from '#indexing/indexer-db';
 import { createLogger } from '#utils/logger';
 import { fmtTime } from '#utils/time-format';
@@ -90,7 +91,7 @@ async function compressVideoWithFFMpeg(uuid, inputVideoPath) {
     : isVP9 ? `${uuid}_2pass_vp9_compressed_video.webm`
     : `${uuid}_compressed_video.${container}`;
   const outputPath = path.join(
-    config.thumbsDir,
+    startupConfig.thumbsDir,
     ...Array.from(uuid).slice(0,3), 
     compressedFileName
   );
@@ -181,7 +182,7 @@ async function compressVideoWithFFMpeg(uuid, inputVideoPath) {
 }
 
 export function deleteCompressedVideo(uuid) {
-  const thumbDir = path.join(config.thumbsDir, ...Array.from(uuid).slice(0,3));
+  const thumbDir = path.join(startupConfig.thumbsDir, ...Array.from(uuid).slice(0,3));
   const patterns = [
     path.join(thumbDir, `${uuid}_2pass_vp9_compressed_video.*`),
     path.join(thumbDir, `${uuid}_2pass_vp8_compressed_video.*`),
@@ -218,7 +219,7 @@ export function streamVideoRange(filePath, start, end) {
 function resolveVideoPath(uuid, filename, quality) {
   if (quality === 'original') return filename;
 
-  const thumbDir = path.join(config.thumbsDir, ...Array.from(uuid).slice(0,3));
+  const thumbDir = path.join(startupConfig.thumbsDir, ...Array.from(uuid).slice(0,3));
 
   const vp9TwoPassFile = path.join(thumbDir, uuid+'_2pass_vp9_compressed_video.webm');
   if (fs.existsSync(vp9TwoPassFile)) return vp9TwoPassFile;

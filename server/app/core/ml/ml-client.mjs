@@ -1,10 +1,10 @@
-import { config } from '#config';
+import { startupConfig } from '#startup-config';
 import { createLogger } from '#utils/logger';
 
 const logger = createLogger(import.meta.url);
 
 export async function recognizeFaces(uuid, imagePath, orientation, xmpRegions) {
-  const url = `${config.mlServiceUrl}/faces/recognize`;
+  const url = `${startupConfig.mlServiceUrl}/faces/recognize`;
 
   const body = {
     image_id: uuid,
@@ -33,7 +33,7 @@ export async function recognizeFaces(uuid, imagePath, orientation, xmpRegions) {
 }
 
 export async function nameFaceCluster(clusterId, name) {
-  const response = await fetch(`${config.mlServiceUrl}/faces/${clusterId}`, {
+  const response = await fetch(`${startupConfig.mlServiceUrl}/faces/${clusterId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
@@ -46,7 +46,7 @@ export async function nameFaceCluster(clusterId, name) {
 }
 
 export async function updatePersonName(oldName, newName) {
-  const response = await fetch(`${config.mlServiceUrl}/faces/update-name`, {
+  const response = await fetch(`${startupConfig.mlServiceUrl}/faces/update-name`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ old_name: oldName, new_name: newName }),
@@ -59,7 +59,7 @@ export async function updatePersonName(oldName, newName) {
 }
 
 export async function getFaceSuggestions(clusterId) {
-  const response = await fetch(`${config.mlServiceUrl}/faces/suggestions?cluster_id=${encodeURIComponent(clusterId)}`);
+  const response = await fetch(`${startupConfig.mlServiceUrl}/faces/suggestions?cluster_id=${encodeURIComponent(clusterId)}`);
   if (!response.ok) {
     const text = await response.text();
     throw new Error(`ML service error ${response.status}: ${text}`);

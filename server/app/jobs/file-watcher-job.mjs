@@ -2,7 +2,6 @@ import * as path from 'path';
 import chokidar from 'chokidar';
 import { createLogger } from '#utils/logger';
 
-import {config} from '#config';
 import {getAllCollections} from '#collections/collection-manager';
 import {addToIndexQueue, ignoreWatcherList} from '#indexing/queue-manager';
 import {indexFile} from '#indexing/file-indexer';

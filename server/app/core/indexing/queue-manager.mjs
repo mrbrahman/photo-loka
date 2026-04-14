@@ -1,6 +1,7 @@
 import {EventEmitter} from 'events';
 import { ParallelProcesses } from '#utils/parallel-processes';
-import {config, updateRuntimeConfig} from '#config';
+import {startupConfig} from '#startup-config';
+import {updateRuntimeConfig} from '#runtime-config';
 import { createLogger } from '#utils/logger';
 import { fmtTime } from '#utils/time-format';
 import * as systemMonitor from '#infra/system-monitor';
@@ -11,13 +12,18 @@ const logger = createLogger(import.meta.url);
 class EmitterClass extends EventEmitter {};
 export const indexerEvents = new EmitterClass();
 
-let indexerQueue = config.indexerMode === 'static'
+// indexerMode comes from startup config (.env) since it determines which queue
+// implementation is created - cannot be changed at runtime.
+// maxConcurrency is not set here - the queue starts with (CPU count - 1) as default.
+// startup-manager.mjs applies the configured maxConcurrency from runtime config
+// before any indexing begins.
+let indexerQueue = startupConfig.indexerMode === 'static'
   ? ParallelProcesses.simple({
-      maxConcurrency: config.maxConcurrency || os.cpus().length-1,
+      maxConcurrency: os.cpus().length-1,
       emitter: indexerEvents
     })
   : ParallelProcesses.dynamic({
-      maxConcurrency: config.maxConcurrency || os.cpus().length-1,
+      maxConcurrency: os.cpus().length-1,
       systemMonitor: systemMonitor,
       emitter: indexerEvents
     });

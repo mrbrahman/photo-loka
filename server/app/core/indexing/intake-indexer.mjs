@@ -7,7 +7,7 @@ import { getCollection, getCollectionByIntakePath } from '#collections/collectio
 import { bulkAddToIndexQueue } from './queue-manager.mjs';
 import { indexFile } from './file-indexer.mjs';
 import { shouldIgnoreFile } from '#utils/file-filters';
-import { config } from '#config';
+import { config } from '#runtime-config';
 
 const logger = createLogger(import.meta.url);
 

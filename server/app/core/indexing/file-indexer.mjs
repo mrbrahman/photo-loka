@@ -14,7 +14,8 @@ import { addToIndexQueue } from './queue-manager.mjs';
 import * as db from './indexer-db.mjs';
 import { enqueue as enqueueReverseGeoEncoding } from '#geo/geo-encoder';
 import { processFaceRecognition } from '#ml/ml-manager';
-import {config} from '#config';
+import {config} from '#runtime-config';
+import {startupConfig} from '#startup-config';
 
 const logger = createLogger(import.meta.url);
 
@@ -86,7 +87,7 @@ export async function indexFile(collection, sourceFileName, uuid, inPlace){
         if(fs.existsSync(preCompressedWebm)){
           // Move pre-compressed webm to thumbnail directory
           const thumbsDir = path.join(
-            config.thumbsDir,
+            startupConfig.thumbsDir,
             ...Array.from(p.uuid).slice(0,3),
             `${p.uuid}_compressed_video.webm`
           );

@@ -5,7 +5,7 @@ import { spawn } from 'child_process';
 import { createLogger } from '#utils/logger';
 import { fmtTime } from '#utils/time-format';
 
-import {config} from '#config';
+import {startupConfig} from '#startup-config';
 import * as db from '#indexing/indexer-db';
 
 const logger = createLogger(import.meta.url);
@@ -21,7 +21,7 @@ const sizes = [
   {width: 50,  height: 50,  fit: 'cover', suffix: 'center'}
 ];
 
-let thumbsDir = config.thumbsDir;
+let thumbsDir = startupConfig.thumbsDir;
 
 // Note Samsung phones have issue, which needs {failOnError: true}
 // when reading the image / buffer with sharp

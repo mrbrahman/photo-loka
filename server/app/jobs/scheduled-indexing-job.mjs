@@ -1,5 +1,5 @@
 import { addJob, deleteJob } from '#infra/scheduler';
-import { config } from '#config';
+import { config } from '#runtime-config';
 import { startIntakeFileIndexing } from '#indexing/intake-indexer';
 import { getAllCollections } from '#collections/collection-manager';
 import { indexerStatus } from '#indexing/queue-manager';

@@ -9,7 +9,7 @@ import { AppError } from '#utils/app-error';
 import dateformat from 'dateformat';
 
 import * as db from './indexer-db.mjs';
-import { config } from '#config';
+import { config } from '#runtime-config';
 
 const logger = createLogger(import.meta.url);
 

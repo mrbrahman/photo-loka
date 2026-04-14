@@ -1,4 +1,4 @@
-import { config } from '#config';
+import { config } from '#runtime-config';
 import { saveRateLimitCounters, loadRateLimitCounters } from './geo-encoding-db.mjs';
 
 // Rate limiting for geonames API

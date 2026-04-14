@@ -1,13 +1,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import {default as sharp} from 'sharp';
-import {config} from '#config';
+import {startupConfig} from '#startup-config';
 import { createLogger } from '#utils/logger';
 import { fmtTime } from '#utils/time-format';
 
 const logger = createLogger(import.meta.url);
 
-let facesDir = config.facesDir;
+let facesDir = startupConfig.facesDir;
 
 export async function extractFaceThumbnailsFromML(uuid, imagePath, faces) {
   let start = performance.now();

@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import { config } from '#config';
+import { startupConfig } from '#startup-config';
 import { createLogger } from '#utils/logger';
 import * as authnDb from './authn-db.mjs';
 
@@ -101,7 +101,7 @@ export function logout(refreshToken) {
 
 export function verifyAccessToken(token) {
   try {
-    return jwt.verify(token, config.jwtSecret);
+    return jwt.verify(token, startupConfig.jwtSecret);
   } catch (error) {
     throw new AppError('Invalid or expired access token', 'INVALID_TOKEN', 'INVALID_TOKEN', 401);
   }
@@ -134,7 +134,7 @@ export function generateApiToken(username, expiresInDays = 365) {
   
   const token = jwt.sign(
     { userId: user.user_id, username: user.username, role: user.role },
-    config.jwtSecret,
+    startupConfig.jwtSecret,
     { expiresIn: `${expiresInDays}d` }
   );
   
@@ -145,7 +145,7 @@ export function generateApiToken(username, expiresInDays = 365) {
 function generateAccessToken(user) {
   return jwt.sign(
     { userId: user.user_id, username: user.username, role: user.role },
-    config.jwtSecret,
+    startupConfig.jwtSecret,
     { expiresIn: ACCESS_TOKEN_EXPIRY }
   );
 }

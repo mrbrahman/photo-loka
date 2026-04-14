@@ -9,7 +9,8 @@ import morgan from 'morgan';
 import { createLogger } from './app/utils/logger.mjs';
 import { AppError } from './app/utils/app-error.mjs';
 
-import {config, getRuntimeConfig, updateRuntimeConfig} from '#config';
+import {startupConfig} from '#startup-config';
+import {config, getRuntimeConfig, updateRuntimeConfig} from '#runtime-config';
 import * as s from './app/services.mjs';
 import { authenticateToken, authenticateMediaAccess } from './middleware/authn-middleware.mjs';
 import * as authnService from './app/infrastructure/authn/authn-service.mjs';
@@ -128,7 +129,7 @@ apiRouter.get('/getThumbnail', authenticateMediaAccess, function(req,res){
   let thumbHeight = [100, 250, 500].filter(x=> x >= height)[0] || 500;
 
   // console.log(`inputs: uuid ${uuid} height ${height}`)
-  let fileName = path.join(config.thumbsDir, ...Array.from(uuid).slice(0,3), `${uuid}_${thumbHeight}_fit.jpg`);
+  let fileName = path.join(startupConfig.thumbsDir, ...Array.from(uuid).slice(0,3), `${uuid}_${thumbHeight}_fit.jpg`);
   // console.log(`getting thumbnail: ${fileName}`)
   res.sendFile(fileName);
 });
@@ -206,13 +207,13 @@ apiRouter.get('/getFaceThumbnail', authenticateMediaAccess, async function(req,r
     let filePath;
     if (cluster_id) {
       // Direct cluster_id lookup (unnamed faces)
-      filePath = path.join(config.facesDir, cluster_id, `${uuid}.jpg`);
+      filePath = path.join(startupConfig.facesDir, cluster_id, `${uuid}.jpg`);
     } else {
       // Look up cluster_id from face_recognition table by name
       let row = await s.ml.getClusterIdByUuidAndName(uuid, name);
       filePath = row
-        ? path.join(config.facesDir, row.cluster_id, `${uuid}.jpg`)
-        : path.join(config.facesDir, name, `${uuid}.jpg`); // fallback to legacy name-based path
+        ? path.join(startupConfig.facesDir, row.cluster_id, `${uuid}.jpg`)
+        : path.join(startupConfig.facesDir, name, `${uuid}.jpg`); // fallback to legacy name-based path
     }
     if (!fs.existsSync(filePath)) return res.status(404).end();
     res.sendFile(path.resolve(filePath));

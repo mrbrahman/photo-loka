@@ -42,7 +42,8 @@
   },
   "type": "module",
   "imports": {
-    "#config": "./app/config.mjs",
+    "#startup-config": "./app/startup-config.mjs",
+    "#runtime-config": "./app/runtime-config.mjs",
     "#services": "./app/services.mjs",
     "#utils/*": "./app/utils/*.mjs",
     "#authn/*": "./app/infrastructure/authn/*.mjs",

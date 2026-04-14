@@ -3,14 +3,14 @@ import path from 'path';
 import Database from 'better-sqlite3';
 import { createLogger } from '#utils/logger';
 
-import {config} from '#config';
+import {startupConfig} from '#startup-config';
 
 const logger = createLogger(import.meta.url);
 
 // TODO: configure this to run on worker threads (is it needed after PRAGMA statements below?)
 // https://github.com/JoshuaWise/better-sqlite3/blob/master/docs/threads.md
 
-const dbFile = config.dbFile;
+const dbFile = startupConfig.dbFile;
 
 if(!fs.existsSync(path.dirname(dbFile))){
   fs.mkdirSync(path.dirname(dbFile), {recursive: true});

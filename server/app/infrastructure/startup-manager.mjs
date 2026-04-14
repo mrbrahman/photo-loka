@@ -1,4 +1,5 @@
-import { config } from '#config';
+import { config } from '#runtime-config';
+import { startupConfig } from '#startup-config';
 import { createLogger } from '#utils/logger';
 
 import { getAllCollections } from '#collections/collection-manager';
@@ -9,6 +10,7 @@ import { scheduleFrameJobs } from '#jobs/frame-jobs';
 import { loadAllFrames } from '#frame/frame-manager';
 import * as systemMonitor from '#infra/system-monitor';
 import { scheduleTokenCleanup } from '#jobs/token-cleanup-job';
+import { updateIndexerConcurrency } from '#indexing/queue-manager';
 
 const logger = createLogger(import.meta.url);
 
@@ -19,7 +21,11 @@ export async function startUpActivities(){
   }
 
   // Start system load monitoring (only needed for dynamic indexer mode)
-  if(config.indexerMode === 'dynamic') systemMonitor.start();
+  if(startupConfig.indexerMode === 'dynamic') systemMonitor.start();
+
+  // Apply maxConcurrency from runtime config to the indexer queue
+  // (queue is created at module load time with a CPU-based default)
+  if(config.maxConcurrency) updateIndexerConcurrency(config.maxConcurrency);
 
   // setup watch during start-up
   if(config.startFileWatcherAtStartup){

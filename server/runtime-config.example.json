@@ -9,7 +9,6 @@
   "geonamesHourlyLimit": 1000,
   "geonamesDailyLimit": 10000,
   "videoEncoder": "libvpx-vp9",
-  "indexerMode": "static",
   "maxConcurrency": 4,
   "performFaceRecognition": true
 }
