@@ -286,22 +286,8 @@ class PlItemInfo extends HTMLElement {
         alsoDetected.hidden = true;
       }
     } else {
-      // Legacy fallback ??? no face_recognition data
-      let faces = this.#parseFaces(d.faces);
-      if (faces.length > 0) {
-        peopleSection.hidden = false;
-        alsoDetected.hidden = true;
-        for (let name of faces) {
-          let el = document.createElement('pl-face-thumb');
-          el.setAttribute('uuid', this.#uuid);
-          el.setAttribute('person-name', name);
-          el.setAttribute('legacy', '');
-          facesList.appendChild(el);
-        }
-      } else {
-        peopleSection.hidden = true;
-        alsoDetected.hidden = true;
-      }
+      peopleSection.hidden = true;
+      alsoDetected.hidden = true;
     }
 
     // Keywords
@@ -385,14 +371,6 @@ class PlItemInfo extends HTMLElement {
       status.className = 'field-status error';
       notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
     }
-  }
-
-  #parseFaces(faces) {
-    try {
-      let parsed = typeof faces === 'string' ? JSON.parse(faces) : faces;
-      if (Array.isArray(parsed)) return parsed.filter(Boolean);
-    } catch {}
-    return [];
   }
 
   #parseFaceDetails(faceDetails) {

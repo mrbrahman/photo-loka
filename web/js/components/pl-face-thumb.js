@@ -4,9 +4,9 @@ import {authenticatedFetch} from '../authn.mjs';
 import sheet from "./styles/pl-face-thumb.css" with { type: "css" };
 
 class PlFaceThumb extends HTMLElement {
-  #personName; #clusterId; #uuid; #faceIdx; #legacy;
+  #personName; #clusterId; #uuid; #faceIdx;
 
-  static get observedAttributes() { return ['uuid', 'cluster-id', 'person-name', 'face-idx', 'legacy']; }
+  static get observedAttributes() { return ['uuid', 'cluster-id', 'person-name', 'face-idx']; }
 
   static template = document.createElement('template');
   static {
@@ -32,23 +32,22 @@ class PlFaceThumb extends HTMLElement {
       img.hidden = true;
       this.shadowRoot.getElementById('placeholder').hidden = false;
     };
+    img.src = `/api/getFaceThumbnail?uuid=${this.#uuid}&cluster_id=${encodeURIComponent(this.#clusterId)}`;
 
     let label = this.shadowRoot.getElementById('name');
     let dismissBtn = this.shadowRoot.getElementById('dismiss');
 
-    if (!this.#legacy) {
-      label.contentEditable = 'true';
-      label.spellcheck = false;
-      label.addEventListener('focus', () => this.#onFocus(label));
-      label.addEventListener('blur', () => this.#onBlur(label));
-      label.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); label.blur(); }
-        if (e.key === 'Escape') { label.textContent = this.#personName || ''; label.blur(); }
-      });
-      dismissBtn.addEventListener('click', (e) => { e.stopPropagation(); this.#onDismiss(); });
-    }
+    label.contentEditable = 'true';
+    label.spellcheck = false;
+    label.addEventListener('focus', () => this.#onFocus(label));
+    label.addEventListener('blur', () => this.#onBlur(label));
+    label.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); label.blur(); }
+      if (e.key === 'Escape') { label.textContent = this.#personName || ''; label.blur(); }
+    });
+    dismissBtn.addEventListener('click', (e) => { e.stopPropagation(); this.#onDismiss(); });
 
-    this.#update();
+    this.#updateName();
   }
 
   attributeChangedCallback(name, oldVal, newVal) {
@@ -58,25 +57,17 @@ class PlFaceThumb extends HTMLElement {
       case 'cluster-id': this.#clusterId = newVal; break;
       case 'person-name': this.#personName = newVal; break;
       case 'face-idx': this.#faceIdx = newVal; break;
-      case 'legacy': this.#legacy = this.hasAttribute('legacy'); break;
     }
-    if (this.isConnected) this.#update();
+    if (name === 'person-name' && this.isConnected) this.#updateName();
   }
 
-  #update() {
-    let img = this.shadowRoot.getElementById('thumb');
-    if (!img) return;
-
-    img.src = this.#personName
-      ? `/api/getFaceThumbnail?uuid=${this.#uuid}&name=${encodeURIComponent(this.#personName)}`
-      : `/api/getFaceThumbnail?uuid=${this.#uuid}&cluster_id=${encodeURIComponent(this.#clusterId)}`;
-    img.hidden = false;
-    this.shadowRoot.getElementById('placeholder').hidden = true;
-
+  #updateName() {
     let label = this.shadowRoot.getElementById('name');
+    if (!label) return;
+
     label.textContent = this.#personName || '';
     label.title = this.#personName || 'Click to name';
-    if (!this.#personName && !this.#legacy) {
+    if (!this.#personName) {
       label.dataset.placeholder = 'Name...';
       label.classList.add('face-name-empty');
     } else {
@@ -84,8 +75,8 @@ class PlFaceThumb extends HTMLElement {
       label.classList.remove('face-name-empty');
     }
 
-    // Show dismiss only for unnamed, non-legacy faces
-    this.shadowRoot.getElementById('dismiss').hidden = !!(this.#personName || this.#legacy);
+    // Show dismiss only for unnamed faces
+    this.shadowRoot.getElementById('dismiss').hidden = !!this.#personName;
   }
 
   async #onFocus(label) {

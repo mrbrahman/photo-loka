@@ -202,18 +202,8 @@ apiRouter.get('/getItemInfo', async function(req,res,next){
 
 apiRouter.get('/getFaceThumbnail', authenticateMediaAccess, async function(req,res,next){
   try {
-    let {uuid, name, cluster_id} = req.query;
-    let filePath;
-    if (cluster_id) {
-      // Direct cluster_id lookup (unnamed faces)
-      filePath = path.join(startupConfig.facesDir, cluster_id, `${uuid}.jpg`);
-    } else {
-      // Look up cluster_id from face_recognition table by name
-      let row = await s.ml.getClusterIdByUuidAndName(uuid, name);
-      filePath = row
-        ? path.join(startupConfig.facesDir, row.cluster_id, `${uuid}.jpg`)
-        : path.join(startupConfig.facesDir, name, `${uuid}.jpg`); // fallback to legacy name-based path
-    }
+    let {uuid, cluster_id} = req.query;
+    let filePath = path.join(startupConfig.facesDir, cluster_id, `${uuid}.jpg`);
     if (!fs.existsSync(filePath)) return res.status(404).end();
     res.sendFile(path.resolve(filePath));
   } catch (error) {
