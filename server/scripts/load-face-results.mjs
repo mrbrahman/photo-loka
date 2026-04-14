@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import * as fs from 'fs';
 import { db } from '../app/database/sqlite-database.mjs';
 import { extractFaceThumbnailsFromML } from '../app/core/media/face-extractor.mjs';

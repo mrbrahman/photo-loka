@@ -181,7 +181,7 @@ TODO - sync timestamps on +2 level folders
 - **Start server**
   ```bash
   cd rewind-replay/server
-  node server.mjs
+  node --env-file=.env server.mjs
   ```
 
 - **Setup Collection & Start Indexing**

@@ -2,7 +2,7 @@ import { ParallelProcesses } from '#utils/parallel-processes';
 import { findExactGeoMatch, findProximityGeoMatch, updateGeoAddress, updateGeonamesData, updateGeoEncodingStatus } from './geo-encoding-db.mjs';
 import { checkGeonamesRateLimit, incrementCounters } from './rate-limiter.mjs';
 import { createLogger } from '#utils/logger';
-import 'dotenv/config';
+import { startupConfig } from '#startup-config';
 
 const logger = createLogger(import.meta.url);
 
@@ -63,7 +63,7 @@ export async function performReverseGeoEncoding(uuid, gps_lat, gps_long) {
 }
 
 async function lookupGeonames(uuid, gps_lat, gps_long) {
-  const url = `http://api.geonames.org/findNearestAddressJSON?lat=${gps_lat}&lng=${gps_long}&username=${process.env.GEONAMES_USERNAME}`;
+  const url = `http://api.geonames.org/findNearestAddressJSON?lat=${gps_lat}&lng=${gps_long}&username=${startupConfig.geonamesUsername}`;
   logger.info(`API lookup for ${uuid}: ${url}`);
   
   try {

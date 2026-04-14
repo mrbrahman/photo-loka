@@ -16,7 +16,7 @@ const logger = createLogger(import.meta.url);
 
 export async function startUpActivities(){
   // Check if geonames username is configured
-  if (!process.env.GEONAMES_USERNAME) {
+  if (!startupConfig.geonamesUsername) {
     throw new Error('GEONAMES_USERNAME environment variable is required but not set');
   }
 

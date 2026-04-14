@@ -1,10 +1,11 @@
 import { basename } from 'path';
+import { startupConfig } from '#startup-config';
 
 // Simple logger with filename prefixes and optional colors
 // Usage: const logger = createLogger(import.meta.url);
 const LOG_LEVELS = { error: 0, warn: 1, info: 2, debug: 3, trace: 4 };
-const currentLevel = LOG_LEVELS[process.env.LOG_LEVEL] ?? LOG_LEVELS.info;
-const useColors = process.env.NO_COLOR !== '1';
+const currentLevel = LOG_LEVELS[startupConfig.logLevel];
+const useColors = !startupConfig.noColor;
 // journalctl adds its own timestamps, so only show ours in TTY
 const ts = () => process.stdout.isTTY ? `${timestamp()} ` : '';
 

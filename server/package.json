@@ -4,10 +4,10 @@
   "description": "Relive every (captured) moment!",
   "main": "index.js",
   "scripts": {
-    "start": "nodemon --ignore ./data --ignore ./public server.mjs",
-    "create-user": "node scripts/create-user.mjs",
-    "unlock-user": "node scripts/unlock-user.mjs",
-    "generate-token": "node scripts/generate-token.mjs"
+    "start": "nodemon --ignore ./data --ignore ./public -- --env-file=.env server.mjs",
+    "create-user": "node --env-file=.env scripts/create-user.mjs",
+    "unlock-user": "node --env-file=.env scripts/unlock-user.mjs",
+    "generate-token": "node --env-file=.env scripts/generate-token.mjs"
   },
   "keywords": [
     "photos",
@@ -24,7 +24,6 @@
     "compression": "^1.7.4",
     "cookie-parser": "^1.4.6",
     "dateformat": "^5.0.2",
-    "dotenv": "^16.4.5",
     "exiftool-vendored": "^28.2.0",
     "express": "^4.17.1",
     "fdir": "^6.5.0",

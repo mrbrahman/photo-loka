@@ -34,4 +34,14 @@ startupConfig.mlServiceUrl = process.env.ML_SERVICE_URL || 'http://localhost:800
 // Cannot be changed at runtime.
 startupConfig.indexerMode = process.env.INDEXER_MODE || 'static';
 
+// geonames
+startupConfig.geonamesUsername = process.env.GEONAMES_USERNAME;
+
+// logger
+startupConfig.logLevel = process.env.LOG_LEVEL || 'info';
+startupConfig.noColor = process.env.NO_COLOR === '1';
+
+// node environment
+startupConfig.nodeEnv = process.env.NODE_ENV;
+
 export { startupConfig };

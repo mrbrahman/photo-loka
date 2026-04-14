@@ -1,6 +1,5 @@
 import * as path from 'path';
 import * as fs from 'fs';
-import 'dotenv/config';
 
 import express from 'express';
 import cookieParser from 'cookie-parser';
@@ -59,7 +58,7 @@ authnRouter.post('/login', async function(req, res, next) {
     
     res.cookie('refreshToken', result.refreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: startupConfig.nodeEnv === 'production',
       sameSite: 'strict',
       maxAge: 30 * 24 * 60 * 60 * 1000
     });
@@ -81,7 +80,7 @@ authnRouter.post('/refresh', async function(req, res, next) {
     
     res.cookie('refreshToken', result.refreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: startupConfig.nodeEnv === 'production',
       sameSite: 'strict',
       maxAge: 30 * 24 * 60 * 60 * 1000
     });

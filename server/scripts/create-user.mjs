@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import { createUser } from '../app/infrastructure/authn/authn-service.mjs';
 
 const args = process.argv.slice(2);
