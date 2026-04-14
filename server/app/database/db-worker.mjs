@@ -6,6 +6,7 @@ import {startupConfig} from '#startup-config';
 const dbFile = startupConfig.dbFile;
 // Each worker will open a separate `sqlite3` connection
 const db = new Database(dbFile, {  }); // verbose: console.log
+db.pragma("busy_timeout = 5000");
 
 const preparedStatements = new Map();
 

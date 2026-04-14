@@ -21,6 +21,7 @@ export const db = new Database(dbFile, {  }); // verbose: console.log
 // found at https://stackoverflow.com/a/27290180/8098748
 db.pragma("journal_mode = WAL");
 db.pragma("synchronous = NORMAL");
+db.pragma("busy_timeout = 5000");
 
 // install schema as needed (based on 'user_version')
 
