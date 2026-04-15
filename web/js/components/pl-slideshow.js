@@ -118,7 +118,11 @@ class PlSlideshow extends HTMLElement {
 
     window.addEventListener('keydown', this.#handleRightArrow);
     window.addEventListener('keydown', this.#handleLeftArrow);
-    window.addEventListener('keyup', this.#handleSlideshowEscape);
+    // Convention: use keydown (not keyup) for action keys (Escape, Enter, arrows).
+    // keydown fires immediately and stopPropagation works reliably - with keyup,
+    // if a keydown handler blurs the element, keyup fires from a different target,
+    // bypassing any stopPropagation on the original element.
+    window.addEventListener('keydown', this.#handleSlideshowEscape);
 
     // conditionally enable keyboard nav
     if(!this.shadowRoot.getElementById('slides').querySelector('[data-pos="-1"]')){
@@ -436,7 +440,7 @@ class PlSlideshow extends HTMLElement {
   disconnectedCallback() {
     window.removeEventListener('keydown', this.#handleRightArrow);
     window.removeEventListener('keydown', this.#handleLeftArrow);
-    window.removeEventListener('keyup', this.#handleSlideshowEscape);
+    window.removeEventListener('keydown', this.#handleSlideshowEscape);
   }
 
   attributeChangedCallback(name, oldVal, newVal) {

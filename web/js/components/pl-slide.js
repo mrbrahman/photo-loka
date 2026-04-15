@@ -73,7 +73,10 @@ class PlSlide extends HTMLElement {
       }));
     });
 
-    // Escape closes info panel
+    // Convention: use keydown (not keyup) for action keys (Escape, Enter, arrows).
+    // keydown fires immediately and stopPropagation works reliably - with keyup,
+    // if a keydown handler blurs the element, keyup fires from a different target,
+    // bypassing any stopPropagation on the original element.
     this.#handleEscape = (e) => {
       if (e.key === 'Escape' && this.#infoPanelOpen) {
         e.stopImmediatePropagation();
@@ -84,7 +87,7 @@ class PlSlide extends HTMLElement {
         }));
       }
     };
-    window.addEventListener('keyup', this.#handleEscape);
+    window.addEventListener('keydown', this.#handleEscape);
 
     // Listen for description updates
     this.addEventListener('pl-item-desc-updated', (evt) => {
@@ -97,7 +100,7 @@ class PlSlide extends HTMLElement {
   }
 
   disconnectedCallback() {
-    if (this.#handleEscape) window.removeEventListener('keyup', this.#handleEscape);
+    if (this.#handleEscape) window.removeEventListener('keydown', this.#handleEscape);
     this.removeEventListener('touchstart', this.#handleTouchStart);
     this.removeEventListener('touchend', this.#handleTouchEnd);
   }

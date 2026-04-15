@@ -15,7 +15,8 @@ class PlFaceThumb extends HTMLElement {
       <sl-icon-button id="dismiss" name="x-lg"></sl-icon-button>
       <img id="thumb" />
       <div id="placeholder" hidden>&#128100;</div>
-      <div id="name" contenteditable spellcheck="false"></div>
+      <input id="name" list="suggestions" placeholder="Name..." autocomplete="off" />
+      <datalist id="suggestions"></datalist>
     `;
   }
 
@@ -41,25 +42,19 @@ class PlFaceThumb extends HTMLElement {
     };
     img.src = `/api/getFaceThumbnail?uuid=${this.#uuid}&cluster_id=${encodeURIComponent(this.#clusterId)}`;
 
-    let label = this.shadowRoot.getElementById('name');
+    let input = this.shadowRoot.getElementById('name');
+    let datalist = this.shadowRoot.getElementById('suggestions');
     let dismissBtn = this.shadowRoot.getElementById('dismiss');
 
-    label.addEventListener('focus', () => {
-      // Place caret inside the contentEditable div (needed when clicking on ::before placeholder)
-      let sel = this.shadowRoot.getSelection?.() || document.getSelection();
-      if (sel && label.childNodes.length === 0) {
-        let range = document.createRange();
-        range.setStart(label, 0);
-        range.collapse(true);
-        sel.removeAllRanges();
-        sel.addRange(range);
-      }
-      this.#onFocus(label);
-    });
-    label.addEventListener('blur', () => this.#onBlur(label));
-    label.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); label.blur(); }
-      if (e.key === 'Escape') { label.textContent = this.#personName || ''; label.blur(); }
+    input.addEventListener('focus', () => this.#fetchSuggestion(datalist));
+    input.addEventListener('blur', () => this.#onBlur(input));
+    // Convention: use keydown (not keyup) for action keys (Escape, Enter, arrows).
+    // keydown fires immediately and stopPropagation works reliably - with keyup,
+    // if a keydown handler blurs the element, keyup fires from a different target,
+    // bypassing any stopPropagation on the original element.
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+      if (e.key === 'Escape') { e.stopPropagation(); input.value = this.#personName || ''; input.blur(); }
     });
     dismissBtn.addEventListener('click', (e) => { e.stopPropagation(); this.#onDismiss(); });
 
@@ -78,94 +73,38 @@ class PlFaceThumb extends HTMLElement {
   }
 
   #updateName() {
-    let label = this.shadowRoot.getElementById('name');
-    if (!label) return;
+    let input = this.shadowRoot.getElementById('name');
+    if (!input) return;
 
-    label.textContent = this.#personName || '';
-    label.title = this.#personName || 'Click to name';
-    if (!this.#personName) {
-      label.dataset.placeholder = 'Name...';
-      label.classList.add('face-name-empty');
-    } else {
-      delete label.dataset.placeholder;
-      label.classList.remove('face-name-empty');
-    }
+    input.value = this.#personName || '';
+    input.title = this.#personName || 'Click to name';
 
     // Show dismiss only for unnamed faces
     this.shadowRoot.getElementById('dismiss').hidden = !!this.#personName;
   }
 
-  async #onFocus(label) {
+  async #fetchSuggestion(datalist) {
     if (!this.#clusterId) return;
     try {
       let res = await authenticatedFetch(`/api/faceSuggestions/${encodeURIComponent(this.#clusterId)}`);
       if (!res.ok) return;
       let data = await res.json();
       let suggestions = data.suggestions || [];
-      if (suggestions.length === 0) return;
-
-      this.#removeSuggestionsPopup();
-
-      let popup = Object.assign(document.createElement('sl-popup'), {
-        id: 'suggestions',
-        anchor: label,
-        placement: 'bottom',
-        active: true,
-        distance: 4,
-        // sl-popup defaults to strategy="absolute", which positions relative to the
-        // offset parent (the :host with position:relative). This causes the popup to
-        // be clipped by sibling face-thumb elements in the next row due to stacking
-        // context. strategy="fixed" positions relative to the viewport, avoiding this.
-        // Note: sl-popup (v2.15.1) does not have a "hoist" property - that exists on
-        // other Shoelace components like sl-select/sl-dropdown.
-        strategy: 'fixed',
-      });
-
-      let menu = document.createElement('sl-menu');
-      menu.style.cssText = 'max-height:150px;overflow-y:auto;min-width:120px;';
-      // The name label uses contentEditable, which means any click outside it
-      // triggers blur. When the user moves the mouse from the label to this
-      // suggestions menu, the label would lose focus, firing #onBlur which
-      // removes the popup before the click registers.
-      //
-      // Alternatives considered:
-      //   - Appending popup inside the contentEditable div -> menu text becomes
-      //     part of the editable content, corrupting textContent reads
-      //   - Wrapping both in a container -> popup is still a sibling, so clicking
-      //     it still causes the contentEditable to blur
-      //   - Using a flag set on mousedown -> works but fragile and harder to follow
-      //
-      // preventDefault on mousedown is the cleanest fix: it stops the browser from
-      // moving focus away from the label, while still allowing the click event to
-      // fire normally on the menu item.
-      menu.addEventListener('mousedown', (e) => e.preventDefault());
+      datalist.innerHTML = '';
       for (let s of suggestions) {
-        let menuItem = document.createElement('sl-menu-item');
-        menuItem.textContent = s.suggested_name;
-        menuItem.addEventListener('click', () => {
-          label.textContent = menuItem.textContent;
-          this.#removeSuggestionsPopup();
-          label.blur();
-        });
-        menu.appendChild(menuItem);
+        datalist.appendChild(Object.assign(document.createElement('option'), { value: s.suggested_name }));
       }
-
-      popup.appendChild(menu);
-      this.shadowRoot.appendChild(popup);
     } catch (err) {
       // Suggestions are best-effort
     }
   }
 
-  async #onBlur(label) {
-    this.#removeSuggestionsPopup();
-
-    let newName = label.textContent.trim();
+  async #onBlur(input) {
+    let newName = input.value.trim();
     let oldName = this.#personName || '';
 
     if (!newName || newName === oldName) {
-      label.textContent = oldName;
-      if (!oldName) label.classList.add('face-name-empty');
+      input.value = oldName;
       return;
     }
 
@@ -204,8 +143,7 @@ class PlFaceThumb extends HTMLElement {
       }
 
     } catch (err) {
-      label.textContent = oldName;
-      if (!oldName) label.classList.add('face-name-empty');
+      input.value = oldName;
       notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
     }
   }
@@ -234,10 +172,6 @@ class PlFaceThumb extends HTMLElement {
     }
   }
 
-  #removeSuggestionsPopup() {
-    let existing = this.shadowRoot.getElementById('suggestions');
-    if (existing) existing.remove();
-  }
 }
 
 window.customElements.define('pl-face-thumb', PlFaceThumb);

@@ -34,16 +34,17 @@
 }
 
 #name {
+  font-family: inherit;
   font-size: var(--font-tertiary, 0.7rem);
   color: var(--text-icon);
   max-width: 80px;
   text-align: center;
-  word-wrap: break-word;
   outline: none;
   border-radius: 3px;
   padding: 1px 3px;
   transition: border-color 0.2s;
   border: 1px solid transparent;
+  background: transparent;
 }
 
 #name:focus {
@@ -51,9 +52,6 @@
   color: var(--text-primary);
 }
 
-.face-name-empty:not(:focus)::before {
-  content: attr(data-placeholder);
+#name::placeholder {
   color: var(--text-placeholder);
-  cursor: text;
 }
-
