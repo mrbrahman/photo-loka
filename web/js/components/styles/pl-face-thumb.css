@@ -54,5 +54,6 @@
 .face-name-empty:not(:focus)::before {
   content: attr(data-placeholder);
   color: var(--text-placeholder);
+  cursor: text;
 }
 

@@ -15,7 +15,7 @@ class PlFaceThumb extends HTMLElement {
       <sl-icon-button id="dismiss" name="x-lg"></sl-icon-button>
       <img id="thumb" />
       <div id="placeholder" hidden>&#128100;</div>
-      <div id="name"></div>
+      <div id="name" contenteditable spellcheck="false"></div>
     `;
   }
 
@@ -25,6 +25,13 @@ class PlFaceThumb extends HTMLElement {
   }
 
   connectedCallback() {
+    // Guard against re-running setup when the element is moved in the DOM.
+    // Moving a custom element (e.g. appendChild to a different parent) triggers
+    // disconnectedCallback followed by connectedCallback. Without this guard,
+    // the template would be cloned again (duplicating DOM nodes like img#thumb)
+    // and event listeners would be attached a second time.
+    if (this.shadowRoot.getElementById('thumb')) return;
+
     this.shadowRoot.appendChild(this.constructor.template.content.cloneNode(true));
 
     let img = this.shadowRoot.getElementById('thumb');
@@ -37,9 +44,18 @@ class PlFaceThumb extends HTMLElement {
     let label = this.shadowRoot.getElementById('name');
     let dismissBtn = this.shadowRoot.getElementById('dismiss');
 
-    label.contentEditable = 'true';
-    label.spellcheck = false;
-    label.addEventListener('focus', () => this.#onFocus(label));
+    label.addEventListener('focus', () => {
+      // Place caret inside the contentEditable div (needed when clicking on ::before placeholder)
+      let sel = this.shadowRoot.getSelection?.() || document.getSelection();
+      if (sel && label.childNodes.length === 0) {
+        let range = document.createRange();
+        range.setStart(label, 0);
+        range.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+      this.#onFocus(label);
+    });
     label.addEventListener('blur', () => this.#onBlur(label));
     label.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); label.blur(); }
@@ -90,16 +106,39 @@ class PlFaceThumb extends HTMLElement {
 
       this.#removeSuggestionsPopup();
 
-      let popup = document.createElement('sl-popup');
-      popup.id = 'suggestions';
-      popup.anchor = label;
-      popup.placement = 'bottom';
-      popup.active = true;
-      popup.hoist = true;
-      popup.distance = 4;
+      let popup = Object.assign(document.createElement('sl-popup'), {
+        id: 'suggestions',
+        anchor: label,
+        placement: 'bottom',
+        active: true,
+        distance: 4,
+        // sl-popup defaults to strategy="absolute", which positions relative to the
+        // offset parent (the :host with position:relative). This causes the popup to
+        // be clipped by sibling face-thumb elements in the next row due to stacking
+        // context. strategy="fixed" positions relative to the viewport, avoiding this.
+        // Note: sl-popup (v2.15.1) does not have a "hoist" property - that exists on
+        // other Shoelace components like sl-select/sl-dropdown.
+        strategy: 'fixed',
+      });
 
       let menu = document.createElement('sl-menu');
       menu.style.cssText = 'max-height:150px;overflow-y:auto;min-width:120px;';
+      // The name label uses contentEditable, which means any click outside it
+      // triggers blur. When the user moves the mouse from the label to this
+      // suggestions menu, the label would lose focus, firing #onBlur which
+      // removes the popup before the click registers.
+      //
+      // Alternatives considered:
+      //   - Appending popup inside the contentEditable div -> menu text becomes
+      //     part of the editable content, corrupting textContent reads
+      //   - Wrapping both in a container -> popup is still a sibling, so clicking
+      //     it still causes the contentEditable to blur
+      //   - Using a flag set on mousedown -> works but fragile and harder to follow
+      //
+      // preventDefault on mousedown is the cleanest fix: it stops the browser from
+      // moving focus away from the label, while still allowing the click event to
+      // fire normally on the menu item.
+      menu.addEventListener('mousedown', (e) => e.preventDefault());
       for (let s of suggestions) {
         let menuItem = document.createElement('sl-menu-item');
         menuItem.textContent = s.suggested_name;
@@ -119,7 +158,6 @@ class PlFaceThumb extends HTMLElement {
   }
 
   async #onBlur(label) {
-    await new Promise(r => setTimeout(r, 150));
     this.#removeSuggestionsPopup();
 
     let newName = label.textContent.trim();
@@ -181,7 +219,7 @@ class PlFaceThumb extends HTMLElement {
     if (confirmed !== 1) return;
 
     try {
-      let res = await authenticatedFetch(`/api/dismissFaceCluster/${encodeURIComonent(this.#clusterId)}`, {
+      let res = await authenticatedFetch(`/api/dismissFaceCluster/${encodeURIComponent(this.#clusterId)}`, {
         method: 'PUT',
       });
       if (!res.ok) throw await res.json().catch(() => ({ error: { message: `${res.status}` } }));
