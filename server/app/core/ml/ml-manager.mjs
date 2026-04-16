@@ -1,4 +1,4 @@
-import { recognizeFaces, nameFaceCluster as mlNameCluster, updatePersonName as mlUpdatePersonName, getFaceSuggestions as mlGetFaceSuggestions } from './ml-client.mjs';
+import { recognizeFaces, nameFaceCluster as mlNameCluster, updatePersonName as mlUpdatePersonName, getFaceSuggestions as mlGetFaceSuggestions, searchByText as mlSearchByText } from './ml-client.mjs';
 import * as mlDb from './ml-db.mjs';
 import { extractFaceThumbnailsFromML } from '#media/face-extractor';
 import { createLogger } from '#utils/logger';
@@ -64,4 +64,10 @@ export async function dismissCluster(clusterId) {
 export async function undismissCluster(clusterId) {
   await mlDb.undismissCluster(clusterId);
   logger.info(`Undismissed cluster ${clusterId}`);
+}
+
+export async function searchByText(query) {
+  const result = await mlSearchByText(query);
+  logger.info(`ML text search response:\n${JSON.stringify(result, null, 2)}`);
+  return result;
 }

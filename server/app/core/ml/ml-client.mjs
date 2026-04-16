@@ -66,3 +66,21 @@ export async function getFaceSuggestions(clusterId) {
   }
   return await response.json();
 }
+
+export async function searchByText(query) {
+  const url = `${startupConfig.mlServiceUrl}/search/text`;
+  logger.info(`Calling ML text search: ${query}`);
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, limit: 1000 }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`ML service error ${response.status}: ${text}`);
+  }
+
+  return await response.json();
+}
