@@ -1,7 +1,7 @@
 import sheet from "./styles/pl-gallery-controls.css" with { type: "css" };
 
 class PlGalleryControls extends HTMLElement {
-  #ctr; #rating; #selectedAlbums = {};
+  #ctr; #rating; #selectedAlbums = {}; #closeWatcher;
 
   static template = document.createElement('template');
   static {
@@ -64,7 +64,8 @@ class PlGalleryControls extends HTMLElement {
       .addEventListener('click', this.#handleDelete)
     ;
 
-    document.addEventListener("keydown", this.#handleEscape);
+    this.#closeWatcher = new CloseWatcher();
+    this.#closeWatcher.onclose = () => this.#handleClose();
 
     let dialog = this.shadowRoot.querySelector('sl-dialog')
       , cancelButton = dialog.querySelector('#cancel')
@@ -83,15 +84,8 @@ class PlGalleryControls extends HTMLElement {
     .addEventListener('click', ()=>dialog.show());
   }
 
-  #handleEscape = (evt)=>{
-    if (evt.key === "Escape"){
-      this.#handleClose();
-    }
-  }
-
-  #handleClose = (evt)=>{
-    let closed = new Event('pl-gallery-controls-closed');
-    this.dispatchEvent(closed);
+  #handleClose = ()=>{
+    this.dispatchEvent(new Event('pl-gallery-controls-closed'));
   }
 
   #handleRatingChanged = (evt)=>{
@@ -116,7 +110,7 @@ class PlGalleryControls extends HTMLElement {
       .removeEventListener('sl-change', this.#handleRatingChanged)
     ;
 
-    document.removeEventListener("keydown", this.#handleEscape);
+    this.#closeWatcher?.destroy();
   }
 
   attributeChangedCallback(name, oldVal, newVal) {

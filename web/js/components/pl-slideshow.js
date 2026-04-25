@@ -3,6 +3,7 @@ import sheet from "./styles/pl-slideshow.css" with { type: "css" };
 class PlSlideshow extends HTMLElement {
   #data=[]; #src; #startFrom; #buffer=1; #loop=false;
   #startIdx=[0,0]; #slideshowMode=false; #infoPanelOpen=false; #intervalId; #slideDuration=3;
+  #closeWatcher;
 
   // TODO
   // slideshow pause button, exit button
@@ -106,6 +107,7 @@ class PlSlideshow extends HTMLElement {
     });
 
     this.addEventListener('pl-info-panel-toggled', (evt) => {
+      // Track info panel state for slideshow nav (next/prev carry it to new slide)
       this.#infoPanelOpen = evt.detail.open;
     });
 
@@ -118,11 +120,9 @@ class PlSlideshow extends HTMLElement {
 
     window.addEventListener('keydown', this.#handleRightArrow);
     window.addEventListener('keydown', this.#handleLeftArrow);
-    // Convention: use keydown (not keyup) for action keys (Escape, Enter, arrows).
-    // keydown fires immediately and stopPropagation works reliably - with keyup,
-    // if a keydown handler blurs the element, keyup fires from a different target,
-    // bypassing any stopPropagation on the original element.
-    window.addEventListener('keydown', this.#handleSlideshowEscape);
+
+    this.#closeWatcher = new CloseWatcher();
+    this.#closeWatcher.onclose = () => this.#slideshowClosed();
 
     // conditionally enable keyboard nav
     if(!this.shadowRoot.getElementById('slides').querySelector('[data-pos="-1"]')){
@@ -174,19 +174,6 @@ class PlSlideshow extends HTMLElement {
   #resetTimer() {
     this.#stopTimer();
     this.#startTimer();
-  }
-
-  #handleSlideshowEscape = (evt) =>{
-    if(evt.key == "Escape"){
-      if (this.#infoPanelOpen) return; // let pl-slide close the info panel first
-      this.#slideshowClosed();
-    // } else if(evt.key == "A" || evt.key == "a"){
-    //   // toggle album name
-    //   console.log('pl-slieshow a or A pressed')
-    } else {
-      // ignore all other keys
-      // console.log(evt.key)
-    }
   }
 
 
@@ -440,7 +427,7 @@ class PlSlideshow extends HTMLElement {
   disconnectedCallback() {
     window.removeEventListener('keydown', this.#handleRightArrow);
     window.removeEventListener('keydown', this.#handleLeftArrow);
-    window.removeEventListener('keydown', this.#handleSlideshowEscape);
+    this.#closeWatcher?.destroy();
   }
 
   attributeChangedCallback(name, oldVal, newVal) {

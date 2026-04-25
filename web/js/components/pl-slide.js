@@ -2,7 +2,7 @@ import sheet from "./styles/pl-slide.css" with { type: "css" };
 
 class PlSlide extends HTMLElement {
   #albumname; #item; #play; #slideshowMode; #infoPanelOpen = false;
-  #hasNext = false; #hasPrev = false; #handleEscape;
+  #hasNext = false; #hasPrev = false; #infoCloseWatcher;
   #touchStartX = 0; #touchStartY = 0; #swipeThreshold = 50;
 
   static template = document.createElement('template');
@@ -73,22 +73,6 @@ class PlSlide extends HTMLElement {
       }));
     });
 
-    // Convention: use keydown (not keyup) for action keys (Escape, Enter, arrows).
-    // keydown fires immediately and stopPropagation works reliably - with keyup,
-    // if a keydown handler blurs the element, keyup fires from a different target,
-    // bypassing any stopPropagation on the original element.
-    this.#handleEscape = (e) => {
-      if (e.key === 'Escape' && this.#infoPanelOpen) {
-        e.stopImmediatePropagation();
-        this.infoPanelOpen = false;
-        this.dispatchEvent(new CustomEvent('pl-info-panel-toggled', {
-          composed: true, bubbles: true,
-          detail: { open: false }
-        }));
-      }
-    };
-    window.addEventListener('keydown', this.#handleEscape);
-
     // Listen for description updates
     this.addEventListener('pl-item-desc-updated', (evt) => {
       let {uuid, hasDesc} = evt.detail;
@@ -100,7 +84,7 @@ class PlSlide extends HTMLElement {
   }
 
   disconnectedCallback() {
-    if (this.#handleEscape) window.removeEventListener('keydown', this.#handleEscape);
+    this.#infoCloseWatcher?.destroy();
     this.removeEventListener('touchstart', this.#handleTouchStart);
     this.removeEventListener('touchend', this.#handleTouchEnd);
   }
@@ -171,7 +155,17 @@ class PlSlide extends HTMLElement {
         });
         infoSlot.appendChild(info);
       }
+      this.#infoCloseWatcher = new CloseWatcher();
+      this.#infoCloseWatcher.onclose = () => {
+        this.infoPanelOpen = false;
+        this.dispatchEvent(new CustomEvent('pl-info-panel-toggled', {
+          composed: true, bubbles: true,
+          detail: { open: false }
+        }));
+      };
     } else {
+      this.#infoCloseWatcher?.destroy();
+      this.#infoCloseWatcher = null;
       container.classList.remove('info-open');
       setTimeout(() => infoSlot.querySelector('pl-item-info')?.remove(), 300);
     }

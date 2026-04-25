@@ -103,13 +103,10 @@ class PlItemInfo extends HTMLElement {
       this.dispatchEvent(new Event('pl-info-panel-closed', {composed: true, bubbles: true}));
     });
 
-    // Convention: use keydown (not keyup) for action keys (Escape, Enter, arrows).
-    // keydown fires immediately and stopPropagation works reliably - with keyup,
-    // if a keydown handler blurs the element, keyup fires from a different target,
-    // bypassing any stopPropagation on the original element.
-    //
-    // Stop keyboard events from reaching slideshow, but let Escape through
-    this.addEventListener('keydown', (e) => { if (e.key !== 'Escape') e.stopPropagation(); });
+    // Stop keyboard events from reaching slideshow (e.g. arrow keys while
+    // typing in description/filename). With CloseWatcher handling Escape,
+    // we can stop all keys including Escape here.
+    this.addEventListener('keydown', (e) => e.stopPropagation());
 
     // Filename save on blur / enter
     let fnInput = this.shadowRoot.getElementById('filename');
