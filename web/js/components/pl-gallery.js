@@ -170,9 +170,9 @@ class PlGallery extends HTMLElement {
 
     if(this.#itemsSelected.length > 0){
       
-      if(!document.body.querySelector('pl-gallery-controls')){
+      if(!this.shadowRoot.querySelector('pl-gallery-controls')){
         let c = document.createElement('pl-gallery-controls');
-        document.body.append(c);
+        this.shadowRoot.append(c);
 
         c.addEventListener('pl-gallery-controls-closed', this.#handleGalleryControlsClosed);
         c.addEventListener('pl-gallery-controls-rating-changed', this.#handleGalleryControlsRatingChanged);
@@ -182,7 +182,7 @@ class PlGallery extends HTMLElement {
         });
       }
 
-      let c = document.body.querySelector('pl-gallery-controls');
+      let c = this.shadowRoot.querySelector('pl-gallery-controls');
       c.ctr = this.#itemsSelected.length;
       c.selectedAlbums = this.#albumsSelectedCnt;
 
@@ -295,7 +295,7 @@ class PlGallery extends HTMLElement {
   #removeGalleryControls = ()=>{
     this.#itemsSelected = []; this.#albumsSelectedCnt = {};
 
-    let c = document.body.querySelector('pl-gallery-controls');
+    let c = this.shadowRoot.querySelector('pl-gallery-controls');
     c.remove();
   }
 
