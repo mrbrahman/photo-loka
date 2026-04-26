@@ -184,9 +184,13 @@ apiRouter.get('/getVideo', authenticateMediaAccess, async function(req, res, nex
   }
 });
 
-apiRouter.post('/search', compression(), async function(req,res){
-  let {collection_id, searchText} = req.body;
-  res.json(await s.search.search(collection_id, searchText));
+apiRouter.post('/search', compression(), async function(req,res,next){
+  try {
+    let {collection_id, searchText} = req.body;
+    res.json(await s.search.search(collection_id, searchText));
+  } catch (error) {
+    next(error);
+  }
 });
 
 apiRouter.get('/getItemInfo', async function(req,res,next){

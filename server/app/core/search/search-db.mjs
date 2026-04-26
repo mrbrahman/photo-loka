@@ -100,7 +100,7 @@ function converToFilterStr(searchStr){
 
   let allFilters = [allFtsFilters, allOtherFilters].filter(x=>x);
 
-  let final = `( ${allFilters.join(` ${logical} `)} )`;
+  let final = allFilters.length > 0 ? `( ${allFilters.join(` ${logical} `)} )` : '';
   return final;
 
 }
@@ -134,7 +134,9 @@ export async function runSearch(collection_id, searchStr, trashed = false, isPri
     let parsedCondition = converToFilterStr(searchStr);
     logger.debug(parsedCondition);
 
-    filters.push(parsedCondition)
+    if(parsedCondition) {
+      filters.push(parsedCondition);
+    }
   } else {
     limit = true;
   }
