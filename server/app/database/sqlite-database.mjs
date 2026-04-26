@@ -25,30 +25,35 @@ db.pragma("busy_timeout = 5000");
 
 // install schema as needed (based on 'user_version')
 
-const currentVersion = db.pragma("user_version", {simple: true});
+let currentVersion = db.pragma("user_version", {simple: true});
 
 if(currentVersion < 1){
   initialDbSetup();
+  currentVersion = 1;
   db.pragma("user_version = 1");
 }
 
 if(currentVersion < 2){
   addAuthenticationTables();
+  currentVersion = 2;
   db.pragma("user_version = 2");
 }
 
 if(currentVersion < 3){
   addFaceRecognitionTables();
+  currentVersion = 3;
   db.pragma("user_version = 3");
 }
 
 if(currentVersion < 4){
   addFaceDismissedTable();
+  currentVersion = 4;
   db.pragma("user_version = 4");
 }
 
 if(currentVersion < 5){
   addPrivateColumn();
+  currentVersion = 5;
   db.pragma("user_version = 5");
 }
 
@@ -97,7 +102,6 @@ function initialDbSetup() {
       geo_address, 
       datetime_original UNINDEXED, create_date UNINDEXED, file_modify_date UNINDEXED, file_date UNINDEXED,
       trashed, trashed_dt,
-      private UNINDEXED,
       indexed_dt, updated_dt
     );
   `);
