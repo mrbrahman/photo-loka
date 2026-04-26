@@ -23,10 +23,10 @@ export async function search(collection_id, searchStr, trashed = false, groupByA
 
     const inList = uuids.map(u => `'${u}'`).join(',');
     const rawFilter = `raw:"uuid in (${inList})"`;
-    return await db.runSearch(collection_id, rawFilter, trashed, groupByAlbum, orderBy);
+    return await db.runSearch(collection_id, rawFilter, trashed, false, groupByAlbum, orderBy);
   }
 
-  return await db.runSearch(collection_id, searchStr, trashed, groupByAlbum, orderBy);
+  return await db.runSearch(collection_id, searchStr, trashed, false, groupByAlbum, orderBy);
 }
 
 export async function getAllFromCollection(collection_id){

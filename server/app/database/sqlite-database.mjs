@@ -47,6 +47,11 @@ if(currentVersion < 4){
   db.pragma("user_version = 4");
 }
 
+if(currentVersion < 5){
+  addPrivateColumn();
+  db.pragma("user_version = 5");
+}
+
 // define a json_patch_agg SQL aggregate function, which is similar to the SQLite provided
 // json_patch function, however this is an aggregate function
 // this is used in merging all exif updates required to be done on a file in 'exif_updates' table
@@ -92,6 +97,7 @@ function initialDbSetup() {
       geo_address, 
       datetime_original UNINDEXED, create_date UNINDEXED, file_modify_date UNINDEXED, file_date UNINDEXED,
       trashed, trashed_dt,
+      private UNINDEXED,
       indexed_dt, updated_dt
     );
   `);
@@ -256,4 +262,88 @@ function addAuthenticationTables() {
   db.prepare('CREATE INDEX idx_refresh_tokens_expires ON refresh_tokens(expires_at)').run();
 }
 
+function addPrivateColumn() {
+  logger.info("adding private column to metadata table ...");
+
+  let dateSuffix = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  let backupTable = `metadata_backup_${dateSuffix}`;
+
+  // 1. backup into a regular table
+  db.prepare(`CREATE TABLE ${backupTable} AS SELECT * FROM metadata`).run();
+
+  let origCount = db.prepare(`SELECT COUNT(*) as cnt FROM metadata`).get().cnt;
+  let backupCount = db.prepare(`SELECT COUNT(*) as cnt FROM ${backupTable}`).get().cnt;
+
+  // 2. compare counts
+  if (origCount !== backupCount) {
+    throw new Error(`Migration failed: backup count mismatch (original: ${origCount}, backup: ${backupCount}). Backup table ${backupTable} preserved.`);
+  }
+
+  // 3. drop old metadata table
+  db.prepare(`DROP TABLE metadata`).run();
+
+  // 4. create new metadata table with private column
+  db.prepare(`
+    CREATE VIRTUAL TABLE metadata USING fts5(
+      collection_id UNINDEXED, uuid UNINDEXED, album, filename,
+      description, filesize UNINDEXED, ext UNINDEXED, mimetype, mediatype,
+      keywords, xmpregion, faces, objects, rating UNINDEXED, 
+      image_width UNINDEXED, image_height UNINDEXED, aspectratio UNINDEXED,
+      make, model, orientation UNINDEXED, duration UNINDEXED,
+      gps_lat UNINDEXED, gps_long UNINDEXED, gps_alt UNINDEXED, 
+      geolocation_api_json UNINDEXED, 
+      geonames_rev_address_json UNINDEXED, geonames_encoding_status UNINDEXED, geonames_db_matched_uuid UNINDEXED,
+      geo_address, 
+      datetime_original UNINDEXED, create_date UNINDEXED, file_modify_date UNINDEXED, file_date UNINDEXED,
+      trashed, trashed_dt,
+      private UNINDEXED,
+      indexed_dt, updated_dt
+    )
+  `).run();
+
+  // 5. populate from backup
+  db.prepare(`
+    INSERT INTO metadata(
+      collection_id, uuid, album, filename,
+      description, filesize, ext, mimetype, mediatype,
+      keywords, xmpregion, faces, objects, rating,
+      image_width, image_height, aspectratio,
+      make, model, orientation, duration,
+      gps_lat, gps_long, gps_alt,
+      geolocation_api_json,
+      geonames_rev_address_json, geonames_encoding_status, geonames_db_matched_uuid,
+      geo_address,
+      datetime_original, create_date, file_modify_date, file_date,
+      trashed, trashed_dt,
+      private,
+      indexed_dt, updated_dt
+    )
+    SELECT
+      collection_id, uuid, album, filename,
+      description, filesize, ext, mimetype, mediatype,
+      keywords, xmpregion, faces, objects, rating,
+      image_width, image_height, aspectratio,
+      make, model, orientation, duration,
+      gps_lat, gps_long, gps_alt,
+      geolocation_api_json,
+      geonames_rev_address_json, geonames_encoding_status, geonames_db_matched_uuid,
+      geo_address,
+      datetime_original, create_date, file_modify_date, file_date,
+      trashed, trashed_dt,
+      null,
+      indexed_dt, updated_dt
+    FROM ${backupTable}
+  `).run();
+
+  // 6. compare counts again
+  let newCount = db.prepare(`SELECT COUNT(*) as cnt FROM metadata`).get().cnt;
+  if (backupCount !== newCount) {
+    throw new Error(`Migration failed: new table count mismatch (backup: ${backupCount}, new: ${newCount}). Backup table ${backupTable} preserved.`);
+  }
+
+  // 7. backup table kept around for safety - drop manually when confident
+  // db.prepare(`DROP TABLE ${backupTable}`).run();
+
+  logger.info(`private column added successfully (${newCount} rows migrated). Backup table: ${backupTable}`);
+}
 

@@ -1,7 +1,7 @@
 import sheet from "./styles/pl-gallery-controls.css" with { type: "css" };
 
 class PlGalleryControls extends HTMLElement {
-  #ctr; #rating; #selectedAlbums = {}; #closeWatcher;
+  #ctr; #rating; #allPrivate = false; #selectedAlbums = {}; #closeWatcher;
 
   static template = document.createElement('template');
   static {
@@ -16,6 +16,7 @@ class PlGalleryControls extends HTMLElement {
         <div class="col" id="col2">
           <sl-rating id="rating"></sl-rating>
           <sl-icon-button id="add-keywords" name="tags-fill" disabled>Keywords</sl-icon-button>
+          <sl-icon-button id="private" name="lock-fill">Private</sl-icon-button>
           <sl-icon-button id="delete" name="trash-fill">Delete</sl-icon-button>
           <sl-icon-button id="organize" name="folder-plus">Organize</sl-icon-button>
           
@@ -60,6 +61,10 @@ class PlGalleryControls extends HTMLElement {
       .addEventListener('sl-change', this.#handleRatingChanged)
     ;
 
+    this.shadowRoot.getElementById("private")
+      .addEventListener('click', this.#handlePrivateToggle)
+    ;
+
     this.shadowRoot.getElementById("delete")
       .addEventListener('click', this.#handleDelete)
     ;
@@ -96,6 +101,12 @@ class PlGalleryControls extends HTMLElement {
     this.dispatchEvent(ratingChanged);
   }
 
+  #handlePrivateToggle = ()=>{
+    this.dispatchEvent(new CustomEvent('pl-gallery-controls-private-toggled', {
+      detail: {makePrivate: !this.#allPrivate}
+    }));
+  }
+
   #handleDelete = (evt)=>{
     let deleted = new Event('pl-gallery-controls-delete-pressed');
     this.dispatchEvent(deleted);
@@ -108,6 +119,10 @@ class PlGalleryControls extends HTMLElement {
 
     this.shadowRoot.getElementById("rating")
       .removeEventListener('sl-change', this.#handleRatingChanged)
+    ;
+
+    this.shadowRoot.getElementById("private")
+      .removeEventListener('click', this.#handlePrivateToggle)
     ;
 
     this.#closeWatcher?.destroy();
@@ -129,6 +144,11 @@ class PlGalleryControls extends HTMLElement {
     this.shadowRoot.querySelector('sl-rating').value = this.rating;
   }
 
+  #paintPrivateIcon(){
+    let btn = this.shadowRoot.getElementById('private');
+    btn.name = this.#allPrivate ? 'unlock-fill' : 'lock-fill';
+  }
+
   get ctr(){
     return this.#ctr;
   }
@@ -146,6 +166,16 @@ class PlGalleryControls extends HTMLElement {
     this.#rating = _;
     if(this.isConnected){
       this.#paintRating();
+    }
+  }
+
+  get allPrivate(){
+    return this.#allPrivate;
+  }
+  set allPrivate(_){
+    this.#allPrivate = _;
+    if(this.isConnected){
+      this.#paintPrivateIcon();
     }
   }
 

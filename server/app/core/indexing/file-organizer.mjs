@@ -163,6 +163,30 @@ export async function moveFileToTrash(collection_id, uuid_arr){
   }
 }
 
+export async function markFilePrivate(collection_id, uuid_arr){
+  for(let uuid of uuid_arr){
+    let f = await db.getFileName(uuid),
+      dir = path.dirname(f),
+      filename = path.basename(f),
+      privateFilename = path.join(dir, `.${filename}`);
+
+    await moveItem(collection_id, f, privateFilename);
+    await db.markPrivate(uuid, privateFilename);
+  }
+}
+
+export async function unmarkFilePrivate(collection_id, uuid_arr){
+  for(let uuid of uuid_arr){
+    let f = await db.getFileName(uuid),
+      dir = path.dirname(f),
+      filename = path.basename(f),
+      publicFilename = path.join(dir, filename.replace(/^\./, ''));
+
+    await moveItem(collection_id, f, publicFilename);
+    await db.unmarkPrivate(uuid, publicFilename);
+  }
+}
+
 async function logChange(collection_id, action, path1, path2){
   if(!config.auditFiles){
     return

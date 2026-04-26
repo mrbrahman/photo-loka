@@ -128,6 +128,18 @@ const updateToTrashStatement = `
   where uuid = @uuid
 `;
 
+const markPrivateStatement = `
+  update metadata
+  set filename = @newFilename, "private" = 1
+  where uuid = @uuid
+`;
+
+const unmarkPrivateStatement = `
+  update metadata
+  set filename = @newFilename, "private" = 0
+  where uuid = @uuid
+`;
+
 const getFileNameStatement = `
   select filename 
   from metadata
@@ -221,6 +233,16 @@ export function updateRating(uuid_arr, newRating, fileModifyDate){
 export async function trashItem(uuid, trashFilename){
   logger.info(`Updating to trash ${uuid} ${trashFilename}`);
   return await asyncRun(updateToTrashStatement, {uuid, trashFilename});
+}
+
+export async function markPrivate(uuid, newFilename){
+  logger.info(`Marking private ${uuid} ${newFilename}`);
+  return await asyncRun(markPrivateStatement, {uuid, newFilename});
+}
+
+export async function unmarkPrivate(uuid, newFilename){
+  logger.info(`Unmarking private ${uuid} ${newFilename}`);
+  return await asyncRun(unmarkPrivateStatement, {uuid, newFilename});
 }
 
 export async function scheduleExif(uuid_arr, new_exif_json){

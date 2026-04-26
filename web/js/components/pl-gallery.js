@@ -176,6 +176,7 @@ class PlGallery extends HTMLElement {
 
         c.addEventListener('pl-gallery-controls-closed', this.#handleGalleryControlsClosed);
         c.addEventListener('pl-gallery-controls-rating-changed', this.#handleGalleryControlsRatingChanged);
+        c.addEventListener('pl-gallery-controls-private-toggled', this.#handleGalleryControlsPrivateToggled);
         c.addEventListener('pl-gallery-controls-delete-pressed', this.#handleGalleryControlsDeletePressed);
         c.addEventListener('pl-gallery-controls-dialog-save', (evt)=>{
           this.#createOrMoveSelectedItems(evt.detail.trim())
@@ -195,6 +196,9 @@ class PlGallery extends HTMLElement {
       } else {
         c.rating = 0
       }
+
+      let allPrivate = this.#itemsSelected.every(x = x.data.private);
+      c.allPrivate = allPrivate;
 
       
     } else if(this.#itemsSelected.length == 0){
@@ -353,6 +357,40 @@ class PlGallery extends HTMLElement {
       // all items selected are deleted. No need to keep gallery controls anymore
       this.#removeGalleryControls();
       notify(`${trashedCnt} item${trashedCnt > 1 ? 's' : ''} moved to trash`, 'success');
+    })
+    .catch(err=>{
+      notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
+    });
+  }
+
+  #handleGalleryControlsPrivateToggled = (evt)=>{
+    let {makePrivate} = evt.detail;
+    fetch('/api/togglePrivate', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        collection_id: 1,  // TODO
+        uuid_arr: this.#itemsSelected.map(x=>x.data.id),
+        makePrivate
+      })
+    })
+    .then(async res=>{
+      if(!res.ok){
+        throw await res.json().catch(() => ({error: {message: `${res.status} ${res.statusText}`}}));
+      }
+    })
+    .then(()=>{
+      let cnt = this.#itemsSelected.length;
+      if(makePrivate){
+        this.#albums.forEach(album=>album.deleteSelectedItems());
+        this.#removeGalleryControls();
+      } else {
+        this.#albums.forEach(album=>album.deleteSelectedItems());
+        this.#removeGalleryControls();
+      }
+      notify(`${cnt} item${cnt > 1 ? 's' : ''} ${makePrivate ? 'marked private' : 'unmarked private'}`, 'success');
     })
     .catch(err=>{
       notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);

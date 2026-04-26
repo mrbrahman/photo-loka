@@ -75,6 +75,9 @@ function converToFilterStr(searchStr){
     else if(col == 'rating'){
       otherFilters.push(`rating = ${f[1]}`)
     }
+    else if(col == 'private'){
+      otherFilters.push(`coalesce(private, 0) = ${filterStr.toLowerCase() === 'true' ? 1 : 0}`)
+    }
     else if(col == 'uuid'){
       otherFilters.push(`uuid = '${filterStr}'`)
     }
@@ -113,10 +116,16 @@ function orderByClause(inp) {
   return defaultClause;
 }
 
-export async function runSearch(collection_id, searchStr, trashed = false, groupByAlbum = true, orderBy = null){
+export async function runSearch(collection_id, searchStr, trashed = false, isPrivate = false, groupByAlbum = true, orderBy = null){
   let filters = [], limit = false;
   
   filters.push(`coalesce(trashed, false) = ${trashed}`);
+
+  // only apply default private filter if not explicitly searching for private items
+  let hasExplicitPrivateFilter = searchStr && /(?:^|\s)private:/i.test(searchStr);
+  if (!hasExplicitPrivateFilter) {
+    filters.push(`coalesce(private, false) = ${isPrivate}`);
+  }
 
   if(collection_id)
     filters.push(`collection_id = ${collection_id}`);
@@ -150,7 +159,8 @@ export async function runSearch(collection_id, searchStr, trashed = false, group
               end,
             'hasGps', case when gps_lat is not null then 1 else 0 end,
             'hasDesc', case when trim(coalesce(description,'')) not in ('', 'null') then 1 else 0 end,
-            'hasTags', case when trim(coalesce(keywords,'')) not in ('', 'null', '[null]') then 1 else 0 end
+            'hasTags', case when trim(coalesce(keywords,'')) not in ('', 'null', '[null]') then 1 else 0 end,
+            'private', case when coalesce(private, 0) = 1 then 1 else 0 end
           )
       ) as item
     from metadata
@@ -236,6 +246,7 @@ export async function getGpsCoordinates(){
     where gps_lat is not null 
     and gps_long is not null
     and coalesce(trashed, false) = false
+    and coalesce(private, false) = false
     and mediatype in ('image', 'video')
     group by 1, 2
   `;
@@ -245,6 +256,6 @@ export async function getGpsCoordinates(){
 
 export async function searchByGpsCoordinates(collection_id, bounds, trashed = false) {
   let searchStr = `raw:"round(gps_lat, 4) between ${bounds.sw.lat} and ${bounds.ne.lat} and round(gps_long, 4) between ${bounds.sw.lng} and ${bounds.ne.lng}"`;
-  return await runSearch(collection_id, searchStr, trashed, true);
+  return await runSearch(collection_id, searchStr, trashed, false, true);
 }
 

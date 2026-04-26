@@ -409,6 +409,16 @@ apiRouter.delete('/trashItems', async function(req,res,next){
   }
 });
 
+apiRouter.put('/togglePrivate', async function(req,res,next){
+  try {
+    let {collection_id, uuid_arr, makePrivate} = req.body;
+    await s.metadataUpdates.togglePrivate(collection_id, uuid_arr, makePrivate);
+    res.sendStatus(200);
+  } catch (error) {
+    next(error);
+  }
+});
+
 apiRouter.put('/moveItems', async function(req,res,next){
   try {
     let {collection_id, uuid_arr, new_album_name} = req.body;

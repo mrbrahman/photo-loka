@@ -45,3 +45,11 @@ export function updateRating(uuid_arr, newRating){
   db.updateRating(uuid_arr, newRating, fileModifyDate);
   db.scheduleExif(uuid_arr, {Rating: newRating, FileModifyDate: fileModifyDate});
 }
+
+export async function togglePrivate(collection_id, uuid_arr, makePrivate){
+  if(makePrivate){
+    await fileOps.markFilePrivate(collection_id, uuid_arr);
+  } else {
+    await fileOps.unmarkFilePrivate(collection_id, uuid_arr);
+  }
+}
