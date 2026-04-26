@@ -197,7 +197,7 @@ class PlGallery extends HTMLElement {
         c.rating = 0
       }
 
-      let allPrivate = this.#itemsSelected.every(x = x.data.private);
+      let allPrivate = this.#itemsSelected.every(x => x.data.private);
       c.allPrivate = allPrivate;
 
       
