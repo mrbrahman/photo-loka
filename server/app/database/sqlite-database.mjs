@@ -52,7 +52,7 @@ if(currentVersion < 4){
 }
 
 if(currentVersion < 5){
-  addPrivateColumn(5);
+  addPrivateColumn(currentVersion);
   currentVersion = 5;
   db.pragma("user_version = 5");
 }
@@ -287,10 +287,10 @@ function rebuildMetadataTable(version, columnDef, newColumns) {
   // 4. create new metadata table
   db.prepare(`CREATE VIRTUAL TABLE metadata USING fts5(${columnDef})`).run();
 
-  // 5. populate from backup - old columns from backup, null for new columns
-  let oldColumns = db.pragma(`table_info(${backupTable})`).map(c => c.name);
-  let insertCols = [...oldColumns, ...newColumns].join(', ');
-  let selectCols = [...oldColumns, ...newColumns.map(() => 'null')].join(', ');
+  // 5. populate from backup
+  let allColumns = columnDef.split(',').map(c => c.trim().replace(/\s+UNINDEXED/i, ''));
+  let insertCols = allColumns.join(', ');
+  let selectCols = allColumns.map(c => newColumns.includes(c) ? 'null' : c).join(', ');
 
   db.prepare(`INSERT INTO metadata(${insertCols}) SELECT ${selectCols} FROM ${backupTable}`).run();
 
