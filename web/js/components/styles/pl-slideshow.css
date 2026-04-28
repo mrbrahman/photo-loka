@@ -1,13 +1,19 @@
-/* DESIGN: position:fixed + high z-index allows the slideshow to cover the full viewport
+/* DESIGN: position:fixed + z-index allows the slideshow to cover the full viewport
    regardless of where it sits in the DOM. This is needed because pl-slideshow is now a
    child of pl-gallery's shadow DOM (not a top-level element), but still needs to visually
    cover everything including the nav header and sidebar. The black background on #container
-   handles visual coverage - no need to hide elements underneath. */
+   handles visual coverage - no need to hide elements underneath.
+
+   Global z-index layering (see index.html for toast):
+     100 - sidebar backdrop
+     101 - sidebar (mobile overlay)
+     200 - slideshow
+     950 - toast notifications (Shoelace default --sl-z-index-toast) */
 :host {
   position: fixed;
   top: 0px;
   left: 0px;
-  z-index: 2000;
+  z-index: 200;
 }
 
 #container {
