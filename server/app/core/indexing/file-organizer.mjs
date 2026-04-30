@@ -163,6 +163,23 @@ export async function moveFileToTrash(collection_id, uuid_arr){
   }
 }
 
+export async function restoreFromTrash(collection_id, uuid_arr){
+  for(let uuid of uuid_arr){
+    let f = await db.getFileName(uuid),
+      dir = path.dirname(f),
+      filename = path.basename(f),
+      restoredFilename = path.join(dir, filename.replace(/^\.Trash_/, ''));
+
+    await moveItem(collection_id, f, restoredFilename);
+    await db.untrashItem(uuid, restoredFilename);
+  }
+}
+
+export async function cleanupTrashFile(collection_id, uuid){
+  let f = await db.getFileName(uuid);
+  await deleteFile(collection_id, f);
+}
+
 export async function markFilePrivate(collection_id, uuid_arr){
   for(let uuid of uuid_arr){
     let f = await db.getFileName(uuid),

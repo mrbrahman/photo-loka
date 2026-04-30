@@ -1,7 +1,7 @@
 import sheet from "./styles/pl-gallery-controls.css" with { type: "css" };
 
 class PlGalleryControls extends HTMLElement {
-  #ctr; #rating; #allPrivate = false; #selectedAlbums = {}; #closeWatcher;
+  #ctr; #rating; #allPrivate = false; #allTrashed = false; #selectedAlbums = {}; #closeWatcher;
 
   static template = document.createElement('template');
   static {
@@ -16,19 +16,37 @@ class PlGalleryControls extends HTMLElement {
         <div class="col" id="col2">
           <sl-rating id="rating"></sl-rating>
           <sl-icon-button id="add-keywords" name="tags-fill" disabled>Keywords</sl-icon-button>
-          <sl-icon-button id="private" name="lock-fill">Private</sl-icon-button>
-          <sl-icon-button id="delete" name="trash-fill">Delete</sl-icon-button>
+          <sl-icon-button id="private-btn" class="action-btn normal-action" name="lock-fill"></sl-icon-button>
+          <sl-icon-button id="delete-btn" class="action-btn normal-action" name="trash-fill"></sl-icon-button>
+          <sl-icon-button id="restore-btn" class="action-btn trash-action" name="arrow-counterclockwise"></sl-icon-button>
+          <sl-icon-button id="cleanup-btn" class="action-btn trash-action" name="x-circle-fill"></sl-icon-button>
           <sl-icon-button id="organize" name="folder-plus">Organize</sl-icon-button>
           
-          <!-- rest actions from the dropdown -->
           <sl-dropdown>
             <sl-icon-button name="three-dots-vertical" slot="trigger"></sl-icon-button>
-            <sl-menu style="max-width: 200px;">
-              <sl-menu-item>
+            <sl-menu id="actions-menu" style="max-width: 200px;">
+              <sl-menu-item id="private-menu" class="menu-action normal-action">
+                <span id="private-label">Private</span>
+                <sl-icon slot="suffix" id="private-menu-icon" name="lock-fill"></sl-icon>
+              </sl-menu-item>
+              <sl-menu-item id="delete-menu" class="menu-action normal-action">
+                Delete
+                <sl-icon slot="suffix" name="trash-fill"></sl-icon>
+              </sl-menu-item>
+              <sl-menu-item id="restore-menu" class="menu-action trash-action">
+                Restore
+                <sl-icon slot="suffix" name="arrow-counterclockwise"></sl-icon>
+              </sl-menu-item>
+              <sl-menu-item id="cleanup-menu" class="menu-action trash-action">
+                Permanently Delete
+                <sl-icon slot="suffix" name="x-circle-fill"></sl-icon>
+              </sl-menu-item>
+              <sl-divider class="menu-action"></sl-divider>
+              <sl-menu-item disabled>
                 Share
                 <sl-icon slot="suffix" name="share-fill"></sl-icon>
               </sl-menu-item>            
-              <sl-menu-item>
+              <sl-menu-item disabled>
                 Update location
                 <sl-icon slot="suffix" name="geo-alt-fill"></sl-icon>
               </sl-menu-item>
@@ -61,12 +79,20 @@ class PlGalleryControls extends HTMLElement {
       .addEventListener('sl-change', this.#handleRatingChanged)
     ;
 
-    this.shadowRoot.getElementById("private")
+    this.shadowRoot.getElementById("private-btn")
       .addEventListener('click', this.#handlePrivateToggle)
     ;
-
-    this.shadowRoot.getElementById("delete")
+    this.shadowRoot.getElementById("delete-btn")
       .addEventListener('click', this.#handleDelete)
+    ;
+    this.shadowRoot.getElementById("restore-btn")
+      .addEventListener('click', this.#handleRestore)
+    ;
+    this.shadowRoot.getElementById("cleanup-btn")
+      .addEventListener('click', this.#handleCleanup)
+    ;
+    this.shadowRoot.getElementById("actions-menu")
+      .addEventListener('sl-select', this.#handleMenuSelect)
     ;
 
     this.#closeWatcher = new CloseWatcher();
@@ -107,9 +133,26 @@ class PlGalleryControls extends HTMLElement {
     }));
   }
 
-  #handleDelete = (evt)=>{
-    let deleted = new Event('pl-gallery-controls-delete-pressed');
-    this.dispatchEvent(deleted);
+  #handleDelete = ()=>{
+    this.dispatchEvent(new Event('pl-gallery-controls-delete-pressed'));
+  }
+
+  #handleRestore = ()=>{
+    this.dispatchEvent(new Event('pl-gallery-controls-restore-pressed'));
+  }
+
+  #handleCleanup = ()=>{
+    this.dispatchEvent(new Event('pl-gallery-controls-cleanup-pressed'));
+  }
+
+  #handleMenuSelect = (evt)=>{
+    let action = evt.detail.item.id.replace('-menu', '');
+    switch(action){
+      case 'private': this.#handlePrivateToggle(); break;
+      case 'delete':  this.#handleDelete(); break;
+      case 'restore': this.#handleRestore(); break;
+      case 'cleanup': this.#handleCleanup(); break;
+    }
   }
 
   disconnectedCallback() {
@@ -121,8 +164,20 @@ class PlGalleryControls extends HTMLElement {
       .removeEventListener('sl-change', this.#handleRatingChanged)
     ;
 
-    this.shadowRoot.getElementById("private")
+    this.shadowRoot.getElementById("private-btn")
       .removeEventListener('click', this.#handlePrivateToggle)
+    ;
+    this.shadowRoot.getElementById("delete-btn")
+      .removeEventListener('click', this.#handleDelete)
+    ;
+    this.shadowRoot.getElementById("restore-btn")
+      .removeEventListener('click', this.#handleRestore)
+    ;
+    this.shadowRoot.getElementById("cleanup-btn")
+      .removeEventListener('click', this.#handleCleanup)
+    ;
+    this.shadowRoot.getElementById("actions-menu")
+      .removeEventListener('sl-select', this.#handleMenuSelect)
     ;
 
     this.#closeWatcher?.destroy();
@@ -145,8 +200,15 @@ class PlGalleryControls extends HTMLElement {
   }
 
   #paintPrivateIcon(){
-    let btn = this.shadowRoot.getElementById('private');
-    btn.name = this.#allPrivate ? 'unlock-fill' : 'lock-fill';
+    // icon button (desktop)
+    this.shadowRoot.getElementById('private-btn').name = this.#allPrivate ? 'unlock-fill' : 'lock-fill';
+    // menu item (mobile)
+    this.shadowRoot.getElementById('private-menu-icon').name = this.#allPrivate ? 'unlock-fill' : 'lock-fill';
+    this.shadowRoot.getElementById('private-label').textContent = this.#allPrivate ? 'Unprivate' : 'Private';
+  }
+
+  #paintTrashedButtons(){
+    this.classList.toggle('trash-mode', this.#allTrashed);
   }
 
   get ctr(){
@@ -176,6 +238,16 @@ class PlGalleryControls extends HTMLElement {
     this.#allPrivate = _;
     if(this.isConnected){
       this.#paintPrivateIcon();
+    }
+  }
+
+  get allTrashed(){
+    return this.#allTrashed;
+  }
+  set allTrashed(_){
+    this.#allTrashed = _;
+    if(this.isConnected){
+      this.#paintTrashedButtons();
     }
   }
 

@@ -78,7 +78,7 @@ class PlAppShell extends HTMLElement {
                 <sl-icon name="person-circle"></sl-icon>
                 <span>Faces</span>
               </a>
-              <a class="sidebar-item" data-route="/trash" disabled>
+              <a class="sidebar-item" data-route="/search/trashed:true">
                 <sl-icon name="trash"></sl-icon>
                 <span>Trash</span>
               </a>

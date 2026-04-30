@@ -44,3 +44,26 @@ sl-rating {
 sl-icon-button {
   font-size: 1.25rem;
 }
+
+/* Menu duplicates only shown on mobile for non-trash actions */
+.menu-action {
+  display: none;
+}
+
+/* Trash mode: only show trash action buttons, hide everything else in col2 */
+:host(.trash-mode) #col2 > :not(.trash-action) {
+  display: none !important;
+}
+:host(:not(.trash-mode)) .trash-action {
+  display: none;
+}
+
+/* Mobile: move non-trash actions into menu */
+@media (max-width: 640px) {
+  :host(:not(.trash-mode)) .action-btn {
+    display: none;
+  }
+  :host(:not(.trash-mode)) .menu-action:not(.trash-action) {
+    display: unset;
+  }
+}

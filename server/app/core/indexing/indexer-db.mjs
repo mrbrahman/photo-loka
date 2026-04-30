@@ -128,6 +128,13 @@ const updateToTrashStatement = `
   where uuid = @uuid
 `;
 
+const untrashItemStatement = `
+  update metadata
+  set filename = @restoredFilename,
+    trashed = 0, trashed_dt = null
+  where uuid = @uuid
+`;
+
 const markPrivateStatement = `
   update metadata
   set filename = @newFilename, "private" = 1
@@ -233,6 +240,11 @@ export function updateRating(uuid_arr, newRating, fileModifyDate){
 export async function trashItem(uuid, trashFilename){
   logger.info(`Updating to trash ${uuid} ${trashFilename}`);
   return await asyncRun(updateToTrashStatement, {uuid, trashFilename});
+}
+
+export async function untrashItem(uuid, restoredFilename){
+  logger.info(`Restoring from trash ${uuid} ${restoredFilename}`);
+  return await asyncRun(untrashItemStatement, {uuid, restoredFilename});
 }
 
 export async function markPrivate(uuid, newFilename){

@@ -342,7 +342,7 @@ apiRouter.put('/updateDescription', function(req,res,next){
 apiRouter.put('/renameFile', async function(req,res,next){
   let {collection_id, uuid, newBasename} = req.body;
   try {
-    await s.metadataUpdates.renameFile(collection_id, uuid, newBasename);
+    await s.itemActions.renameFile(collection_id, uuid, newBasename);
     res.sendStatus(200);
   } catch(err) {
     next(err);
@@ -406,7 +406,7 @@ apiRouter.post('/updateAlbumName', async function(req,res,next){
 apiRouter.delete('/trashItems', async function(req,res,next){
   try {
     let {collection_id, uuid_arr} = req.body;
-    await s.fileOps.moveFileToTrash(collection_id, uuid_arr);
+    await s.itemActions.moveToTrash(collection_id, uuid_arr);
     res.sendStatus(200);
   } catch (error) {
     next(error);
@@ -416,7 +416,27 @@ apiRouter.delete('/trashItems', async function(req,res,next){
 apiRouter.put('/togglePrivate', async function(req,res,next){
   try {
     let {collection_id, uuid_arr, makePrivate} = req.body;
-    await s.metadataUpdates.togglePrivate(collection_id, uuid_arr, makePrivate);
+    await s.itemActions.togglePrivate(collection_id, uuid_arr, makePrivate);
+    res.sendStatus(200);
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.put('/restoreFromTrash', async function(req,res,next){
+  try {
+    let {collection_id, uuid_arr} = req.body;
+    await s.itemActions.restoreFromTrash(collection_id, uuid_arr);
+    res.sendStatus(200);
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.delete('/cleanupTrash', async function(req,res,next){
+  try {
+    let {collection_id, uuid_arr} = req.body;
+    await s.itemActions.cleanupTrash(collection_id, uuid_arr);
     res.sendStatus(200);
   } catch (error) {
     next(error);
