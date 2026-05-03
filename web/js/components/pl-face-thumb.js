@@ -112,7 +112,7 @@ class PlFaceThumb extends HTMLElement {
       let res, msg;
 
       if (!oldName) {
-        // Naming an unnamed cluster ??? no choice needed
+        // Naming an unnamed cluster - no choice needed
         res = await authenticatedFetch(`/api/nameFaceCluster/${encodeURIComponent(this.#clusterId)}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -128,7 +128,7 @@ class PlFaceThumb extends HTMLElement {
         }));
 
       } else {
-        // Renaming a known face ??? ask user for scope
+        // Renaming a known face - ask user for scope
         let choice = await showConfirmDialog(
           `Rename "${oldName}"`,
           `Rename to "<strong>${newName}</strong>". Rename this person everywhere, or only this face cluster?`,
@@ -137,7 +137,7 @@ class PlFaceThumb extends HTMLElement {
         );
 
         if (!choice) {
-          // Dialog closed without choosing ??? revert
+          // Dialog closed without choosing - revert
           input.value = oldName;
           return;
         }
