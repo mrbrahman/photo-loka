@@ -1,7 +1,7 @@
 import sheet from "./styles/pl-slide.css" with { type: "css" };
 
 class PlSlide extends HTMLElement {
-  #albumname; #item; #play; #slideshowMode; #infoPanelOpen = false;
+  #albumname; #item; #play; #slideshowMode; #infoPanelOpen = false; #mode = 'default';
   #hasNext = false; #hasPrev = false; #infoCloseWatcher;
   #touchStartX = 0; #touchStartY = 0; #swipeThreshold = 50;
 
@@ -37,7 +37,8 @@ class PlSlide extends HTMLElement {
     let media = Object.assign(document.createElement('pl-slide-media'), {
       albumname: this.#albumname,
       item: this.#item,
-      slideshowMode: this.#slideshowMode
+      slideshowMode: this.#slideshowMode,
+      mode: this.#mode
     });
 
     this.shadowRoot.getElementById('media-slot').prepend(media);
@@ -205,6 +206,9 @@ class PlSlide extends HTMLElement {
 
   set item(_) { this.#item = _; }
   get item() { return this.#item; }
+
+  set mode(_) { this.#mode = _ || 'default'; }
+  get mode() { return this.#mode; }
 
   set play(_) {
     this.#play = Boolean(_);

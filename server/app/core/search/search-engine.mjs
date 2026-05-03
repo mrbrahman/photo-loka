@@ -49,3 +49,7 @@ export async function getGpsCoordinates() {
 export async function searchByGpsCoordinates(collection_id, bounds){
   return await db.searchByGpsCoordinates(collection_id, bounds);
 }
+
+export async function getTrashedItems(collection_id){
+  return await db.runSearch(collection_id, null, true);
+}

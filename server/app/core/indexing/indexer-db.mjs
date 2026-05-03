@@ -275,6 +275,12 @@ export async function fileAudit(collection_id, action, path1, path2=null){
   return await asyncRun(fileAuditStatement, {collection_id, action, path1, path2});
 }
 
+// TODO: will be used for scheduled trash cleanup
+export async function getTrashedUuids(collection_id){
+  let rows = await asyncAll(`select uuid from metadata where collection_id = ? and coalesce(trashed, 0) = 1`, collection_id);
+  return rows.map(r => r.uuid);
+}
+
 export async function getPendingExifUpdates(){
   return await asyncGet(getPendingExifUpdatesStatemet);
 }

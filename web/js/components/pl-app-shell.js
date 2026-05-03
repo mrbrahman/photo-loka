@@ -78,7 +78,7 @@ class PlAppShell extends HTMLElement {
                 <sl-icon name="person-circle"></sl-icon>
                 <span>Faces</span>
               </a>
-              <a class="sidebar-item" data-route="/search/trashed:true">
+              <a class="sidebar-item" data-route="/trash">
                 <sl-icon name="trash"></sl-icon>
                 <span>Trash</span>
               </a>
@@ -238,6 +238,12 @@ class PlAppShell extends HTMLElement {
         }), slideshowItemId, view);
         break;
 
+      case 'trash':
+        this.#setActiveMenuItem('/trash');
+        this.#loadGallery(() => authenticatedFetch(`/api/getTrashedItems?collection_id=${this.#state.collection_id}`),
+          slideshowItemId, view, 'trash');
+        break;
+
       case 'map':
         this.#setActiveMenuItem('/map');
         this.#mainContent.innerHTML = '';
@@ -274,13 +280,13 @@ class PlAppShell extends HTMLElement {
 
   // --- Gallery ---
 
-  async #loadGallery(fetchFn, slideshowItemId, routePath) {
+  async #loadGallery(fetchFn, slideshowItemId, routePath, mode = 'default') {
     this.#showProgressBar();
     try {
       const res = await fetchFn();
       if (!res.ok) throw await res.json().catch(() => ({error: {message: `${res.status} ${res.statusText}`}}));
       const data = await res.json();
-      this.#showGallery(data, slideshowItemId, routePath);
+      this.#showGallery(data, slideshowItemId, routePath, mode);
     } catch (err) {
       notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
     } finally {
@@ -288,7 +294,7 @@ class PlAppShell extends HTMLElement {
     }
   }
 
-  #showGallery(data, slideshowItemId, routePath) {
+  #showGallery(data, slideshowItemId, routePath, mode = 'default') {
     this.#mainContent.style.overflowY = 'hidden';
 
     if (data.length === 0) {
@@ -296,7 +302,7 @@ class PlAppShell extends HTMLElement {
       return;
     }
 
-    const gallery = Object.assign(document.createElement('pl-gallery'), { data });
+    const gallery = Object.assign(document.createElement('pl-gallery'), { data, mode });
     gallery.dataset.view = routePath;
     this.#mainContent.innerHTML = '';
     this.#mainContent.appendChild(gallery);

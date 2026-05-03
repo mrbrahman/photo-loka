@@ -2,6 +2,9 @@ import * as path from 'path';
 import * as db from './indexer-db.mjs';
 import * as fileOps from './file-organizer.mjs';
 import * as thumbnails from '#media/thumbnail-manager';
+import * as faceExtractor from '#media/face-extractor';
+import * as mlDb from '#ml/ml-db';
+import * as mlClient from '#ml/ml-client';
 import { createLogger } from '#utils/logger';
 
 const logger = createLogger(import.meta.url);
@@ -38,7 +41,21 @@ export async function cleanupTrash(collection_id, uuid_arr){
     await fileOps.cleanupTrashFile(collection_id, uuid);
     // deletes all files starting with uuid in thumbs dir (thumbnails, video screenshots, compressed videos)
     thumbnails.deleteImageThumbnails(uuid);
+
+    // ML cleanup: face data, face thumbnails, and ML service embeddings
+    let clusterIds = await mlDb.deleteFaceData(uuid);
+    faceExtractor.deleteFaceThumbnails(uuid, clusterIds);
+    await mlClient.cleanupMLData(uuid);
+
     await db.deleteMetadataRow(uuid);
     logger.info(`Cleaned up trash for ${uuid}`);
   }
+}
+
+// TODO: will be used for scheduled trash cleanup
+export async function emptyTrash(collection_id){
+  let uuids = await db.getTrashedUuids(collection_id);
+  if(uuids.length === 0) return;
+  await cleanupTrash(collection_id, uuids);
+  logger.info(`Emptied trash for collection ${collection_id} - ${uuids.length} items`);
 }

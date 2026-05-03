@@ -1,3 +1,17 @@
+#trash-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--bg-surface, #f5f5f5);
+  border-bottom: 1px solid var(--border-color, #ddd);
+}
+
+#trash-info {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
 #gallery {
   position: relative;
   overflow-y: scroll;

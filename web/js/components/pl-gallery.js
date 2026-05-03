@@ -17,7 +17,7 @@
 // 6. The only exception is 'album name' component, which can also update the backend. But
 //    that is fine, since the album name update does not span multiple albums
 
-import {debounce, throttle, notify} from '../utils.mjs';
+import {debounce, throttle, notify, showConfirmDialog} from '../utils.mjs';
 
 import sheet from "./styles/pl-gallery.css" with { type: "css" };
 
@@ -26,12 +26,19 @@ class PlGallery extends HTMLElement {
   // internal variables
   #albums = []; #albumsInBuffer = {}; #albumsSelectedCnt = {}; #itemsSelected = [];
   // variables that can be get/set
-  #data;
+  #data; #mode = 'default';
 
   static template = document.createElement('template');
   static {
     this.template.innerHTML = // html
     `
+      <div id="trash-bar" style="display:none">
+        <span id="trash-info"></span>
+        <sl-button id="empty-trash-btn" variant="danger" size="small">
+          <sl-icon slot="prefix" name="x-circle-fill"></sl-icon>
+          Empty Trash
+        </sl-button>
+      </div>
       <div id="gallery"></div>
       <div id="album-nav-btns">
         <sl-icon-button id="prev-album-btn" name="chevron-up" label="Previous album"></sl-icon-button>
@@ -57,7 +64,8 @@ class PlGallery extends HTMLElement {
         id: d.id,
         album_name: d.album,
         data: d.items,
-        width: this.shadowRoot.getElementById('gallery').clientWidth
+        width: this.shadowRoot.getElementById('gallery').clientWidth,
+        readOnly: this.#mode === 'trash'
       });
 
       // TODO: Can we have gallery listen to these events rather than individual albums?
@@ -82,6 +90,14 @@ class PlGallery extends HTMLElement {
       this.#selectivelyPaintAlbums();
       this.#updateNavBtnState();
     });
+
+    // Trash bar
+    if(this.#mode === 'trash'){
+      let trashBar = this.shadowRoot.getElementById('trash-bar');
+      trashBar.style.display = '';
+      this.#updateTrashCount();
+      this.shadowRoot.getElementById('empty-trash-btn').addEventListener('click', this.#handleEmptyTrash);
+    }
 
   // DESIGN: The slideshow is a "view mode" of the gallery, not a separate page.
   // pl-gallery owns the slideshow lifecycle: creates it as a child in its shadow DOM,
@@ -172,6 +188,7 @@ class PlGallery extends HTMLElement {
       
       if(!this.shadowRoot.querySelector('pl-gallery-controls')){
         let c = document.createElement('pl-gallery-controls');
+        c.mode = this.#mode;
         this.shadowRoot.append(c);
 
         c.addEventListener('pl-gallery-controls-closed', this.#handleGalleryControlsClosed);
@@ -201,9 +218,6 @@ class PlGallery extends HTMLElement {
 
       let allPrivate = this.#itemsSelected.every(x => x.data.private);
       c.allPrivate = allPrivate;
-
-      let allTrashed = this.#itemsSelected.every(x => x.data.trashed);
-      c.allTrashed = allTrashed;
 
       
     } else if(this.#itemsSelected.length == 0){
@@ -421,6 +435,7 @@ class PlGallery extends HTMLElement {
       this.#albums.forEach(album=>album.deleteSelectedItems());
       this.#removeGalleryControls();
       notify(`${cnt} item${cnt > 1 ? 's' : ''} restored from trash`, 'success');
+      if(this.#mode === 'trash') this.#updateTrashCount();
     })
     .catch(err=>{
       notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
@@ -446,10 +461,47 @@ class PlGallery extends HTMLElement {
       this.#albums.forEach(album=>album.deleteSelectedItems());
       this.#removeGalleryControls();
       notify(`${cnt} item${cnt > 1 ? 's' : ''} permanently deleted`, 'success');
+      if(this.#mode === 'trash') this.#updateTrashCount();
     })
     .catch(err=>{
       notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
     });
+  }
+
+  #handleEmptyTrash = async ()=>{
+    let result = await showConfirmDialog(
+      'Empty Trash',
+      'This will permanently delete all items in trash. This cannot be undone.',
+      'Empty Trash',
+      'Cancel'
+    );
+    if(result !== 1) return;
+
+    try {
+      let allUuids = this.data.flatMap(d => d.items.map(i => i.data.id));
+      let res = await fetch('/api/emptyTrash', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ collection_id: 1, uuid_arr: allUuids })  // TODO
+      });
+      if(!res.ok){
+        throw await res.json().catch(() => ({error: {message: `${res.status} ${res.statusText}`}}));
+      }
+      // remove all albums from gallery
+      this.#albums.forEach(a => a.remove());
+      this.#albums = [];
+      this.#albumsInBuffer = {};
+      this.#updateTrashCount();
+      notify('Trash emptied', 'success');
+    } catch(err) {
+      notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
+    }
+  }
+
+  #updateTrashCount = ()=>{
+    let totalItems = this.#albums.reduce((sum, a) => sum + a.data.length, 0);
+    this.shadowRoot.getElementById('trash-info').textContent = `${totalItems} item${totalItems !== 1 ? 's' : ''} in trash`;
+    this.shadowRoot.getElementById('empty-trash-btn').disabled = totalItems === 0;
   }
 
   #reAssignAlbumPositions(){
@@ -657,6 +709,13 @@ class PlGallery extends HTMLElement {
     this.#data = _;
   }
 
+  get mode(){
+    return this.#mode;
+  }
+  set mode(_){
+    this.#mode = _ || 'default';
+  }
+
   get data_src(){
     return this._data_src;
   }
@@ -682,7 +741,8 @@ class PlGallery extends HTMLElement {
     let slideshow = Object.assign(document.createElement('pl-slideshow'), {
       data: slideshowData,
       startFrom: startFromId,
-      buffer: 1
+      buffer: 1,
+      mode: this.#mode
     });
 
     this.shadowRoot.getElementById('album-nav-btns').style.display = 'none';

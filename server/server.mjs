@@ -403,6 +403,15 @@ apiRouter.post('/updateAlbumName', async function(req,res,next){
 
 });
 
+apiRouter.get('/getTrashedItems', compression(), async function(req,res,next){
+  try {
+    let collection_id = req.query.collection_id;
+    res.json(await s.search.getTrashedItems(collection_id));
+  } catch (error) {
+    next(error);
+  }
+});
+
 apiRouter.delete('/trashItems', async function(req,res,next){
   try {
     let {collection_id, uuid_arr} = req.body;
@@ -434,6 +443,16 @@ apiRouter.put('/restoreFromTrash', async function(req,res,next){
 });
 
 apiRouter.delete('/cleanupTrash', async function(req,res,next){
+  try {
+    let {collection_id, uuid_arr} = req.body;
+    await s.itemActions.cleanupTrash(collection_id, uuid_arr);
+    res.sendStatus(200);
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.delete('/emptyTrash', async function(req,res,next){
   try {
     let {collection_id, uuid_arr} = req.body;
     await s.itemActions.cleanupTrash(collection_id, uuid_arr);

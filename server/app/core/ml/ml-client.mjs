@@ -84,3 +84,19 @@ export async function searchByText(query) {
 
   return await response.json();
 }
+
+export async function cleanupMLData(uuid) {
+  const url = `${startupConfig.mlServiceUrl}/images/${uuid}`;
+  logger.info(`Calling ML cleanup for ${uuid}`);
+
+  try {
+    const response = await fetch(url, { method: 'DELETE' });
+    if (!response.ok) {
+      const text = await response.text();
+      logger.warn(`ML cleanup failed for ${uuid}: ${response.status} ${text}`);
+    }
+  } catch (err) {
+    // ML service may not be running - log but don't fail the trash cleanup
+    logger.warn(`ML service unreachable for cleanup of ${uuid}: ${err.message}`);
+  }
+}

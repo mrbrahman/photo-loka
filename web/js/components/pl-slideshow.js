@@ -1,7 +1,7 @@
 import sheet from "./styles/pl-slideshow.css" with { type: "css" };
 
 class PlSlideshow extends HTMLElement {
-  #data=[]; #src; #startFrom; #buffer=1; #loop=false;
+  #data=[]; #src; #startFrom; #buffer=1; #loop=false; #mode='default';
   #startIdx=[0,0]; #slideshowMode=false; #infoPanelOpen=false; #intervalId; #slideDuration=3;
   #closeWatcher;
 
@@ -280,7 +280,8 @@ class PlSlideshow extends HTMLElement {
   #createSlide(idx){
     let slide = Object.assign(document.createElement('pl-slide'), {
       albumname: this.data[idx[0]].album,
-      item: this.data[idx[0]].items[idx[1]]
+      item: this.data[idx[0]].items[idx[1]],
+      mode: this.#mode
     });
 
     slide.dataset.type = this.data[idx[0]].items[idx[1]].data.type;
@@ -471,6 +472,13 @@ class PlSlideshow extends HTMLElement {
   }
   get buffer(){
     return this.#buffer;
+  }
+
+  set mode(_){
+    this.#mode = _ || 'default';
+  }
+  get mode(){
+    return this.#mode;
   }
 
   set loop(_){

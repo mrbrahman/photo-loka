@@ -69,6 +69,16 @@ export function initRouter() {
     });
   });
 
+  router.on('/app/trash', () => {
+    if (!authGuard()) return;
+    ensureAppShell().route('trash');
+  });
+
+  router.on('/app/trash/slideshow/:itemId', (match) => {
+    if (!authGuard()) return;
+    ensureAppShell().route('trash', { slideshowItemId: match.data.itemId });
+  });
+
   router.on('/app/map', () => {
     if (!authGuard()) return;
     ensureAppShell().route('map');

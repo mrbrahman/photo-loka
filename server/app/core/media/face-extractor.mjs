@@ -111,16 +111,14 @@ export async function extractFaceRegions(uuid, buf, xmpregion) {
   return parsedFaces;
 }
 
-export function deleteFaceThumbnails(uuid){
-  let dir = path.join(
-    facesDir,
-    ...Array.from(uuid).slice(0,3)
-  );
-
-  if(fs.existsSync(dir)){
-    fs.readdirSync(dir)
-      .filter(f=>f.startsWith(uuid))
-      .forEach(f=>fs.unlinkSync(path.join(dir,f)))
-    ;
+export function deleteFaceThumbnails(uuid, clusterIds){
+  // ML face thumbnails are stored as facesDir/<cluster_id>/<uuid>.jpg
+  if(clusterIds && clusterIds.length > 0){
+    for(let clusterId of clusterIds){
+      let filePath = path.join(facesDir, clusterId, `${uuid}.jpg`);
+      if(fs.existsSync(filePath)){
+        fs.unlinkSync(filePath);
+      }
+    }
   }
 }

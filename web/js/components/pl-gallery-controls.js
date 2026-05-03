@@ -1,7 +1,7 @@
 import sheet from "./styles/pl-gallery-controls.css" with { type: "css" };
 
 class PlGalleryControls extends HTMLElement {
-  #ctr; #rating; #allPrivate = false; #allTrashed = false; #selectedAlbums = {}; #closeWatcher;
+  #ctr; #rating; #allPrivate = false; #mode = 'default'; #selectedAlbums = {}; #closeWatcher;
 
   static template = document.createElement('template');
   static {
@@ -113,6 +113,8 @@ class PlGalleryControls extends HTMLElement {
 
     this.shadowRoot.getElementById("organize")
     .addEventListener('click', ()=>dialog.show());
+
+    this.#paintTrashedButtons();
   }
 
   #handleClose = ()=>{
@@ -208,7 +210,7 @@ class PlGalleryControls extends HTMLElement {
   }
 
   #paintTrashedButtons(){
-    this.classList.toggle('trash-mode', this.#allTrashed);
+    this.classList.toggle('trash-mode', this.#mode === 'trash');
   }
 
   get ctr(){
@@ -241,11 +243,11 @@ class PlGalleryControls extends HTMLElement {
     }
   }
 
-  get allTrashed(){
-    return this.#allTrashed;
+  get mode(){
+    return this.#mode;
   }
-  set allTrashed(_){
-    this.#allTrashed = _;
+  set mode(_){
+    this.#mode = _ || 'default';
     if(this.isConnected){
       this.#paintTrashedButtons();
     }

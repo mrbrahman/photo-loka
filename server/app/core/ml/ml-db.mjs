@@ -152,3 +152,18 @@ export async function dismissCluster(clusterId) {
 export async function undismissCluster(clusterId) {
   await asyncRun(`DELETE FROM face_dismissed_clusters WHERE cluster_id = ?`, clusterId);
 }
+
+export async function deleteFaceData(uuid) {
+  // get cluster_ids before deleting (needed for face thumbnail cleanup)
+  let rows = await asyncAll(`SELECT DISTINCT cluster_id FROM face_recognition WHERE uuid = ?`, uuid);
+  let clusterIds = rows.map(r => r.cluster_id);
+
+  await asyncRun(deleteFacesStatement, uuid);
+  await asyncRun(deleteUnmatchedStatement, uuid);
+
+  // update metadata.faces to remove this uuid's contribution
+  await asyncRun(`UPDATE metadata SET faces = NULL WHERE uuid = ?`, uuid);
+
+  logger.info(`Deleted face data for ${uuid} (clusters: ${clusterIds.join(', ')})`);
+  return clusterIds;
+}

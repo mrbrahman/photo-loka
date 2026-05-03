@@ -4,7 +4,7 @@ import sheet from "./styles/pl-album-name.css" with { type: "css" };
 
 class PlAlbumName extends HTMLElement {
 
-  #albumName; #albumSelectedValue='none';
+  #albumName; #albumSelectedValue='none'; #readOnly = false;
 
   static template = document.createElement('template');
   static {
@@ -49,6 +49,7 @@ class PlAlbumName extends HTMLElement {
   }
 
   #handleClick = (evt) => {
+    if(this.#readOnly) return;
     this.shadowRoot.getElementById('album-name').contentEditable = 'true';
     this.shadowRoot.getElementById('album-name').focus();
   }
@@ -301,6 +302,8 @@ class PlAlbumName extends HTMLElement {
       this.#paintSelectAllCheckbox();
     }
   }
+  get readOnly() { return this.#readOnly; }
+  set readOnly(_) { this.#readOnly = Boolean(_); }
 
 }
 

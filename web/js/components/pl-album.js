@@ -7,7 +7,7 @@ import sheet from "./styles/pl-album.css" with { type: "css" };
 
 class PlAlbum extends HTMLElement {
   
-  #width; #paint_layout = false; #gutterspace = 4; #data; #album_name; #album_name_height = 45; #album_height; 
+  #width; #paint_layout = false; #gutterspace = 4; #data; #album_name; #album_name_height = 45; #album_height; #readOnly = false;
 
   static template = document.createElement('template');
   static {
@@ -423,6 +423,7 @@ class PlAlbum extends HTMLElement {
   #paintName(){
     let a = document.createElement('pl-album-name');
     a.albumName = this.album_name;
+    a.readOnly = this.readOnly;
     a.style.height = this.album_name_height + 'px';
     a.addEventListener('pl-rename-dir-not-empty', this.#handleDirNotEmptyDuringRename)
 
@@ -506,6 +507,9 @@ class PlAlbum extends HTMLElement {
   set album_height(_){
     this.#album_height = +_;
   }
+
+  get readOnly() { return this.#readOnly; }
+  set readOnly(_) { this.#readOnly = Boolean(_); }
   
 }
 

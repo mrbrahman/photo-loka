@@ -78,9 +78,6 @@ function converToFilterStr(searchStr){
     else if(col == 'private'){
       otherFilters.push(`coalesce(private, 0) = ${filterStr.toLowerCase() === 'true' ? 1 : 0}`)
     }
-    else if(col == 'trashed'){
-      otherFilters.push(`coalesce(trashed, 0) = ${filterStr.toLowerCase() === 'true' ? 1 : 0}`)
-    }
     else if(col == 'uuid'){
       otherFilters.push(`uuid = '${filterStr}'`)
     }
@@ -122,16 +119,12 @@ function orderByClause(inp) {
 export async function runSearch(collection_id, searchStr, trashed = false, isPrivate = false, groupByAlbum = true, orderBy = null){
   let filters = [], limit = false;
   
+  filters.push(`coalesce(trashed, false) = ${trashed}`);
+
   // only apply default private filter if not explicitly searching for private items
   let hasExplicitPrivateFilter = searchStr && /(?:^|\s)private:/i.test(searchStr);
   if (!hasExplicitPrivateFilter) {
     filters.push(`coalesce(private, false) = ${isPrivate}`);
-  }
-
-  // only apply default trashed filter if not explicitly searching for trashed items
-  let hasExplicitTrashedFilter = searchStr && /(?:^|\s)trashed:/i.test(searchStr);
-  if (!hasExplicitTrashedFilter) {
-    filters.push(`coalesce(trashed, false) = ${trashed}`);
   }
 
   if(collection_id)
@@ -169,8 +162,7 @@ export async function runSearch(collection_id, searchStr, trashed = false, isPri
             'hasGps', case when gps_lat is not null then 1 else 0 end,
             'hasDesc', case when trim(coalesce(description,'')) not in ('', 'null') then 1 else 0 end,
             'hasTags', case when trim(coalesce(keywords,'')) not in ('', 'null', '[null]') then 1 else 0 end,
-            'private', case when coalesce(private, 0) = 1 then 1 else 0 end,
-            'trashed', case when coalesce(trashed, 0) = 1 then 1 else 0 end
+            'private', case when coalesce(private, 0) = 1 then 1 else 0 end
           )
       ) as item
     from metadata

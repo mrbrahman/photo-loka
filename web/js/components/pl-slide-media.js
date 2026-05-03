@@ -3,7 +3,7 @@ import {notify} from '../utils.mjs';
 import sheet from "./styles/pl-slide-media.css" with { type: "css" };
 
 class PlSlideMedia extends HTMLElement {
-  #albumname; #item; #play; #slideshowMode;
+  #albumname; #item; #play; #slideshowMode; #mode = 'default';
   #zoomLevel = 1; #maxZoom = 1; #startX = 0; #startY = 0; #translateX = 0; #translateY = 0;
   #eventHandlers = [];
 
@@ -56,7 +56,8 @@ class PlSlideMedia extends HTMLElement {
     // this.#setupZoomControls();
     this.#setupKeyboardControls();
 
-    if (this.#slideshowMode) {
+    let hideActions = this.#slideshowMode || this.#mode === 'trash';
+    if (hideActions) {
       this.shadowRoot.getElementById('actions').classList.add('hidden');
     } else {
       this.shadowRoot.getElementById('actions').classList.remove('hidden');
@@ -200,13 +201,16 @@ class PlSlideMedia extends HTMLElement {
     this.#slideshowMode = Boolean(_);
     if (!this.isConnected) return;
 
-    if (this.#slideshowMode) {
+    if (this.#slideshowMode || this.#mode === 'trash') {
       this.shadowRoot.getElementById('actions').classList.add('hidden');
     } else {
       this.shadowRoot.getElementById('actions').classList.remove('hidden');
     }
   }
   get slideshowMode() { return this.#slideshowMode; }
+
+  set mode(_) { this.#mode = _ || 'default'; }
+  get mode() { return this.#mode; }
 
   get zoomLevel() { return this.#zoomLevel; }
 
