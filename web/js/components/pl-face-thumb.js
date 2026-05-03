@@ -109,38 +109,66 @@ class PlFaceThumb extends HTMLElement {
     }
 
     try {
-      let res;
+      let res, msg;
+
       if (!oldName) {
+        // Naming an unnamed cluster ??? no choice needed
         res = await authenticatedFetch(`/api/nameFaceCluster/${encodeURIComponent(this.#clusterId)}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: newName }),
         });
-      } else {
-        res = await authenticatedFetch('/api/updatePersonName', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ oldName, newName }),
-        });
-      }
+        if (!res.ok) throw await res.json().catch(() => ({ error: { message: `${res.status}` } }));
+        let result = await res.json();
+        msg = `Named ${result.count} photo(s) as ${newName}`;
 
-      if (!res.ok) throw await res.json().catch(() => ({ error: { message: `${res.status}` } }));
-      let result = await res.json();
-
-      this.#personName = newName;
-      this.setAttribute('person-name', newName);
-
-      let msg = !oldName
-        ? `Named ${result.count} photo(s) as ${newName}`
-        : `Renamed to ${newName} (${result.count} photo(s))`;
-      notify(msg, 'success', 3000);
-
-      if (!oldName) {
         this.dispatchEvent(new CustomEvent('pl-face-named', {
           composed: true, bubbles: true,
           detail: { clusterId: this.#clusterId, name: newName, count: result.count },
         }));
+
+      } else {
+        // Renaming a known face ??? ask user for scope
+        let choice = await showConfirmDialog(
+          `Rename "${oldName}"`,
+          `Rename to "<strong>${newName}</strong>". Rename this person everywhere, or only this face cluster?`,
+          'Rename everywhere',
+          'This cluster only'
+        );
+
+        if (!choice) {
+          // Dialog closed without choosing ??? revert
+          input.value = oldName;
+          return;
+        }
+
+        if (choice === 1) {
+          // Rename person globally
+          res = await authenticatedFetch('/api/updatePersonName', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ oldName, newName }),
+          });
+        } else {
+          // Rename this cluster only
+          res = await authenticatedFetch(`/api/nameFaceCluster/${encodeURIComponent(this.#clusterId)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: newName }),
+          });
+        }
+
+        if (!res.ok) throw await res.json().catch(() => ({ error: { message: `${res.status}` } }));
+        let result = await res.json();
+
+        msg = choice === 1
+          ? `Renamed "${oldName}" to "${newName}" (${result.count} photo(s))`
+          : `Renamed cluster to "${newName}" (${result.count} photo(s))`;
       }
+
+      this.#personName = newName;
+      this.setAttribute('person-name', newName);
+      notify(msg, 'success', 3000);
 
     } catch (err) {
       input.value = oldName;
