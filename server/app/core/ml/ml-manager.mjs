@@ -56,6 +56,10 @@ export async function getFaceSuggestions(clusterId) {
   return await mlGetFaceSuggestions(clusterId);
 }
 
+export async function searchPersonNames(query) {
+  return await mlDb.searchPersonNames(query);
+}
+
 export async function dismissCluster(clusterId) {
   await mlDb.dismissCluster(clusterId);
   logger.info(`Dismissed cluster ${clusterId}`);

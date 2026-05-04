@@ -5,6 +5,10 @@ import sheet from "./styles/pl-face-thumb.css" with { type: "css" };
 
 class PlFaceThumb extends HTMLElement {
   #personName; #clusterId; #uuid; #faceIdx;
+  #hasMlSuggestions = false;
+  #lookupTimer = null;
+  #lastLookupComplete = false;
+  #lastLookupQuery = '';
 
   static get observedAttributes() { return ['uuid', 'cluster-id', 'person-name', 'face-idx']; }
 
@@ -47,6 +51,7 @@ class PlFaceThumb extends HTMLElement {
     let dismissBtn = this.shadowRoot.getElementById('dismiss');
 
     input.addEventListener('focus', () => this.#fetchSuggestion(datalist));
+    input.addEventListener('input', () => this.#onInput(input, datalist));
     input.addEventListener('blur', () => this.#onBlur(input));
     // Convention: use keydown (not keyup) for action keys (Escape, Enter, arrows).
     // keydown fires immediately and stopPropagation works reliably - with keyup,
@@ -91,11 +96,38 @@ class PlFaceThumb extends HTMLElement {
       let data = await res.json();
       let suggestions = data.suggestions || [];
       datalist.innerHTML = '';
+      this.#hasMlSuggestions = suggestions.length > 0;
       for (let s of suggestions) {
         datalist.appendChild(Object.assign(document.createElement('option'), { value: s.suggested_name }));
       }
     } catch (err) {
       // Suggestions are best-effort
+    }
+  }
+
+  #onInput(input, datalist) {
+    clearTimeout(this.#lookupTimer);
+    let query = input.value.trim();
+    if (query.length < 2 || this.#hasMlSuggestions) return;
+    // Skip fetch if previous results were already exhaustive and user is extending the same prefix
+    if (this.#lastLookupComplete && query.toLowerCase().startsWith(this.#lastLookupQuery.toLowerCase())) return;
+    this.#lookupTimer = setTimeout(() => this.#fetchNameLookup(query, datalist), 250);
+  }
+
+  async #fetchNameLookup(query, datalist) {
+    try {
+      let res = await authenticatedFetch(`/api/searchPersonNames?q=${encodeURIComponent(query)}`);
+      if (!res.ok) return;
+      let data = await res.json();
+      let names = data.names || [];
+      this.#lastLookupQuery = query;
+      this.#lastLookupComplete = names.length < 20;
+      datalist.innerHTML = '';
+      for (let name of names) {
+        datalist.appendChild(Object.assign(document.createElement('option'), { value: name }));
+      }
+    } catch (err) {
+      // Lookup is best-effort
     }
   }
 

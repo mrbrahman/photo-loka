@@ -145,6 +145,13 @@ export async function updatePersonName(oldName, newName) {
   return result.changes;
 }
 
+export async function searchPersonNames(query) {
+  return await asyncAll(
+    `SELECT DISTINCT person_name FROM face_recognition WHERE person_name LIKE ? || '%' ORDER BY person_name LIMIT 20`,
+    query
+  );
+}
+
 export async function dismissCluster(clusterId) {
   await asyncRun(`INSERT OR IGNORE INTO face_dismissed_clusters (cluster_id) VALUES (?)`, clusterId);
 }

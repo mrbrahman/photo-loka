@@ -660,6 +660,17 @@ apiRouter.get('/faceSuggestions/:clusterId', async function(req,res,next){
   }
 });
 
+apiRouter.get('/searchPersonNames', async function(req,res,next){
+  try {
+    const q = (req.query.q || '').trim();
+    if (q.length < 2) return res.json({ names: [] });
+    const rows = await s.ml.searchPersonNames(q);
+    res.json({ names: rows.map(r => r.person_name) });
+  } catch (error) {
+    next(error);
+  }
+});
+
 apiRouter.put('/dismissFaceCluster/:clusterId', async function(req,res,next){
   try {
     await s.ml.dismissCluster(req.params.clusterId);
