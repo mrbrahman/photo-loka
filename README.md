@@ -34,7 +34,8 @@ Also, many things are rough around the edges, simply because I'm the sole user &
     * Delayed indexing - Schedule a daily 'cron' to watch the setup 'intake' folders, to bring in files to the collection that are 'x' days stale
 - Rename albums (similar to renaming folders on a File Explorer program)
 - Select files and move them to a different album
-- Select files and trash them
+- Select files and trash them (with cleanup of associated ML data)
+- Mark items as private (search for `private:true` to find them)
 - Backup helper: A helper utility that *incrementally* backs-up all the files into the 'registered' backup drives. See [Backup helper](#backup-helper) section for more information
 
 ## Metadata management
@@ -50,11 +51,17 @@ Also, many things are rough around the edges, simply because I'm the sole user &
 - Lookup GPS location
     * First using geolocation api (that comes with exiftool)
     * For US based addresses, use [findNearestAdderss](https://www.geonames.org/maps/us-reverse-geocoder.html#findNearestAddress) API (need a registered username)
+- Face recognition
+    * Detect and cluster faces in photos
+    * Name recognized faces (with auto-suggestions from ML and existing names)
+    * Rename a known face or reassign a cluster to a different person
 
 ## UI features
 - Display photos and videos on a responsive, progressive, scrollable grid
 - Cluster photos on a map
 - Slideshow
+- Item info panel - view camera, dates, location (with map), recognized faces, and keywords. Edit filename and description
+- View Trash and empty/restore
 - Search photos based on their metadata, using SQLite FTS5
     1. Github *like* search features (key value pairs)
        e.g. `album:trip camera:samsung type:video`
@@ -74,6 +81,8 @@ Also, many things are rough around the edges, simply because I'm the sole user &
           - `raw:"metadata match '{album}: (states* AND trip*)'"`
           - `raw:"strftime('%W',file_date)=strftime('%W',date()) and strftime('%Y',file_date) != strftime('%Y',date())"` (all 'past' photos of current week)
     7. "raw" can be clubbled with other filters, if needed
+    8. AI-powered semantic search using image embeddings
+       e.g. `ai:"sunset on a beach"` to find visually similar photos
 
 ## Flagship feature - Digital Photo Frames!
 
@@ -125,19 +134,15 @@ TODO - sync timestamps on +2 level folders
 # Features TODO
 **Near future**
 - Add/change "tags" (keywords)
-- Display more info (filename, description, camera, date/time, people, location) on the file being viewed
-- Ability to rename files
 
 **After near future**
-- Face recognition
 - An acutal form to setup collections
 - Form to update config and save it to persistant storage (file?)
 - Monitor indexer progress
 - Enable multiple collections
 - Ability to upload photos from device
 - Intelligent scrollbar (folder levels?)
-- Object detection (computer vision)
-- Authentication and Authorization
+- Authorization (role-based access control)
 - Sharing photos/albums
 
 # How to install & use
