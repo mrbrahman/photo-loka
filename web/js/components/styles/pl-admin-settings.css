@@ -4,15 +4,53 @@
 }
 
 .container {
-  padding: 2rem;
+  padding: 1.5rem 2rem;
+  max-width: 650px;
+  margin: 0 auto;
 }
 
 h2 {
-  margin: 0 0 1rem 0;
+  margin: 0 0 1.5rem 0;
   color: var(--text-primary);
 }
 
-.placeholder {
+.loading, .error {
   color: var(--text-secondary);
-  font-size: 0.95rem;
+  padding: 1rem 0;
+}
+
+.error {
+  color: var(--sl-color-danger-600);
+}
+
+/* --- Sections --- */
+
+.section {
+  margin-bottom: 1.5rem;
+}
+
+.section-title {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin: 0 0 0.75rem 0;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+/* --- Fields --- */
+
+.field {
+  margin-bottom: 1.25rem;
+}
+
+.field sl-switch {
+  --sl-toggle-size-medium: 1rem;
+}
+
+.field sl-input,
+.field sl-select {
+  max-width: 400px;
 }
