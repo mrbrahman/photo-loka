@@ -1,0 +1,18 @@
+:host {
+  display: block;
+  height: 100%;
+}
+
+.container {
+  padding: 2rem;
+}
+
+h2 {
+  margin: 0 0 1rem 0;
+  color: var(--text-primary);
+}
+
+.placeholder {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}

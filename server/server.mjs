@@ -11,7 +11,7 @@ import { AppError } from './app/utils/app-error.mjs';
 import {startupConfig} from '#startup-config';
 import {config, getRuntimeConfig, updateRuntimeConfig} from '#runtime-config';
 import * as s from './app/services.mjs';
-import { authenticateToken, authenticateMediaAccess } from './middleware/authn-middleware.mjs';
+import { authenticateToken, authenticateMediaAccess, requireAdmin } from './middleware/authn-middleware.mjs';
 import * as authnService from './app/infrastructure/authn/authn-service.mjs';
 
 const logger = createLogger(import.meta.url);
@@ -473,10 +473,12 @@ apiRouter.put('/moveItems', async function(req,res,next){
 });
 
 // *****************************************
-// frame management
+// frame management (admin only)
 // *****************************************
 
-apiRouter.post('/createNewFrame', async function(req,res,next){
+const adminRouter = express.Router();
+
+adminRouter.post('/createNewFrame', async function(req,res,next){
   let entry = req.body;
   try {
     let frame_id = await s.frame.createNewFrame(entry);
@@ -486,7 +488,7 @@ apiRouter.post('/createNewFrame', async function(req,res,next){
   }
 });
 
-apiRouter.post('/loadAllFrames', async function(req,res,next){
+adminRouter.post('/loadAllFrames', async function(req,res,next){
   try {
     await s.frame.loadAllFrames();
     res.sendStatus(200);
@@ -495,7 +497,7 @@ apiRouter.post('/loadAllFrames', async function(req,res,next){
   }
 });
 
-apiRouter.get('/getAllFrames', async function(req,res,next){
+adminRouter.get('/getAllFrames', async function(req,res,next){
   try {
     res.json(await s.frame.getAllFrames());
   } catch (error) {
@@ -503,7 +505,7 @@ apiRouter.get('/getAllFrames', async function(req,res,next){
   }
 });
 
-apiRouter.put('/updateFrame/:frame_id', async function(req,res,next){
+adminRouter.put('/updateFrame/:frame_id', async function(req,res,next){
   try {
     await s.frame.updateFrame(req.params.frame_id, req.body);
     res.sendStatus(200);
@@ -512,7 +514,7 @@ apiRouter.put('/updateFrame/:frame_id', async function(req,res,next){
   }
 });
 
-apiRouter.delete('/deleteFrame/:frame_id', async function(req,res,next){
+adminRouter.delete('/deleteFrame/:frame_id', async function(req,res,next){
   try {
     await s.frame.deleteFrame(req.params.frame_id);
     res.sendStatus(200);
@@ -521,7 +523,7 @@ apiRouter.delete('/deleteFrame/:frame_id', async function(req,res,next){
   }
 });
 
-apiRouter.post('/pauseFrame/:frame_id', async function(req,res,next){
+adminRouter.post('/pauseFrame/:frame_id', async function(req,res,next){
   try {
     await s.frame.pauseFrame(req.params.frame_id, req.body.pauseEndOverride);
     res.sendStatus(200);
@@ -530,7 +532,7 @@ apiRouter.post('/pauseFrame/:frame_id', async function(req,res,next){
   }
 });
 
-apiRouter.post('/resumeFrame/:frame_id', async function(req,res,next){
+adminRouter.post('/resumeFrame/:frame_id', async function(req,res,next){
   try {
     await s.frame.resumeFrame(req.params.frame_id);
     res.sendStatus(200);
@@ -794,6 +796,9 @@ app.use('/frame', frameRouter);
 
 // Mount the API router at /api (auth required)
 app.use('/api', authenticateToken, apiRouter);
+
+// Mount the admin API router at /api/admin (auth + admin role required)
+app.use('/api/admin', authenticateToken, requireAdmin, adminRouter);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

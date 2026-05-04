@@ -1,6 +1,6 @@
 import 'https://unpkg.com/navigo';
 
-import { isAuthenticated, logout } from './authn.mjs';
+import { isAuthenticated, isAdmin, logout } from './authn.mjs';
 
 const router = new Navigo('/', { hash: true });
 
@@ -32,6 +32,19 @@ function authGuard() {
   return true;
 }
 
+function adminGuard() {
+  if (!isAuthenticated()) {
+    const intendedRoute = window.location.hash.substring(2);
+    router.navigate(`/login?goto=${encodeURIComponent(intendedRoute)}`);
+    return false;
+  }
+  if (!isAdmin()) {
+    router.navigate('/app');
+    return false;
+  }
+  return true;
+}
+
 export function initRouter() {
   router.on('/login', () => {
     if (isAuthenticated()) {
@@ -45,6 +58,8 @@ export function initRouter() {
   router.on('/', () => {
     router.navigate(isAuthenticated() ? '/app' : '/login');
   });
+
+  // --- App routes ---
 
   router.on('/app', () => {
     if (!authGuard()) return;
@@ -84,13 +99,24 @@ export function initRouter() {
     ensureAppShell().route('map');
   });
 
-  router.on('/app/frames', () => {
-    if (!authGuard()) return;
-    ensureAppShell().route('frames');
+  // --- Admin routes ---
+
+  router.on('/admin', () => {
+    if (!adminGuard()) return;
+    ensureAppShell().route('settings', { mode: 'admin' });
+  });
+
+  router.on('/admin/settings', () => {
+    if (!adminGuard()) return;
+    ensureAppShell().route('settings', { mode: 'admin' });
+  });
+
+  router.on('/admin/frames', () => {
+    if (!adminGuard()) return;
+    ensureAppShell().route('frames', { mode: 'admin' });
   });
 
   router.resolve();
 }
 
 export { router };
-

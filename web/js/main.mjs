@@ -38,6 +38,7 @@ import './components/pl-item-info.js';
 import './components/pl-face-thumb.js';
 import './components/pl-frame-item.js';
 import './components/pl-frame-manager.js';
+import './components/pl-admin-settings.js';
 
 import { initRouter } from './router.mjs';
 

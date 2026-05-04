@@ -57,6 +57,24 @@ export async function refreshToken() {
   return data.user;
 }
 
+// Decode JWT payload to extract user info (client-side only, server verifies)
+export function getUserInfo() {
+  const token = getToken();
+  if (!token) return null;
+
+  try {
+    const payload = token.split('.')[1];
+    const decoded = JSON.parse(atob(payload));
+    return { userId: decoded.userId, username: decoded.username, role: decoded.role };
+  } catch (e) {
+    return null;
+  }
+}
+
+export function isAdmin() {
+  return getUserInfo()?.role === 'admin';
+}
+
 // Fetch wrapper that adds auth header and handles 401
 export async function authenticatedFetch(url, options = {}) {
   const token = getToken();

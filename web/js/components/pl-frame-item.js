@@ -194,7 +194,7 @@ class PlFrameItem extends HTMLElement {
         
         if (this.#data.frame_id) {
           // Update existing frame
-          const response = await authenticatedFetch(`/api/updateFrame/${this.#data.frame_id}`, {
+          const response = await authenticatedFetch(`/api/admin/updateFrame/${this.#data.frame_id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
@@ -206,7 +206,7 @@ class PlFrameItem extends HTMLElement {
           notify('Frame saved successfully!', 'success');
         } else {
           // Create new frame
-          const response = await authenticatedFetch('/api/createNewFrame', {
+          const response = await authenticatedFetch('/api/admin/createNewFrame', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
@@ -236,7 +236,7 @@ class PlFrameItem extends HTMLElement {
       if (!confirm(`Delete ${this.#data.frame_name}?`)) return;
       
       try {
-        const response = await authenticatedFetch(`/api/deleteFrame/${this.#data.frame_id}`, {
+        const response = await authenticatedFetch(`/api/admin/deleteFrame/${this.#data.frame_id}`, {
           method: 'DELETE'
         });
         
@@ -276,7 +276,7 @@ class PlFrameItem extends HTMLElement {
       e.stopPropagation();
       
       try {
-        const response = await authenticatedFetch(`/api/resumeFrame/${this.#data.frame_id}`, {
+        const response = await authenticatedFetch(`/api/admin/resumeFrame/${this.#data.frame_id}`, {
           method: 'POST'
         });
         
@@ -295,7 +295,7 @@ class PlFrameItem extends HTMLElement {
 
   async #pauseFrame(resumeAtSchedule) {
     try {
-      const response = await authenticatedFetch(`/api/pauseFrame/${this.#data.frame_id}`, {
+      const response = await authenticatedFetch(`/api/admin/pauseFrame/${this.#data.frame_id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ resumeAtSchedule })
