@@ -120,6 +120,7 @@ class PlSlideshow extends HTMLElement {
 
     window.addEventListener('keydown', this.#handleRightArrow);
     window.addEventListener('keydown', this.#handleLeftArrow);
+    window.addEventListener('keydown', this.#handleInfoKey);
 
     this.#closeWatcher = new CloseWatcher();
     this.#closeWatcher.onclose = () => this.#slideshowClosed();
@@ -222,6 +223,14 @@ class PlSlideshow extends HTMLElement {
       if(this.#slideshowMode){
         this.#resetTimer();
       }
+    }
+  }
+
+  #handleInfoKey = (evt) => {
+    if (evt.key === 'i' || evt.key === 'I') {
+      this.#infoPanelOpen = !this.#infoPanelOpen;
+      let active = this.shadowRoot.querySelector('#slides [data-pos="0"]');
+      if (active) active.infoPanelOpen = this.#infoPanelOpen;
     }
   }
 
@@ -428,6 +437,7 @@ class PlSlideshow extends HTMLElement {
   disconnectedCallback() {
     window.removeEventListener('keydown', this.#handleRightArrow);
     window.removeEventListener('keydown', this.#handleLeftArrow);
+    window.removeEventListener('keydown', this.#handleInfoKey);
     this.#closeWatcher?.destroy();
   }
 
