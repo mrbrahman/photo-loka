@@ -2,7 +2,7 @@ import {notify} from '../utils.mjs';
 import {authenticatedFetch} from '../authn.mjs';
 
 import sheet from "./styles/pl-item-info.css" with { type: "css" };
-import leafletSheet from "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" with { type: "css" };
+import leafletSheet from "leaflet-css" with { type: "css" };
 
 class PlItemInfo extends HTMLElement {
   #uuid; #data; #map; #originalDesc; #originalStem; #ext;

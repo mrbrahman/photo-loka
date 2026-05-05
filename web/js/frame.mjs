@@ -1,7 +1,7 @@
 // cherry-pick shoelace components
-import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/icon/icon.js';
-import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/icon-button/icon-button.js';
-import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/components/rating/rating.js';
+import 'shoelace/components/icon/icon.js';
+import 'shoelace/components/icon-button/icon-button.js';
+import 'shoelace/components/rating/rating.js';
 
 import './components/pl-slide.js';
 import './components/pl-slide-media.js';

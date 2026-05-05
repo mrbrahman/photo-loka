@@ -1,5 +1,5 @@
 import sheet from "./styles/pl-map.css" with { type: "css" };
-import leafletSheet from "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" with { type: "css" };
+import leafletSheet from "leaflet-css" with { type: "css" };
 import { authenticatedFetch } from '../authn.mjs';
 
 class PlMap extends HTMLElement {

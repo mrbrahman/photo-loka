@@ -1,4 +1,4 @@
-import 'https://unpkg.com/navigo';
+import 'navigo';
 
 import { isAuthenticated, isAdmin, logout } from './authn.mjs';
 

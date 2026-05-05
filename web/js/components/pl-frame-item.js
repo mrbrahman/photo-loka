@@ -1,6 +1,6 @@
 import { notify, showConfirmDialog } from '../utils.mjs';
 import { authenticatedFetch } from '../authn.mjs';
-import { serialize } from 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/utilities/form.js';
+import { serialize } from 'shoelace/utilities/form.js';
 
 import sheet from "./styles/pl-frame-item.css" with { type: "css" };
 
