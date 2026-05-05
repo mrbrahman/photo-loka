@@ -9,13 +9,13 @@ const router = Router();
 
 router.post('/startIndexingFirstTime', async function(req,res){
   let {collection_id} = req.query;
-  s.bulkIndexer.indexCollection(collection_id, true);
+  s.bulkIndexer.initialIndexing(collection_id);
   res.sendStatus(200);
 });
 
-router.post('/indexCollection/:collection_id', function(req,res){
+router.post('/scanForChanges/:collection_id', function(req,res){
   let collection_id = req.params.collection_id;
-  s.bulkIndexer.indexCollection(collection_id);
+  s.bulkIndexer.scanForChanges(collection_id);
   res.sendStatus(200);
 });
 

@@ -9,26 +9,38 @@ import { fmtTime } from '#utils/time-format';
 
 const logger = createLogger(import.meta.url);
 
-export async function indexCollection(collection_id, firstTime=false){
+export async function initialIndexing(collection_id){
 
   return new Promise(async (resolve, reject)=>{
-    // TODO: should this accept a collection instead of collection_id?
     let c = await getCollection(collection_id);
-    let files = [];
-  
-    if(firstTime){
-      // save some time, and just get a list of all files
-      files = {added: await fileOps.listAllFilesForCollection(c), changed:[], deleted: []};
-    } else {
-      // painstakingly find out which files are added/updated/removed
-      files = await listDeltaFilesForCollection(c);
+
+    // First time: just get a list of all files (no comparison needed)
+    let files = await fileOps.listAllFilesForCollection(c);
+
+    logger.info(`Initial indexing: ${files.length} files found`);
+
+    if(files.length > 0){
+      bulkAddToIndexQueue(
+        files.map(f=>{
+          return [indexFile, [c, f, null, true], 'high'];
+        })
+      );
     }
 
-    logger.info(`added: ${files.added.length} changed ${files.changed.length} deleted ${files.deleted.length}`);
-    // logger.debug(`added files: ${JSON.stringify(files.added)}`);
-    // logger.debug(`changed files: ${JSON.stringify(files.changed)}`);
+    resolve()
+  })
+}
 
-    // add files to the indexer queue
+export async function scanForChanges(collection_id){
+
+  return new Promise(async (resolve, reject)=>{
+    let c = await getCollection(collection_id);
+
+    // Compare files on disk vs DB to find added/changed/deleted
+    let files = await listDeltaFilesForCollection(c);
+
+    logger.info(`added: ${files.added.length} changed ${files.changed.length} deleted ${files.deleted.length}`);
+
     if(files['added'].length > 0){
       bulkAddToIndexQueue(
         files['added'].map(f=>{

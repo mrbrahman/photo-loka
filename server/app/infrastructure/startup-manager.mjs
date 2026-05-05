@@ -3,7 +3,7 @@ import { startupConfig } from '#startup-config';
 import { createLogger } from '#utils/logger';
 
 import { getAllCollections } from '#collections/collection-manager';
-import { indexCollection } from '#indexing/collection-indexer';
+import { scanForChanges } from '#indexing/collection-indexer';
 import { startWatchersForAllCollections } from '#jobs/file-watcher-job';
 import { scheduleCronJobs } from '#jobs/scheduled-indexing-job';
 import { scheduleFrameJobs } from '#jobs/frame-jobs';
@@ -36,8 +36,8 @@ export async function startUpActivities(){
   if(config.scanFilesForChangesAndIndexAtStartup){
     let collections = await getAllCollections();
     for (let c of collections){
-      indexCollection(c.collection_id, false)
-        .then(()=>logger.info(`Completed indexing setup for collection ${c.collection_id}`))
+      scanForChanges(c.collection_id)
+        .then(()=>logger.info(`Completed scan for changes for collection ${c.collection_id}`))
       ;
     }
   }
