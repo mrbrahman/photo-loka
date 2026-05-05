@@ -14,6 +14,7 @@ import authnRoutes from './routes/authn.routes.mjs';
 import searchRoutes from './routes/search.routes.mjs';
 import mediaRoutes from './routes/media.routes.mjs';
 import collectionsRoutes from './routes/collections.routes.mjs';
+import { adminCollectionsRouter } from './routes/collections.routes.mjs';
 import indexerRoutes from './routes/indexer.routes.mjs';
 import itemsRoutes from './routes/items.routes.mjs';
 import albumsRoutes from './routes/albums.routes.mjs';
@@ -79,6 +80,7 @@ app.use('/api', authenticateToken, backupRoutes);
 
 // Admin routes (auth + admin role required)
 app.use('/api/admin', authenticateToken, requireAdmin, adminFrameRouter);
+app.use('/api/admin', authenticateToken, requireAdmin, adminCollectionsRouter);
 app.use('/api/admin', authenticateToken, requireAdmin, indexerRoutes);
 app.use('/api/admin', authenticateToken, requireAdmin, configRoutes);
 app.use('/api/admin', authenticateToken, requireAdmin, dashboardRoutes);

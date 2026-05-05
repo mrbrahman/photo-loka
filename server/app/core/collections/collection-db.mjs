@@ -69,6 +69,20 @@ export async function getCollectionByIntakePath(dirPath){
   return output ? transformEntryFromDb(output) : null;
 }
 
+export async function updateCollection(collection_id, entry){
+  await asyncRun(`
+    update collections set
+      collection_name = @collection_name,
+      collection_path = @collection_path,
+      album_type = @album_type,
+      intake_configs = json(@intake_configs),
+      apply_folder_pattern = @apply_folder_pattern,
+      default_collection = @default_collection,
+      trash_days = @trash_days
+    where collection_id = @collection_id
+  `, { collection_id, ...transformEntryToDb(entry) });
+}
+
 export function updateDefaultCollection(entries){
   // TODO
   logger.warn("TODO :-)")

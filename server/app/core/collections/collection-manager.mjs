@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import dateformat from 'dateformat';
 
 import * as watcher from '#jobs/file-watcher-job';
 import * as db from './collection-db.mjs';
@@ -29,6 +30,28 @@ export async function createNewCollection(record){
   
   return id;
 } 
+
+export async function updateCollection(collection_id, record){
+  if(!isValidDir(record.collection_path)){
+    throw new AppError(`${record.collection_path} is not a valid path in collection path`, 'ValidationError', 'INVALID_PATH', 400);
+  }
+
+  for (let intakeConfig of record.intake_configs){
+    if(!isValidDir(intakeConfig.path)){
+      throw new AppError(`${intakeConfig.path} is not a valid path in intake config`, 'ValidationError', 'INVALID_PATH', 400);
+    }
+    if(!['immediate', 'scheduled', 'on-demand'].includes(intakeConfig.method)){
+      throw new AppError(`${intakeConfig.method} is not a valid method. Use 'immediate', 'scheduled', or 'on-demand'`, 'ValidationError', 'INVALID_METHOD', 400);
+    }
+  }
+
+  let albumTypes = ['FOLDER_ALBUM','VIRTUAL_ALBUM']
+  if(albumTypes.indexOf(record.album_type)<0){
+    throw new AppError(`${record.album_type} is invalid album type. Valid values are: ${albumTypes.join(', ')}`, 'ValidationError', 'INVALID_ALBUM_TYPE', 400);
+  }
+
+  await db.updateCollection(collection_id, record);
+}
 
 export async function getAllCollections(){
   return await db.getAllCollections()
@@ -69,4 +92,13 @@ function lsCnt(dir){
   return files + ls.filter(x=>x.isDirectory())
     .map(d=>lsCnt(path.join(dir, d.name)))
     .reduce((acc,curr)=>acc+curr, 0)
+}
+
+export function validateFolderPattern(pattern){
+  try {
+    let example = dateformat(new Date(), pattern);
+    return { valid: true, example };
+  } catch(e) {
+    return { valid: false, error: e.message };
+  }
 }

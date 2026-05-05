@@ -1,5 +1,5 @@
 // Admin Collections
-// Future actions (disabled for now, pending route migration to /api/admin):
+// Future actions (pending route migration to /api/admin):
 // - Start/Stop All Watchers (POST /api/startAllWatchers, /api/stopAllWatchers)
 // - Start/Stop Scheduled Indexing (POST /api/startScheduledIndexing, /api/stopScheduledIndexing)
 // - Re-index Collection (POST /api/indexCollection/:id)
@@ -8,6 +8,7 @@
 
 import { notify } from '../utils.mjs';
 import { authenticatedFetch } from '../authn.mjs';
+import { cronToHuman } from '../cron-utils.mjs';
 
 import sheet from "./styles/pl-admin-collections.css" with { type: "css" };
 
@@ -17,10 +18,15 @@ class PlAdminCollections extends HTMLElement {
   static {
     this.template.innerHTML = // html
       `
-      <div class="container">
-        <h2>Collections</h2>
+      <div class="container" id="list-view">
+        <div class="header">
+          <h2>Collections</h2>
+          <sl-button variant="primary" size="medium" id="new-collection-btn">
+            <sl-icon slot="prefix" name="plus-lg"></sl-icon> New Collection
+          </sl-button>
+        </div>
 
-        <!-- Page-level controls (disabled placeholders) -->
+        <!-- Page-level controls (disabled placeholders)
         <div class="page-controls">
           <sl-button size="small" variant="neutral" disabled>
             <sl-icon slot="prefix" name="eye"></sl-icon>
@@ -39,11 +45,14 @@ class PlAdminCollections extends HTMLElement {
             Stop Scheduled Indexing
           </sl-button>
         </div>
+        -->
 
         <div id="collections-list">
           <div class="loading">Loading collections...</div>
         </div>
       </div>
+
+      <div id="form-view" hidden></div>
     `;
   }
 
@@ -55,7 +64,47 @@ class PlAdminCollections extends HTMLElement {
 
   connectedCallback() {
     this.shadowRoot.appendChild(this.constructor.template.content.cloneNode(true));
+    this.#setupEventListeners();
     this.#loadCollections();
+  }
+
+  #setupEventListeners() {
+    this.shadowRoot.getElementById('new-collection-btn').addEventListener('click', () => {
+      this.#showForm(null);
+    });
+
+    this.shadowRoot.addEventListener('pl-collection-saved', () => {
+      this.#showList();
+      this.#loadCollections();
+    });
+
+    this.shadowRoot.addEventListener('pl-collection-cancelled', () => {
+      this.#showList();
+    });
+  }
+
+  #showForm(collectionData) {
+    let listView = this.shadowRoot.getElementById('list-view');
+    let formView = this.shadowRoot.getElementById('form-view');
+
+    listView.hidden = true;
+    formView.hidden = false;
+    formView.innerHTML = '';
+
+    let form = document.createElement('pl-collection-form');
+    if (collectionData) {
+      form.data = collectionData;
+    }
+    formView.appendChild(form);
+  }
+
+  #showList() {
+    let listView = this.shadowRoot.getElementById('list-view');
+    let formView = this.shadowRoot.getElementById('form-view');
+
+    formView.hidden = true;
+    formView.innerHTML = '';
+    listView.hidden = false;
   }
 
   async #loadCollections() {
@@ -107,12 +156,18 @@ class PlAdminCollections extends HTMLElement {
       container.appendChild(details);
     }
 
-    this.#attachActionListeners();
+    this.#attachActionListeners(collections);
   }
 
-  #attachActionListeners() {
+  #attachActionListeners(collections) {
     this.shadowRoot.querySelectorAll('.scan-btn').forEach(btn => {
       btn.addEventListener('click', () => this.#scanForChanges(btn));
+    });
+
+    this.shadowRoot.querySelectorAll('.edit-btn').forEach(btn => {
+      let collectionId = parseInt(btn.dataset.collectionId);
+      let collection = collections.find(c => c.collection_id === collectionId);
+      btn.addEventListener('click', () => this.#showForm(collection));
     });
   }
 
@@ -155,7 +210,7 @@ class PlAdminCollections extends HTMLElement {
               ${methodBadge}
               <span class="intake-path">${intake.path}</span>
             </div>
-            ${configDetails ? `<pre class="intake-config">${configDetails}</pre>` : ''}
+            ${configDetails}
           </div>
         `;
       }
@@ -165,14 +220,22 @@ class PlAdminCollections extends HTMLElement {
     // Actions section
     html += `
       <div class="actions-section">
-        <sl-button size="small" variant="primary" outline class="scan-btn" data-collection-id="${c.collection_id}">
-          <sl-icon slot="prefix" name="search"></sl-icon>
-          Scan for Changes
-        </sl-button>
-        <sl-button size="small" variant="neutral" outline disabled title="Disabled: may overwrite enriched fields (geo_address, faces). Needs revisit.">
-          <sl-icon slot="prefix" name="arrow-clockwise"></sl-icon>
-          Refresh Metadata
-        </sl-button>
+        <div class="actions-left">
+          <sl-button size="small" variant="primary" outline class="scan-btn" data-collection-id="${c.collection_id}">
+            <sl-icon slot="prefix" name="search"></sl-icon>
+            Scan for Changes
+          </sl-button>
+          <sl-button size="small" variant="neutral" outline disabled title="Disabled: may overwrite enriched fields (geo_address, faces). Needs revisit.">
+            <sl-icon slot="prefix" name="arrow-clockwise"></sl-icon>
+            Refresh Metadata
+          </sl-button>
+        </div>
+        <div class="actions-right">
+          <sl-button size="small" variant="neutral" outline class="edit-btn" data-collection-id="${c.collection_id}">
+            <sl-icon slot="prefix" name="pencil"></sl-icon>
+            Edit
+          </sl-button>
+        </div>
       </div>
     `;
 
@@ -194,7 +257,29 @@ class PlAdminCollections extends HTMLElement {
 
   #formatIntakeConfig(intake) {
     if (!intake.config || Object.keys(intake.config).length === 0) return '';
-    return JSON.stringify(intake.config, null, 2);
+
+    let rows = '';
+    if (intake.method === 'immediate') {
+      if (intake.config.awaitWriteFinish !== undefined) {
+        rows += `<div class="prop-row"><span class="prop-label">Await Write Finish</span><span class="prop-value">${intake.config.awaitWriteFinish ? 'Yes' : 'No'}</span></div>`;
+      }
+      if (intake.config.ignoreInitial !== undefined) {
+        rows += `<div class="prop-row"><span class="prop-label">Ignore Initial</span><span class="prop-value">${intake.config.ignoreInitial ? 'Yes' : 'No'}</span></div>`;
+      }
+    } else if (intake.method === 'scheduled') {
+      if (intake.config.schedule) {
+        let human = cronToHuman(intake.config.schedule);
+        rows += `<div class="prop-row"><span class="prop-label">Schedule</span><span class="prop-value">${intake.config.schedule}</span></div>`;
+        if (human) {
+          rows += `<div class="prop-row"><span class="prop-label"></span><span class="prop-value cron-human">${human}</span></div>`;
+        }
+      }
+      if (intake.config.staleDays !== undefined) {
+        rows += `<div class="prop-row"><span class="prop-label">Stale Days</span><span class="prop-value">${intake.config.staleDays}</span></div>`;
+      }
+    }
+
+    return rows ? `<div class="intake-details">${rows}</div>` : '';
   }
 }
 
