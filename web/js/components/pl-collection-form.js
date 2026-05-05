@@ -63,9 +63,12 @@ class PlCollectionForm extends HTMLElement {
 
           <!-- Form Actions -->
           <div class="form-actions">
-            <sl-button id="save-btn" variant="primary">
-              <sl-icon slot="prefix" name="check-lg"></sl-icon>
-              Save
+            <sl-button id="save-index-btn" variant="primary">
+              <sl-icon slot="prefix" name="play-fill"></sl-icon>
+              Save and Start Indexing
+            </sl-button>
+            <sl-button id="save-btn" variant="default">
+              Save Only
             </sl-button>
             <sl-button id="cancel-btn" variant="default">Cancel</sl-button>
           </div>
@@ -100,6 +103,9 @@ class PlCollectionForm extends HTMLElement {
 
     if (this.#isEdit) {
       sr.getElementById('form-title').textContent = 'Edit Collection';
+      sr.getElementById('save-index-btn').style.display = 'none';
+      sr.getElementById('save-btn').variant = 'primary';
+      sr.getElementById('save-btn').textContent = 'Save';
     }
 
     let d = this.#data;
@@ -128,7 +134,8 @@ class PlCollectionForm extends HTMLElement {
 
     sr.getElementById('back-btn').addEventListener('click', () => this.#cancel());
     sr.getElementById('cancel-btn').addEventListener('click', () => this.#cancel());
-    sr.getElementById('save-btn').addEventListener('click', () => this.#save());
+    sr.getElementById('save-btn').addEventListener('click', () => this.#save(false));
+    sr.getElementById('save-index-btn').addEventListener('click', () => this.#save(true));
     sr.getElementById('add-intake-btn').addEventListener('click', () => this.#addIntakeCard());
 
     // Collection path autocomplete + validation
@@ -367,7 +374,7 @@ class PlCollectionForm extends HTMLElement {
     }));
   }
 
-  async #save() {
+  async #save(startIndexing = false) {
     let sr = this.shadowRoot;
 
     // Gather form data
@@ -432,7 +439,9 @@ class PlCollectionForm extends HTMLElement {
       trash_days: trashDays
     };
 
-    let saveBtn = sr.getElementById('save-btn');
+    let saveBtn = sr.getElementById('save-index-btn').style.display === 'none'
+      ? sr.getElementById('save-btn')
+      : sr.getElementById('save-index-btn');
     saveBtn.loading = true;
 
     try {
@@ -456,7 +465,22 @@ class PlCollectionForm extends HTMLElement {
         throw new Error(err.error?.message || `Request failed: ${res.status}`);
       }
 
-      notify(this.#isEdit ? 'Collection updated' : 'Collection created', 'success');
+      let result = await res.json();
+
+      // Start indexing if requested (create mode only)
+      if (startIndexing && !this.#isEdit && result) {
+        let collectionId = result; // createNewCollection returns the new ID
+        try {
+          await authenticatedFetch(`/api/admin/startIndexingFirstTime?collection_id=${collectionId}`, { method: 'POST' });
+          notify('Collection created and indexing started', 'success');
+        } catch (indexErr) {
+          notify('Collection created but failed to start indexing', 'warning');
+          console.error(indexErr);
+        }
+      } else {
+        notify(this.#isEdit ? 'Collection updated' : 'Collection created', 'success');
+      }
+
       this.dispatchEvent(new CustomEvent('pl-collection-saved', {
         bubbles: true, composed: true
       }));
