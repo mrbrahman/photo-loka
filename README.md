@@ -136,9 +136,9 @@ TODO - sync timestamps on +2 level folders
 - Add/change "tags" (keywords)
 
 **After near future**
-- An acutal form to setup collections
-- Form to update config and save it to persistant storage (file?)
-- Monitor indexer progress
+- ~~An actual form to setup collections~~ Done!
+- ~~Form to update config and save it to persistent storage (file?)~~ Done!
+- ~~Monitor indexer progress~~ Done!
 - Enable multiple collections
 - Ability to upload photos from device
 - Intelligent scrollbar (folder levels?)
@@ -191,18 +191,34 @@ TODO - sync timestamps on +2 level folders
 
 - **Setup Collection & Start Indexing**
 
-  Until the UI is available to create collections and auto-start indexing, use REST API.
+  Navigate to the Admin > Collections page in the UI and click "New Collection". Fill in:
+  - **Collection Name** and **Collection Path** (must be an existing directory)
+  - **Album Type**: FOLDER_ALBUM (files organized in date folders) or VIRTUAL_ALBUM
+  - **Folder Pattern**: dateformat-compatible pattern (e.g. `yyyy/yyyy-mm-dd`)
+  - **Intake Paths**: one or more paths where new files arrive, with a method:
+    - *Immediate* - watches the folder in real-time (chokidar)
+    - *Scheduled* - runs on a cron schedule for files that are N days stale
+    - *On-demand* - only indexes when manually triggered
 
-  Example for creating collection with real-time watcher
+  Alternatively, use the REST API (requires an [API token](#generate-api-token)):
   ```bash
-  cat > c.json <<EOF
+  curl -X POST -H 'Content-Type: application/json' \
+    -H "Authorization: Bearer <token>" \
+    -d @c.json "http://localhost:9000/api/admin/createNewCollection"
+  ```
+
+  <details>
+  <summary>Example JSON payloads for REST API</summary>
+
+  Collection with real-time watcher:
+  ```json
   {
     "collection_name":"Test",
-    "collection_path":"/home/mrbrahman/Projects/test-collection/",
+    "collection_path":"/home/user/photos/",
     "album_type":"FOLDER_ALBUM",
     "intake_configs":[
       {
-        "path":"/home/mrbrahman/Projects/test-collection-new-files/",
+        "path":"/home/user/camera-import/",
         "method":"immediate",
         "config":{
           "awaitWriteFinish":true,
@@ -213,19 +229,17 @@ TODO - sync timestamps on +2 level folders
     "apply_folder_pattern":"yyyy/yyyy-mm-dd",
     "default_collection":1
   }
-  EOF
   ```
 
-  Example for creating collection with scheduled cron indexing
-  ```bash
-  cat > c.json <<EOF
+  Collection with scheduled cron indexing:
+  ```json
   {
     "collection_name":"Test",
-    "collection_path":"/home/mrbrahman/Projects/test-collection/",
+    "collection_path":"/home/user/photos/",
     "album_type":"FOLDER_ALBUM",
     "intake_configs":[
       {
-        "path":"/home/mrbrahman/Projects/bulk-import/",
+        "path":"/home/user/bulk-import/",
         "method":"scheduled",
         "config":{
           "schedule":"0 2 * * *",
@@ -236,19 +250,17 @@ TODO - sync timestamps on +2 level folders
     "apply_folder_pattern":"yyyy/yyyy-mm-dd",
     "default_collection":1
   }
-  EOF
   ```
 
-  Example for creating collection with mixed watcher and cron paths
-  ```bash
-  cat > c.json <<EOF
+  Collection with mixed watcher and cron paths:
+  ```json
   {
     "collection_name":"Test",
-    "collection_path":"/home/mrbrahman/Projects/test-collection/",
+    "collection_path":"/home/user/photos/",
     "album_type":"FOLDER_ALBUM",
     "intake_configs":[
       {
-        "path":"/home/mrbrahman/Projects/camera-import/",
+        "path":"/home/user/camera-import/",
         "method":"immediate",
         "config":{
           "awaitWriteFinish":true
@@ -266,31 +278,26 @@ TODO - sync timestamps on +2 level folders
     "apply_folder_pattern":"yyyy/yyyy-mm-dd",
     "default_collection":1
   }
-  EOF
   ```
-
-  ```bash
-  curl -X POST -H 'Content-Type: application/json' -d @c.json "http://localhost:9000/api/createNewCollection"
-  
-  # Verify
-  curl -X GET 'http://localhost:9000/api/getAllCollections' | jq '.'
-  ```
+  </details>
 
   Start indexing (this will kick off indexer process in the background and return immediately)
   ```bash
-  curl -X POST 'http://localhost:9000/api/startIndexingFirstTime?collection_id=1'
+  curl -X POST -H "Authorization: Bearer <token>" \
+    'http://localhost:9000/api/startIndexingFirstTime?collection_id=1'
   ```
   
   Monitor progress
   ```bash
-  curl -X GET 'http://localhost:9000/api/getIndexerStatus' | jq '.'
+  curl -X GET -H "Authorization: Bearer <token>" \
+    'http://localhost:9000/api/getIndexerStatus' | jq '.'
   ```
 
   ```bash
   # If you notice your system resources are not fully utilized, you can increase indexer concurrency
   # Suggest to increase by 1 at a time, until you see resources getting fully utilized
-  $ curl -X PUT 'http://localhost:9000/api/updateIndexerConcurrency/2'
-
+  curl -X PUT -H "Authorization: Bearer <token>" \
+    'http://localhost:9000/api/updateIndexerConcurrency/2'
   ```
 - Create a [user](#create-user) using the CLI commands as shown below
 - Visit your rewind-replay page http://localhost:9000
