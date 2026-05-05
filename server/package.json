@@ -58,6 +58,7 @@
     "#media/*": "./app/core/media/*.mjs",
     "#overlays/*": "./app/core/media/overlays/*",
     "#search/*": "./app/core/search/*.mjs",
-    "#backup/*": "./app/core/backup/*.mjs"
+    "#backup/*": "./app/core/backup/*.mjs",
+    "#dashboard/*": "./app/core/dashboard/*.mjs"
   }
 }

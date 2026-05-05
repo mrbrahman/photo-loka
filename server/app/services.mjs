@@ -26,3 +26,5 @@ export * as jobs        from '#jobs/scheduled-indexing-job';
 export * as backup      from '#backup/backup-manager';
 
 export * as ml          from '#ml/ml-manager';
+
+export * as dashboard   from '#dashboard/dashboard-stats';
