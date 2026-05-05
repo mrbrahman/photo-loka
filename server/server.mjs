@@ -68,18 +68,18 @@ app.use('/frame', frameRouter);
 app.use('/api', authenticateToken, searchRoutes);
 app.use('/api', authenticateToken, mediaRoutes);
 app.use('/api', authenticateToken, collectionsRoutes);
-app.use('/api', authenticateToken, indexerRoutes);
 app.use('/api', authenticateToken, itemsRoutes);
 app.use('/api', authenticateToken, albumsRoutes);
 app.use('/api', authenticateToken, geoRoutes);
 app.use('/api', authenticateToken, facesRoutes);
-app.use('/api', authenticateToken, configRoutes);
 app.use('/api', authenticateToken, watchersRoutes);
 app.use('/api', authenticateToken, jobsRoutes);
 app.use('/api', authenticateToken, backupRoutes);
 
 // Admin routes (auth + admin role required)
 app.use('/api/admin', authenticateToken, requireAdmin, adminFrameRouter);
+app.use('/api/admin', authenticateToken, requireAdmin, indexerRoutes);
+app.use('/api/admin', authenticateToken, requireAdmin, configRoutes);
 
 // Utility endpoints
 app.get('/speed-test', (req, res) => {

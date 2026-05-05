@@ -40,6 +40,9 @@ import './components/pl-face-thumb.js';
 import './components/pl-frame-item.js';
 import './components/pl-frame-manager.js';
 import './components/pl-admin-settings.js';
+import './components/pl-admin-indexer.js';
+import './components/pl-admin-dashboard.js';
+import './components/pl-admin-collections.js';
 
 import { initRouter } from './router.mjs';
 

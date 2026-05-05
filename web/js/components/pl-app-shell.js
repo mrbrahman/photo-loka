@@ -113,6 +113,11 @@ class PlAppShell extends HTMLElement {
 
       <sl-divider></sl-divider>
 
+      <!-- Dashboard: collection stats, media type breakdown, system health overview -->
+      <a class="sidebar-item" data-route="/dashboard">
+        <sl-icon name="speedometer2"></sl-icon>
+        <span>Dashboard</span>
+      </a>
       <a class="sidebar-item" data-route="/settings">
         <sl-icon name="gear"></sl-icon>
         <span>Settings</span>
@@ -121,17 +126,19 @@ class PlAppShell extends HTMLElement {
         <sl-icon name="display"></sl-icon>
         <span>Frames</span>
       </a>
-      <a class="sidebar-item" data-route="/users" disabled>
-        <sl-icon name="people"></sl-icon>
-        <span>Users</span>
-      </a>
-      <a class="sidebar-item" data-route="/indexer" disabled>
+      <!-- Indexer: live status, pause/resume, concurrency, errors -->
+      <a class="sidebar-item" data-route="/indexer">
         <sl-icon name="arrow-repeat"></sl-icon>
         <span>Indexer</span>
       </a>
-      <a class="sidebar-item" data-route="/system" disabled>
-        <sl-icon name="cpu"></sl-icon>
-        <span>System</span>
+      <!-- Collections: indexing, file watchers, scheduled jobs per collection -->
+      <a class="sidebar-item" data-route="/collections">
+        <sl-icon name="folder2-open"></sl-icon>
+        <span>Collections</span>
+      </a>
+      <a class="sidebar-item" data-route="/users" disabled>
+        <sl-icon name="people"></sl-icon>
+        <span>Users</span>
       </a>
     `;
   }
@@ -346,6 +353,27 @@ class PlAppShell extends HTMLElement {
         this.#mainContent.innerHTML = '';
         this.#mainContent.style.overflowY = 'auto';
         this.#mainContent.appendChild(document.createElement('pl-admin-settings'));
+        break;
+
+      case 'indexer':
+        this.#setActiveMenuItem('/indexer');
+        this.#mainContent.innerHTML = '';
+        this.#mainContent.style.overflowY = 'auto';
+        this.#mainContent.appendChild(document.createElement('pl-admin-indexer'));
+        break;
+
+      case 'dashboard':
+        this.#setActiveMenuItem('/dashboard');
+        this.#mainContent.innerHTML = '';
+        this.#mainContent.style.overflowY = 'auto';
+        this.#mainContent.appendChild(document.createElement('pl-admin-dashboard'));
+        break;
+
+      case 'collections':
+        this.#setActiveMenuItem('/collections');
+        this.#mainContent.innerHTML = '';
+        this.#mainContent.style.overflowY = 'auto';
+        this.#mainContent.appendChild(document.createElement('pl-admin-collections'));
         break;
     }
   }

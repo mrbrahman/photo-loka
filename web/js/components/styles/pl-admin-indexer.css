@@ -1,0 +1,150 @@
+:host {
+  display: block;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.container {
+  padding: 1.5rem 2rem;
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+
+.header h2 {
+  margin: 0;
+  color: var(--text-primary);
+}
+
+/* --- Sections --- */
+
+.section {
+  margin-bottom: 1.5rem;
+}
+
+.section-title {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin: 0 0 0.75rem 0;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--border-primary);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* --- Status Grid --- */
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.status-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  padding: 0.75rem;
+  text-align: center;
+}
+
+.status-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.status-value {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.state-running {
+  color: var(--sl-color-success-600);
+}
+
+.state-paused {
+  color: var(--sl-color-warning-600);
+}
+
+.state-idle {
+  color: var(--text-secondary);
+}
+
+/* --- Queue Breakdown --- */
+
+.queue-breakdown {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding: 0.5rem 0;
+}
+
+.queue-label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+/* --- Controls --- */
+
+.controls-row {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.concurrency-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.concurrency-control label {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* --- Errors --- */
+
+.empty-state {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  padding: 0.5rem 0;
+}
+
+.error-list {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+}
+
+.error-item {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8rem;
+  font-family: Consolas, var(--sl-font-mono);
+  color: var(--sl-color-danger-700);
+  border-bottom: 1px solid var(--border-primary);
+  word-break: break-all;
+}
+
+.error-item:last-child {
+  border-bottom: none;
+}

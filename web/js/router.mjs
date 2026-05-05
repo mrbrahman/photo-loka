@@ -103,7 +103,12 @@ export function initRouter() {
 
   router.on('/admin', () => {
     if (!adminGuard()) return;
-    ensureAppShell().route('settings', { mode: 'admin' });
+    ensureAppShell().route('dashboard', { mode: 'admin' });
+  });
+
+  router.on('/admin/dashboard', () => {
+    if (!adminGuard()) return;
+    ensureAppShell().route('dashboard', { mode: 'admin' });
   });
 
   router.on('/admin/settings', () => {
@@ -114,6 +119,16 @@ export function initRouter() {
   router.on('/admin/frames', () => {
     if (!adminGuard()) return;
     ensureAppShell().route('frames', { mode: 'admin' });
+  });
+
+  router.on('/admin/indexer', () => {
+    if (!adminGuard()) return;
+    ensureAppShell().route('indexer', { mode: 'admin' });
+  });
+
+  router.on('/admin/collections', () => {
+    if (!adminGuard()) return;
+    ensureAppShell().route('collections', { mode: 'admin' });
   });
 
   router.resolve();

@@ -149,7 +149,7 @@ class PlAdminSettings extends HTMLElement {
 
   async #loadConfig() {
     try {
-      const res = await authenticatedFetch('/api/getConfig');
+      const res = await authenticatedFetch('/api/admin/getConfig');
       if (!res.ok) throw new Error('Failed to load config');
       this.#config = await res.json();
       this.#render();
@@ -227,7 +227,7 @@ class PlAdminSettings extends HTMLElement {
 
   async #saveField(key, value) {
     try {
-      const res = await authenticatedFetch('/api/updateConfig', {
+      const res = await authenticatedFetch('/api/admin/updateConfig', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key, value })
