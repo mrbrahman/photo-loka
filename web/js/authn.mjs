@@ -44,17 +44,33 @@ export async function logout() {
   clearToken();
 }
 
+// Singleton refresh promise to prevent parallel refresh race conditions.
+// When multiple 401s trigger simultaneously, only one refresh request is made.
+let refreshPromise = null;
+
 export async function refreshToken() {
-  const response = await fetch('/api/authn/refresh', { method: 'POST' });
-  
-  if (!response.ok) {
-    clearToken();
-    throw new Error('Token refresh failed');
+  if (refreshPromise) {
+    return refreshPromise;
   }
 
-  const data = await response.json();
-  setToken(data.accessToken);
-  return data.user;
+  refreshPromise = (async () => {
+    const response = await fetch('/api/authn/refresh', { method: 'POST' });
+
+    if (!response.ok) {
+      clearToken();
+      throw new Error('Token refresh failed');
+    }
+
+    const data = await response.json();
+    setToken(data.accessToken);
+    return data.user;
+  })();
+
+  try {
+    return await refreshPromise;
+  } finally {
+    refreshPromise = null;
+  }
 }
 
 // Decode JWT payload to extract user info (client-side only, server verifies)
