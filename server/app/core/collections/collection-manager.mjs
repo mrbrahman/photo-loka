@@ -3,6 +3,7 @@ import * as path from 'path';
 import dateformat from 'dateformat';
 
 import * as watcher from '#jobs/file-watcher-job';
+import * as cronJobs from '#jobs/scheduled-indexing-job';
 import * as db from './collection-db.mjs';
 import { AppError } from '#utils/app-error';
 
@@ -27,6 +28,7 @@ export async function createNewCollection(record){
   
   let id = await db.createNewCollection(record);
   watcher.startWatcherForCollection({collection_id: id, ...record});
+  cronJobs.scheduleCronJobsForCollection({collection_id: id, ...record});
   
   return id;
 } 
@@ -51,6 +53,12 @@ export async function updateCollection(collection_id, record){
   }
 
   await db.updateCollection(collection_id, record);
+
+  // Restart watchers and cron jobs with updated config
+  watcher.stopWatcherForCollection(collection_id);
+  cronJobs.stopCronJobsForCollection(collection_id);
+  watcher.startWatcherForCollection({collection_id, ...record});
+  cronJobs.scheduleCronJobsForCollection({collection_id, ...record});
 }
 
 export async function getAllCollections(){
@@ -101,4 +109,55 @@ export function validateFolderPattern(pattern){
   } catch(e) {
     return { valid: false, error: e.message };
   }
+}
+
+export async function setIntakeStatus(collection_id, intakeIndex, status) {
+  let collection = await db.getCollection(collection_id);
+  if (!collection) {
+    throw new AppError('Collection not found', 'ValidationError', 'NOT_FOUND', 404);
+  }
+  if (intakeIndex < 0 || intakeIndex >= collection.intake_configs.length) {
+    throw new AppError('Invalid intake index', 'ValidationError', 'INVALID_INDEX', 400);
+  }
+  if (!['active', 'stopped'].includes(status)) {
+    throw new AppError('Status must be "active" or "stopped"', 'ValidationError', 'INVALID_STATUS', 400);
+  }
+
+  await db.setIntakeStatusByIndex(collection_id, intakeIndex, status);
+
+  // Restart watchers and cron for this collection
+  let updated = await db.getCollection(collection_id);
+  watcher.stopWatcherForCollection(collection_id);
+  cronJobs.stopCronJobsForCollection(collection_id);
+  watcher.startWatcherForCollection(updated);
+  cronJobs.scheduleCronJobsForCollection(updated);
+
+  return updated.intake_configs;
+}
+
+export async function setAllIntakeStatus(collection_id, status) {
+  let collection = await db.getCollection(collection_id);
+  if (!collection) {
+    throw new AppError('Collection not found', 'ValidationError', 'NOT_FOUND', 404);
+  }
+  if (!['active', 'stopped'].includes(status)) {
+    throw new AppError('Status must be "active" or "stopped"', 'ValidationError', 'INVALID_STATUS', 400);
+  }
+
+  await db.setAllIntakeStatusForCollection(collection_id, status);
+
+  // Restart watchers and cron for this collection
+  let updated = await db.getCollection(collection_id);
+  watcher.stopWatcherForCollection(collection_id);
+  cronJobs.stopCronJobsForCollection(collection_id);
+  if (status === 'active') {
+    watcher.startWatcherForCollection(updated);
+    cronJobs.scheduleCronJobsForCollection(updated);
+  }
+
+  return updated.intake_configs;
+}
+
+export async function setIntakeStatusByMethod(method, status) {
+  await db.setIntakeStatusByMethod(method, status);
 }

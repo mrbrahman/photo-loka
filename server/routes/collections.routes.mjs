@@ -61,3 +61,26 @@ adminCollectionsRouter.post('/validateFolderPattern', async function(req, res){
   }
   res.json(s.collections.validateFolderPattern(pattern));
 });
+
+adminCollectionsRouter.post('/setIntakeStatus/:collection_id/:intakeIndex', async function(req, res, next){
+  let collection_id = parseInt(req.params.collection_id);
+  let intakeIndex = parseInt(req.params.intakeIndex);
+  let { status } = req.body;
+  try {
+    let intakes = await s.collections.setIntakeStatus(collection_id, intakeIndex, status);
+    res.json({ success: true, intake_configs: intakes });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminCollectionsRouter.post('/setAllIntakeStatus/:collection_id', async function(req, res, next){
+  let collection_id = parseInt(req.params.collection_id);
+  let { status } = req.body;
+  try {
+    let intakes = await s.collections.setAllIntakeStatus(collection_id, status);
+    res.json({ success: true, intake_configs: intakes });
+  } catch (error) {
+    next(error);
+  }
+});

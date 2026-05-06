@@ -189,3 +189,32 @@ h2 {
   display: flex;
   gap: 0.5rem;
 }
+
+/* --- Status Toggle Buttons --- */
+
+.collection-toggle-btn,
+.intake-toggle-btn {
+  font-size: 1rem;
+}
+
+.status-active {
+  color: var(--sl-color-success-600);
+}
+
+.status-stopped {
+  color: var(--sl-color-neutral-400);
+}
+
+.status-mixed {
+  color: var(--sl-color-warning-500);
+}
+
+.intake-stopped {
+  opacity: 0.6;
+}
+
+.summary-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}

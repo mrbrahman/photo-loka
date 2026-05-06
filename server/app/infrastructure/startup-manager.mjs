@@ -3,6 +3,7 @@ import { startupConfig } from '#startup-config';
 import { createLogger } from '#utils/logger';
 
 import { getAllCollections } from '#collections/collection-manager';
+import { setIntakeStatusByMethod } from '#collections/collection-manager';
 import { scanForChanges } from '#indexing/collection-indexer';
 import { startWatchersForAllCollections } from '#jobs/file-watcher-job';
 import { scheduleCronJobs } from '#jobs/scheduled-indexing-job';
@@ -30,6 +31,9 @@ export async function startUpActivities(){
   // setup watch during start-up
   if(config.startFileWatcherAtStartup){
     await startWatchersForAllCollections();
+  } else {
+    await setIntakeStatusByMethod('immediate', 'stopped');
+    logger.info('File watcher at startup disabled - marked immediate intakes as stopped');
   }
 
   // Scan for file additions / changes and index them
@@ -43,7 +47,12 @@ export async function startUpActivities(){
   }
 
   // Start scheduled indexing
-  scheduleCronJobs();
+  if(config.startScheduledIndexingAtStartup){
+    scheduleCronJobs();
+  } else {
+    await setIntakeStatusByMethod('scheduled', 'stopped');
+    logger.info('Scheduled indexing at startup disabled - marked scheduled intakes as stopped');
+  }
 
   // Load all frames
   await loadAllFrames();

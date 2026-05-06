@@ -143,14 +143,27 @@
 .intake-card-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   margin-bottom: 0.75rem;
+}
+
+.intake-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .intake-card-title {
   font-size: 0.8rem;
   font-weight: 600;
   color: var(--text-muted);
+}
+
+.intake-note {
+  font-size: 0.8rem;
+  color: var(--sl-color-warning-600);
+  font-style: italic;
+  margin-bottom: 0.75rem;
 }
 
 .intake-fields {

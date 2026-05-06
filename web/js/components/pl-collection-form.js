@@ -59,6 +59,9 @@ class PlCollectionForm extends HTMLElement {
             <div class="intake-section-header">
               <h4 class="intake-section-title">Intake Paths</h4>
             </div>
+            <div id="intake-edit-note" class="intake-note" hidden>
+              Saving will restart active watchers and reschedule cron jobs for this collection.
+            </div>
             <div id="intake-cards" class="intake-cards"></div>
             <sl-button id="add-intake-btn" size="small" variant="default">
               <sl-icon slot="prefix" name="plus-lg"></sl-icon>
@@ -112,6 +115,7 @@ class PlCollectionForm extends HTMLElement {
       sr.getElementById('save-btn').variant = 'primary';
       sr.getElementById('save-btn').textContent = 'Save';
       sr.getElementById('collection-path').disabled = true;
+      sr.getElementById('intake-edit-note').hidden = false;
     }
 
     let d = this.#data;
@@ -287,11 +291,16 @@ class PlCollectionForm extends HTMLElement {
     card.id = cardId;
 
     let method = intake?.method || 'scheduled';
+    let status = intake?.status || 'active';
+    let isOnDemand = method === 'on-demand';
 
     card.innerHTML = `
       <div class="intake-card-header">
         <span class="intake-card-title">Intake Path #${idx + 1}</span>
-        <sl-icon-button name="trash" label="Remove" class="remove-intake-btn"></sl-icon-button>
+        <div class="intake-card-actions">
+          ${!isOnDemand ? `<sl-switch id="${cardId}-status" size="small" ${status === 'active' ? 'checked' : ''}>Active</sl-switch>` : ''}
+          <sl-icon-button name="trash" label="Remove" class="remove-intake-btn"></sl-icon-button>
+        </div>
       </div>
       <div class="intake-fields">
         <div class="path-field intake-full-width">
@@ -334,6 +343,25 @@ class PlCollectionForm extends HTMLElement {
       configDiv.innerHTML = content;
       configDiv.hidden = !content;
       this.#attachCronListener(cardId);
+
+      // Show/hide status toggle based on method
+      let statusToggle = this.shadowRoot.getElementById(`${cardId}-status`);
+      if (methodSelect.value === 'on-demand') {
+        if (statusToggle) statusToggle.style.display = 'none';
+      } else {
+        if (statusToggle) {
+          statusToggle.style.display = '';
+        } else {
+          // Insert toggle if switching from on-demand to another method
+          let actionsDiv = card.querySelector('.intake-card-actions');
+          let sw = document.createElement('sl-switch');
+          sw.id = `${cardId}-status`;
+          sw.size = 'small';
+          sw.checked = true;
+          sw.textContent = 'Active';
+          actionsDiv.prepend(sw);
+        }
+      }
     });
 
     this.#attachCronListener(cardId);
@@ -472,7 +500,14 @@ class PlCollectionForm extends HTMLElement {
         config.staleDays = staleDays;
       }
 
-      intakeConfigs.push({ path, method, config });
+      // Determine status (on-demand has no toggle)
+      let status = 'active';
+      let statusToggle = sr.getElementById(`${cardId}-status`);
+      if (statusToggle) {
+        status = statusToggle.checked ? 'active' : 'stopped';
+      }
+
+      intakeConfigs.push({ path, method, config, status });
     }
 
     let payload = {

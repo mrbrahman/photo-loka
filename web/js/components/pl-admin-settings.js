@@ -27,10 +27,10 @@ const CONFIG_SECTIONS = [
     title: 'Indexing',
     fields: [
       {
-        key: 'enableScheduledIndexing',
-        label: 'Enable Scheduled Indexing',
+        key: 'startScheduledIndexingAtStartup',
+        label: 'Start Scheduled Indexing at Startup',
         type: 'boolean',
-        help: 'Enable scheduled (cron) indexing.'
+        help: 'Start scheduled (cron) indexing at startup.'
       },
       {
         key: 'staleDays',

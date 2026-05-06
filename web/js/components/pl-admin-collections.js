@@ -138,12 +138,35 @@ class PlAdminCollections extends HTMLElement {
       const summary = document.createElement('div');
       summary.slot = 'summary';
       summary.className = 'collection-summary';
+
+      let intakeStatus = this.#getCollectionIntakeStatus(c);
+      let statusControls = '';
+      if (intakeStatus !== 'none') {
+        let controllable = c.intake_configs.filter(i => i.method !== 'on-demand');
+        let activeCount = controllable.filter(i => i.status !== 'stopped').length;
+        let totalCount = controllable.length;
+        let badgeVariant, badgeText, icon;
+        if (intakeStatus === 'active') {
+          badgeVariant = 'success'; badgeText = `Active (${activeCount})`; icon = 'pause-circle';
+        } else if (intakeStatus === 'stopped') {
+          badgeVariant = 'neutral'; badgeText = `Stopped (${totalCount})`; icon = 'play-circle';
+        } else {
+          badgeVariant = 'warning'; badgeText = `Partial (${activeCount}/${totalCount})`; icon = 'pause-circle';
+        }
+        statusControls = `
+          <sl-badge variant="${badgeVariant}" pill>${badgeText}</sl-badge>
+          <sl-icon-button name="${icon}" class="collection-toggle-btn status-${intakeStatus}" data-collection-id="${c.collection_id}" label="Toggle intakes"></sl-icon-button>
+        `;
+      }
+
       summary.innerHTML = `
         <div class="summary-info">
-          <span class="collection-name">${c.collection_name || 'Unnamed'}</span>
+          <span class="collection-name">${c.collection_name || 'Unnamed'} ${c.default_collection ? '<sl-badge variant="primary" pill>Default</sl-badge>' : ''}</span>
           <span class="collection-path">${c.collection_path || '--'}</span>
         </div>
-        ${c.default_collection ? '<sl-badge variant="primary" pill>Default</sl-badge>' : ''}
+        <div class="summary-actions">
+          ${statusControls}
+        </div>
       `;
       details.appendChild(summary);
 
@@ -169,6 +192,20 @@ class PlAdminCollections extends HTMLElement {
       let collection = collections.find(c => c.collection_id === collectionId);
       btn.addEventListener('click', () => this.#showForm(collection));
     });
+
+    this.shadowRoot.querySelectorAll('.collection-toggle-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation(); // prevent sl-details from toggling
+        this.#toggleAllIntakes(btn);
+      });
+    });
+
+    this.shadowRoot.querySelectorAll('.intake-toggle-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.#toggleIntake(btn);
+      });
+    });
   }
 
   async #scanForChanges(btn) {
@@ -183,6 +220,104 @@ class PlAdminCollections extends HTMLElement {
       console.error(err);
     } finally {
       btn.loading = false;
+    }
+  }
+
+  async #toggleAllIntakes(btn) {
+    let collectionId = parseInt(btn.dataset.collectionId);
+    let newStatus = btn.name === 'pause-circle' ? 'stopped' : 'active';
+    try {
+      let res = await authenticatedFetch(`/api/admin/setAllIntakeStatus/${collectionId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+      if (!res.ok) throw new Error('Failed');
+      notify(newStatus === 'active' ? 'Intakes started' : 'Intakes stopped', 'success');
+
+      // Update collection-level button + badge
+      let summaryActions = btn.closest('.summary-actions');
+      let badge = summaryActions.querySelector('sl-badge[variant="success"], sl-badge[variant="neutral"], sl-badge[variant="warning"]');
+      let card = btn.closest('sl-details');
+      let totalCount = card.querySelectorAll('.intake-toggle-btn').length;
+
+      if (newStatus === 'active') {
+        btn.name = 'pause-circle';
+        btn.className = 'collection-toggle-btn status-active';
+        if (badge) { badge.variant = 'success'; badge.textContent = `Active (${totalCount})`; }
+      } else {
+        btn.name = 'play-circle';
+        btn.className = 'collection-toggle-btn status-stopped';
+        if (badge) { badge.variant = 'neutral'; badge.textContent = `Stopped (${totalCount})`; }
+      }
+
+      // Update all per-intake buttons in this collection's card
+      card.querySelectorAll('.intake-toggle-btn').forEach(iBtn => {
+        let item = iBtn.closest('.intake-item');
+        if (newStatus === 'active') {
+          iBtn.name = 'pause-circle';
+          iBtn.className = 'intake-toggle-btn status-active';
+          item.classList.remove('intake-stopped');
+        } else {
+          iBtn.name = 'play-circle';
+          iBtn.className = 'intake-toggle-btn status-stopped';
+          item.classList.add('intake-stopped');
+        }
+      });
+    } catch (err) {
+      notify('Failed to toggle intakes', 'danger');
+      console.error(err);
+    }
+  }
+
+  async #toggleIntake(btn) {
+    let collectionId = parseInt(btn.dataset.collectionId);
+    let intakeIndex = parseInt(btn.dataset.intakeIndex);
+    let newStatus = btn.name === 'pause-circle' ? 'stopped' : 'active';
+    try {
+      let res = await authenticatedFetch(`/api/admin/setIntakeStatus/${collectionId}/${intakeIndex}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+      if (!res.ok) throw new Error('Failed');
+      notify(newStatus === 'active' ? 'Intake started' : 'Intake stopped', 'success');
+
+      // Update the clicked button + item opacity
+      let item = btn.closest('.intake-item');
+      if (newStatus === 'active') {
+        btn.name = 'pause-circle';
+        btn.className = 'intake-toggle-btn status-active';
+        item.classList.remove('intake-stopped');
+      } else {
+        btn.name = 'play-circle';
+        btn.className = 'intake-toggle-btn status-stopped';
+        item.classList.add('intake-stopped');
+      }
+
+      // Update collection-level badge + button based on new aggregate state
+      let card = btn.closest('sl-details');
+      let allBtns = [...card.querySelectorAll('.intake-toggle-btn')];
+      let activeCount = allBtns.filter(b => b.name === 'pause-circle').length;
+      let totalCount = allBtns.length;
+
+      let summaryActions = card.querySelector('.summary-actions');
+      let collBtn = summaryActions.querySelector('.collection-toggle-btn');
+      let badge = summaryActions.querySelector('sl-badge[variant="success"], sl-badge[variant="neutral"], sl-badge[variant="warning"]');
+
+      if (activeCount === totalCount) {
+        if (collBtn) { collBtn.name = 'pause-circle'; collBtn.className = 'collection-toggle-btn status-active'; }
+        if (badge) { badge.variant = 'success'; badge.textContent = `Active (${activeCount})`; }
+      } else if (activeCount === 0) {
+        if (collBtn) { collBtn.name = 'play-circle'; collBtn.className = 'collection-toggle-btn status-stopped'; }
+        if (badge) { badge.variant = 'neutral'; badge.textContent = `Stopped (${totalCount})`; }
+      } else {
+        if (collBtn) { collBtn.name = 'pause-circle'; collBtn.className = 'collection-toggle-btn status-mixed'; }
+        if (badge) { badge.variant = 'warning'; badge.textContent = `Partial (${activeCount}/${totalCount})`; }
+      }
+    } catch (err) {
+      notify('Failed to toggle intake', 'danger');
+      console.error(err);
     }
   }
 
@@ -201,12 +336,24 @@ class PlAdminCollections extends HTMLElement {
     if (c.intake_configs && c.intake_configs.length > 0) {
       html += `<h4 class="subsection-title">Intake Paths</h4>`;
       html += '<div class="intake-list">';
-      for (const intake of c.intake_configs) {
+      for (let i = 0; i < c.intake_configs.length; i++) {
+        const intake = c.intake_configs[i];
         const methodBadge = this.#getMethodBadge(intake.method);
         const configDetails = this.#formatIntakeConfig(intake);
+        const isOnDemand = intake.method === 'on-demand';
+        const isStopped = intake.status === 'stopped';
+
+        let toggleBtn = '';
+        if (!isOnDemand) {
+          let icon = isStopped ? 'play-circle' : 'pause-circle';
+          let cls = isStopped ? 'status-stopped' : 'status-active';
+          toggleBtn = `<sl-icon-button name="${icon}" class="intake-toggle-btn ${cls}" data-collection-id="${c.collection_id}" data-intake-index="${i}" label="Toggle intake"></sl-icon-button>`;
+        }
+
         html += `
-          <div class="intake-item">
+          <div class="intake-item ${isStopped ? 'intake-stopped' : ''}">
             <div class="intake-header">
+              ${toggleBtn}
               ${methodBadge}
               <span class="intake-path">${intake.path}</span>
             </div>
@@ -240,6 +387,16 @@ class PlAdminCollections extends HTMLElement {
     `;
 
     return html;
+  }
+
+  #getCollectionIntakeStatus(c) {
+    // Returns 'active', 'stopped', 'mixed', or 'none' (all on-demand)
+    let controllable = (c.intake_configs || []).filter(i => i.method !== 'on-demand');
+    if (controllable.length === 0) return 'none';
+    let activeCount = controllable.filter(i => i.status !== 'stopped').length;
+    if (activeCount === controllable.length) return 'active';
+    if (activeCount === 0) return 'stopped';
+    return 'mixed';
   }
 
   #getMethodBadge(method) {

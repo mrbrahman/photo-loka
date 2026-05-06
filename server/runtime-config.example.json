@@ -1,8 +1,8 @@
 {
   "startFileWatcherAtStartup": true,
+  "startScheduledIndexingAtStartup": true,
   "scanFilesForChangesAndIndexAtStartup": false,
   "filesDeletedThreshold": 5,
-  "enableScheduledIndexing": true,
   "staleDays": 0,
   "performVideoCompression": true,
   "auditFiles": true,

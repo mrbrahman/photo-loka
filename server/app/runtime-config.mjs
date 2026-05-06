@@ -26,7 +26,7 @@ const logger = createLogger(import.meta.url);
 //   scanFilesForChangesAndIndexAtStartup (boolean) - scan for file changes and index at startup
 //   filesDeletedThreshold            (number)  - threshold for number of deleted files before alerting
 //
-//   enableScheduledIndexing          (boolean) - enable scheduled (cron) indexing
+//   startScheduledIndexingAtStartup  (boolean) - start scheduled (cron) indexing at startup
 //   staleDays                        (number)  - number of days a file must be stale before intake indexing
 //
 //   performVideoCompression          (boolean) - compress videos during indexing

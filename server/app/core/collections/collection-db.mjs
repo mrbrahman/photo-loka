@@ -86,3 +86,48 @@ export function updateDefaultCollection(entries){
   // TODO
   logger.warn("TODO :-)")
 }
+
+export async function setIntakeStatusByIndex(collection_id, intakeIndex, status) {
+  await asyncRun(`
+    update collections
+    set intake_configs = json_set(intake_configs, '$[' || cast(@intakeIndex as integer) || '].status', @status)
+    where collection_id = @collection_id
+  `, { collection_id, intakeIndex, status });
+}
+
+export async function setAllIntakeStatusForCollection(collection_id, status) {
+  await asyncRun(`
+    update collections
+    set intake_configs = (
+      select json_group_array(
+        case
+          when json_extract(value, '$.method') != 'on-demand'
+          then json_set(value, '$.status', @status)
+          else value
+        end
+      )
+      from json_each(intake_configs)
+    )
+    where collection_id = @collection_id
+  `, { collection_id, status });
+}
+
+export async function setIntakeStatusByMethod(method, status) {
+  await asyncRun(`
+    update collections
+    set intake_configs = (
+      select json_group_array(
+        case
+          when json_extract(value, '$.method') = @method
+          then json_set(value, '$.status', @status)
+          else value
+        end
+      )
+      from json_each(intake_configs)
+    )
+    where exists (
+      select 1 from json_each(intake_configs)
+      where json_extract(value, '$.method') = @method
+    )
+  `, { method, status });
+}

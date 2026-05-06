@@ -40,7 +40,7 @@ const logger = createLogger(import.meta.url);
  */
 
 // store an array of {collection_id: <id>, intake_path: <path>, watcher: <chokidar watcher>}
-var allWatchers = [];
+let allWatchers = [];
 
 export async function startWatchersForAllCollections(){
   let collections = await getAllCollections();
@@ -53,6 +53,7 @@ export async function startWatchersForAllCollections(){
 export function startWatcherForCollection(collection){
   for(let intakeConfig of collection.intake_configs){
     if(intakeConfig.method !== 'immediate') continue;
+    if(intakeConfig.status === 'stopped') continue;
     
     let w = chokidar.watch(intakeConfig.path, {
       ignored: shouldIgnoreFile,
@@ -76,6 +77,15 @@ export function startWatcherForCollection(collection){
     });
     logger.info(`watcher for collection_id: ${collection.collection_id} intake_path: ${intakeConfig.path} is now setup`);
   }
+}
+
+export function stopWatcherForCollection(collection_id){
+  let toStop = allWatchers.filter(x => x.collection_id === collection_id);
+  for (let x of toStop) {
+    logger.info(`closing watcher for collection_id: ${x.collection_id} intake_path: ${x.intake_path}`);
+    x.watcher.close();
+  }
+  allWatchers = allWatchers.filter(x => x.collection_id !== collection_id);
 }
 
 export function listAllWatchers(){

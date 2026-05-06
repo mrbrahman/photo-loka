@@ -74,8 +74,6 @@ app.use('/api', authenticateToken, itemsRoutes);
 app.use('/api', authenticateToken, albumsRoutes);
 app.use('/api', authenticateToken, geoRoutes);
 app.use('/api', authenticateToken, facesRoutes);
-app.use('/api', authenticateToken, watchersRoutes);
-app.use('/api', authenticateToken, jobsRoutes);
 app.use('/api', authenticateToken, backupRoutes);
 
 // Admin routes (auth + admin role required)
@@ -84,6 +82,8 @@ app.use('/api/admin', authenticateToken, requireAdmin, adminCollectionsRouter);
 app.use('/api/admin', authenticateToken, requireAdmin, indexerRoutes);
 app.use('/api/admin', authenticateToken, requireAdmin, configRoutes);
 app.use('/api/admin', authenticateToken, requireAdmin, dashboardRoutes);
+app.use('/api/admin', authenticateToken, requireAdmin, watchersRoutes);
+app.use('/api/admin', authenticateToken, requireAdmin, jobsRoutes);
 
 // Utility endpoints
 app.get('/speed-test', (req, res) => {

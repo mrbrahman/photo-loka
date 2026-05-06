@@ -3,13 +3,13 @@ import * as s from '../app/services.mjs';
 
 const router = Router();
 
-router.post('/startScheduledIndexing', function(req,res){
-  s.jobs.startScheduledIndexing();
+router.post('/startScheduledIndexing', function(req, res){
+  s.jobs.scheduleCronJobs();
   res.sendStatus(200);
 });
 
-router.post('/stopScheduledIndexing', function(req,res){
-  s.jobs.stopScheduledIndexing();
+router.post('/stopScheduledIndexing', function(req, res){
+  s.jobs.stopAllScheduledIndexing();
   res.sendStatus(200);
 });
 
