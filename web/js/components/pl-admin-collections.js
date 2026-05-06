@@ -231,7 +231,7 @@ class PlAdminCollections extends HTMLElement {
           </sl-button>
         </div>
         <div class="actions-right">
-          <sl-button size="small" variant="neutral" outline class="edit-btn" data-collection-id="${c.collection_id}">
+          <sl-button size="small" variant="warning" outline class="edit-btn" data-collection-id="${c.collection_id}">
             <sl-icon slot="prefix" name="pencil"></sl-icon>
             Edit
           </sl-button>

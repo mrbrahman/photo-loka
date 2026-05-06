@@ -8,6 +8,8 @@ class PlCollectionForm extends HTMLElement {
   #data = {};
   #isEdit = false;
   #pathTimers = {};
+  #patternTimer = null;
+  #originalPattern = '';
 
   static template = document.createElement('template');
   static {
@@ -24,6 +26,8 @@ class PlCollectionForm extends HTMLElement {
 
             <sl-input id="collection-name" label="Collection Name" required class="full-width"></sl-input>
 
+            <!-- Using native <input> + <datalist> for path fields because
+                 sl-input uses Shadow DOM which prevents datalist association -->
             <div class="path-field full-width">
               <label class="path-label">Collection Path *</label>
               <input id="collection-path" class="path-input" type="text"
@@ -40,8 +44,9 @@ class PlCollectionForm extends HTMLElement {
             <sl-input id="trash-days" label="Trash Days" type="number" value="30"></sl-input>
 
             <div class="full-width">
-              <sl-input id="folder-pattern" label="Folder Pattern" placeholder="yyyy/yyyy-mm-dd"
-                        help-text="Uses dateformat tokens: yyyy (year), mm (month), dd (day)"></sl-input>
+              <sl-input id="folder-pattern" label="Folder Pattern" placeholder="yyyy/yyyy-mm-dd">
+                <span slot="help-text">Uses <a href="https://github.com/felixge/node-dateformat#mask-options" target="_blank" rel="noopener" class="pattern-link">dateformat</a> tokens. E.g.: yyyy (year), mm (month), dd (day)</span>
+              </sl-input>
               <div id="pattern-status" class="pattern-help"></div>
             </div>
 
@@ -53,12 +58,12 @@ class PlCollectionForm extends HTMLElement {
           <div class="intake-section">
             <div class="intake-section-header">
               <h4 class="intake-section-title">Intake Paths</h4>
-              <sl-button id="add-intake-btn" size="small" variant="default">
-                <sl-icon slot="prefix" name="plus-lg"></sl-icon>
-                Add Intake Path
-              </sl-button>
             </div>
             <div id="intake-cards" class="intake-cards"></div>
+            <sl-button id="add-intake-btn" size="small" variant="default">
+              <sl-icon slot="prefix" name="plus-lg"></sl-icon>
+              Add Intake Path
+            </sl-button>
           </div>
 
           <!-- Form Actions -->
@@ -106,6 +111,7 @@ class PlCollectionForm extends HTMLElement {
       sr.getElementById('save-index-btn').style.display = 'none';
       sr.getElementById('save-btn').variant = 'primary';
       sr.getElementById('save-btn').textContent = 'Save';
+      sr.getElementById('collection-path').disabled = true;
     }
 
     let d = this.#data;
@@ -116,8 +122,16 @@ class PlCollectionForm extends HTMLElement {
     sr.getElementById('folder-pattern').value = d.apply_folder_pattern || '';
     sr.getElementById('default-collection').checked = !!d.default_collection;
 
-    // Validate pre-filled path
-    if (d.collection_path) {
+    // Store original pattern for change detection in edit mode
+    this.#originalPattern = d.apply_folder_pattern || '';
+
+    // Show example if pattern has a value
+    if (d.apply_folder_pattern) {
+      this.#validateFolderPattern();
+    }
+
+    // Validate pre-filled path (only in create mode)
+    if (!this.#isEdit && d.collection_path) {
       this.#validatePath('collection-path', d.collection_path);
     }
 
@@ -143,8 +157,12 @@ class PlCollectionForm extends HTMLElement {
     pathInput.addEventListener('input', () => this.#onPathInput('collection-path', pathInput));
     pathInput.addEventListener('blur', () => this.#validatePath('collection-path', pathInput.value));
 
-    // Folder pattern validation on blur
-    sr.getElementById('folder-pattern').addEventListener('sl-blur', () => this.#validateFolderPattern());
+    // Folder pattern validation (debounced on input)
+    let patternInput = sr.getElementById('folder-pattern');
+    patternInput.addEventListener('sl-input', () => {
+      clearTimeout(this.#patternTimer);
+      this.#patternTimer = setTimeout(() => this.#validateFolderPattern(), 300);
+    });
   }
 
   // --- Path Autocomplete & Validation ---
@@ -160,40 +178,58 @@ class PlCollectionForm extends HTMLElement {
     let sr = this.shadowRoot;
     let datalistId = id === 'collection-path' ? 'path-suggestions' : `${id}-suggestions`;
     let datalist = sr.getElementById(datalistId);
-    let statusEl = id === 'collection-path'
-      ? sr.getElementById('path-status')
-      : sr.querySelector(`[data-path-status="${id}"]`);
+
+    // Determine the directory to list:
+    // If path ends with a separator, use it directly.
+    // Otherwise, use the parent directory (user is typing a partial name).
+    let sep = pathStr.includes('\\') ? '\\' : '/';
+    let dirToList = pathStr;
+    if (!pathStr.endsWith(sep)) {
+      let lastSep = Math.max(pathStr.lastIndexOf('/'), pathStr.lastIndexOf('\\'));
+      if (lastSep < 0) return;
+      dirToList = pathStr.substring(0, lastSep + 1);
+    }
 
     try {
-      let res = await authenticatedFetch(`/api/admin/listSubDirs?path=${encodeURIComponent(pathStr)}`);
+      let res = await authenticatedFetch(`/api/admin/listSubDirs?path=${encodeURIComponent(dirToList)}`);
       if (!res.ok) {
-        this.#setPathStatus(statusEl, 'invalid', 'Path does not exist');
-        sr.getElementById(id).classList.remove('valid');
-        sr.getElementById(id).classList.add('invalid');
         if (datalist) datalist.innerHTML = '';
         return;
       }
       let dirs = await res.json();
-      this.#setPathStatus(statusEl, 'valid', 'Path exists');
-      sr.getElementById(id).classList.remove('invalid');
-      sr.getElementById(id).classList.add('valid');
 
       if (datalist) {
         datalist.innerHTML = '';
-        let base = pathStr.endsWith('/') ? pathStr : pathStr + '/';
         for (let d of dirs) {
-          datalist.appendChild(Object.assign(document.createElement('option'), { value: base + d + '/' }));
+          datalist.appendChild(Object.assign(document.createElement('option'), { value: dirToList + d + sep }));
         }
       }
     } catch (err) {
-      this.#setPathStatus(statusEl, 'invalid', 'Unable to validate path');
       if (datalist) datalist.innerHTML = '';
     }
   }
 
   async #validatePath(id, value) {
     if (!value || !value.trim()) return;
-    await this.#fetchPathSuggestions(id, value.trim());
+    let sr = this.shadowRoot;
+    let statusEl = id === 'collection-path'
+      ? sr.getElementById('path-status')
+      : sr.querySelector(`[data-path-status="${id}"]`);
+
+    try {
+      let res = await authenticatedFetch(`/api/admin/listSubDirs?path=${encodeURIComponent(value.trim())}`);
+      if (!res.ok) {
+        this.#setPathStatus(statusEl, 'invalid', 'Path does not exist');
+        sr.getElementById(id).classList.remove('valid');
+        sr.getElementById(id).classList.add('invalid');
+      } else {
+        this.#setPathStatus(statusEl, 'valid', 'Path exists');
+        sr.getElementById(id).classList.remove('invalid');
+        sr.getElementById(id).classList.add('valid');
+      }
+    } catch (err) {
+      this.#setPathStatus(statusEl, 'invalid', 'Unable to validate path');
+    }
   }
 
   #setPathStatus(el, state, message) {
@@ -211,7 +247,7 @@ class PlCollectionForm extends HTMLElement {
 
     if (!pattern) {
       statusEl.className = 'pattern-help';
-      statusEl.textContent = '';
+      statusEl.innerHTML = '';
       return;
     }
 
@@ -223,15 +259,19 @@ class PlCollectionForm extends HTMLElement {
       });
       let result = await res.json();
       if (result.valid) {
+        let msg = `Example: "${pattern}" -> "${result.example}"`;
+        if (this.#isEdit && pattern !== this.#originalPattern) {
+          msg += `<br><span class="pattern-warning">Changes will only affect files indexed going forward, not existing data.</span>`;
+        }
         statusEl.className = 'pattern-help valid';
-        statusEl.textContent = `Example: "${pattern}" -> "${result.example}"`;
+        statusEl.innerHTML = msg;
       } else {
         statusEl.className = 'pattern-help invalid';
-        statusEl.textContent = result.error || 'Invalid pattern';
+        statusEl.innerHTML = result.error || 'Invalid pattern';
       }
     } catch (err) {
       statusEl.className = 'pattern-help invalid';
-      statusEl.textContent = 'Unable to validate pattern';
+      statusEl.innerHTML = 'Unable to validate pattern';
     }
   }
 
@@ -246,7 +286,7 @@ class PlCollectionForm extends HTMLElement {
     card.className = 'intake-card';
     card.id = cardId;
 
-    let method = intake?.method || 'immediate';
+    let method = intake?.method || 'scheduled';
 
     card.innerHTML = `
       <div class="intake-card-header">
@@ -267,7 +307,7 @@ class PlCollectionForm extends HTMLElement {
           <sl-option value="on-demand">On-demand</sl-option>
         </sl-select>
       </div>
-      <div id="${cardId}-config" class="config-options">
+      <div id="${cardId}-config" class="config-options" ${method === 'on-demand' ? 'hidden' : ''}>
         ${this.#buildConfigOptions(cardId, method, intake?.config)}
       </div>
     `;
@@ -290,7 +330,9 @@ class PlCollectionForm extends HTMLElement {
     let methodSelect = this.shadowRoot.getElementById(`${cardId}-method`);
     methodSelect.addEventListener('sl-change', () => {
       let configDiv = this.shadowRoot.getElementById(`${cardId}-config`);
-      configDiv.innerHTML = this.#buildConfigOptions(cardId, methodSelect.value, null);
+      let content = this.#buildConfigOptions(cardId, methodSelect.value, null);
+      configDiv.innerHTML = content;
+      configDiv.hidden = !content;
       this.#attachCronListener(cardId);
     });
 
@@ -312,17 +354,21 @@ class PlCollectionForm extends HTMLElement {
       `;
     } else if (method === 'scheduled') {
       let schedule = config?.schedule || '';
-      let staleDays = config?.staleDays ?? 2;
+      let staleDays = config?.staleDays ?? 0;
       return `
         <h5 class="config-options-title">Schedule Options</h5>
         <div class="config-row">
-          <sl-input id="${cardId}-schedule" label="Cron Schedule" placeholder="0 2 * * *"
-                    value="${schedule}" size="small" style="flex:1"></sl-input>
+          <sl-input id="${cardId}-schedule" placeholder="0 2 * * *"
+                    value="${schedule}" size="small" style="flex:1">
+            <span slot="label">Schedule</span>
+            <span slot="help-text">Uses <a href="https://crontab.guru/" target="_blank" rel="noopener" class="pattern-link">cron</a> syntax (5 fields)</span>
+          </sl-input>
         </div>
         <div id="${cardId}-cron-help" class="cron-help"></div>
         <div class="config-row">
           <sl-input id="${cardId}-staleDays" label="Stale Days" type="number"
-                    value="${staleDays}" size="small" style="width:120px"></sl-input>
+                    value="${staleDays}" size="small"
+                    help-text="Wait this many days before indexing, to allow review. 0 = no wait."></sl-input>
         </div>
       `;
     }
@@ -416,7 +462,7 @@ class PlCollectionForm extends HTMLElement {
         config.ignoreInitial = sr.getElementById(`${cardId}-ignoreInitial`)?.checked ?? true;
       } else if (method === 'scheduled') {
         let schedule = sr.getElementById(`${cardId}-schedule`)?.value?.trim() || '';
-        let staleDays = parseInt(sr.getElementById(`${cardId}-staleDays`)?.value) || 2;
+        let staleDays = parseInt(sr.getElementById(`${cardId}-staleDays`)?.value) || 0;
 
         if (schedule && !isValidCron(schedule)) {
           notify('Invalid cron expression in intake config', 'warning');

@@ -73,7 +73,6 @@ export async function updateCollection(collection_id, entry){
   await asyncRun(`
     update collections set
       collection_name = @collection_name,
-      collection_path = @collection_path,
       album_type = @album_type,
       intake_configs = json(@intake_configs),
       apply_folder_pattern = @apply_folder_pattern,
