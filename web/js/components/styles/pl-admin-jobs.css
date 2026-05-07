@@ -1,0 +1,134 @@
+:host {
+  display: block;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.container {
+  padding: 1.5rem 2rem;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+
+.header h2 {
+  margin: 0;
+  color: var(--text-primary);
+}
+
+/* --- Sections --- */
+
+.section {
+  margin-bottom: 2rem;
+}
+
+.section-title {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin: 0 0 0.75rem 0;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--border-primary);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* --- Job Table --- */
+
+.job-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.job-table th {
+  text-align: left;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.job-table td {
+  padding: 0.6rem 0.75rem;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-primary);
+  vertical-align: middle;
+}
+
+.job-table tr:last-child td {
+  border-bottom: none;
+}
+
+.job-table .col-action {
+  width: 50px;
+  text-align: center;
+}
+
+.job-table .col-status {
+  width: 80px;
+}
+
+.path-cell {
+  font-family: Consolas, var(--sl-font-mono);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  word-break: break-all;
+}
+
+.schedule-cell {
+  white-space: nowrap;
+}
+
+.cron-human {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.15rem;
+}
+
+/* --- States --- */
+
+.empty-state {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  padding: 0.75rem;
+}
+
+.loading {
+  color: var(--text-secondary);
+  padding: 1rem 0;
+}
+
+.error {
+  color: var(--sl-color-danger-600);
+  padding: 1rem 0;
+}
+
+/* --- Responsive --- */
+
+@media (max-width: 640px) {
+  .container {
+    padding: 1rem;
+  }
+
+  .job-table {
+    font-size: 0.8rem;
+  }
+
+  .job-table th,
+  .job-table td {
+    padding: 0.5rem;
+  }
+}

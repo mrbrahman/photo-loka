@@ -19,29 +19,37 @@ export function addJob(name, cronPattern, handler) {
     }
   });
   
-  activeJobs.set(name, job);
+  activeJobs.set(name, { task: job, pattern: cronPattern });
   logger.info(`Job ${name} registered with pattern ${cronPattern}`);
 }
 
 export function deleteJob(name) {
-  const job = activeJobs.get(name);
-  if (job) {
-    job.stop();
-    job.destroy();
+  const entry = activeJobs.get(name);
+  if (entry) {
+    entry.task.stop();
+    entry.task.destroy();
     activeJobs.delete(name);
     logger.info(`Job ${name} unregistered`);
   }
 }
 
 export function deleteAllJobs() {
-  activeJobs.forEach((job, name) => {
-    job.stop();
-    job.destroy();
+  activeJobs.forEach((entry, name) => {
+    entry.task.stop();
+    entry.task.destroy();
     logger.info(`Removed job: ${name}`);
   });
 }
 
 export function getJobStatus(name) {
-  const job = activeJobs.get(name);
-  return job ? { name, running: job.running } : null;
+  const entry = activeJobs.get(name);
+  return entry ? { name, pattern: entry.pattern, running: true } : null;
+}
+
+export function listAllJobs() {
+  const jobs = [];
+  for (const [name, entry] of activeJobs) {
+    jobs.push({ name, pattern: entry.pattern });
+  }
+  return jobs;
 }

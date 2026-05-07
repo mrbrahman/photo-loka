@@ -126,6 +126,11 @@ export function initRouter() {
     ensureAppShell().route('indexer', { mode: 'admin' });
   });
 
+  router.on('/admin/jobs', () => {
+    if (!adminGuard()) return;
+    ensureAppShell().route('jobs', { mode: 'admin' });
+  });
+
   router.on('/admin/collections', () => {
     if (!adminGuard()) return;
     ensureAppShell().route('collections', { mode: 'admin' });

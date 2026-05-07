@@ -131,6 +131,11 @@ class PlAppShell extends HTMLElement {
         <sl-icon name="arrow-repeat"></sl-icon>
         <span>Indexer</span>
       </a>
+      <!-- Jobs: all scheduled cron jobs and file watchers -->
+      <a class="sidebar-item" data-route="/jobs">
+        <sl-icon name="clock-history"></sl-icon>
+        <span>Jobs</span>
+      </a>
       <!-- Collections: indexing, file watchers, scheduled jobs per collection -->
       <a class="sidebar-item" data-route="/collections">
         <sl-icon name="folder2-open"></sl-icon>
@@ -374,6 +379,13 @@ class PlAppShell extends HTMLElement {
         this.#mainContent.innerHTML = '';
         this.#mainContent.style.overflowY = 'auto';
         this.#mainContent.appendChild(document.createElement('pl-admin-collections'));
+        break;
+
+      case 'jobs':
+        this.#setActiveMenuItem('/jobs');
+        this.#mainContent.innerHTML = '';
+        this.#mainContent.style.overflowY = 'auto';
+        this.#mainContent.appendChild(document.createElement('pl-admin-jobs'));
         break;
     }
   }
