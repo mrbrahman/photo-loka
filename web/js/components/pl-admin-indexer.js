@@ -43,9 +43,9 @@ class PlAdminIndexer extends HTMLElement {
               <div class="status-label">Mode</div>
               <div class="status-value" id="mode-value">--</div>
             </div>
-            <div class="status-card">
-              <div class="status-label">Concurrency</div>
-              <div class="status-value" id="concurrency-value">--</div>
+            <div class="status-card" id="target-concurrency-card" style="display:none">
+              <div class="status-label">Target Concurrency</div>
+              <div class="status-value" id="target-concurrency-value">--</div>
             </div>
           </div>
           <div class="status-grid status-row-counters">
@@ -183,7 +183,14 @@ class PlAdminIndexer extends HTMLElement {
     this.shadowRoot.getElementById('completed-value').textContent = s.completedCnt ?? '--';
     this.shadowRoot.getElementById('failed-value').textContent = s.failedCnt ?? '--';
     this.shadowRoot.getElementById('mode-value').textContent = s.isDynamic ? 'Dynamic' : 'Static';
-    this.shadowRoot.getElementById('concurrency-value').textContent = s.currentConcurrency ?? '--';
+
+    const targetCard = this.shadowRoot.getElementById('target-concurrency-card');
+    if (s.isDynamic) {
+      targetCard.style.display = '';
+      this.shadowRoot.getElementById('target-concurrency-value').textContent = s.dynamicTargetConcurrency ?? '--';
+    } else {
+      targetCard.style.display = 'none';
+    }
 
     // Queue breakdown
     if (s.queueSizes) {

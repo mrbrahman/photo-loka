@@ -19,7 +19,7 @@ const logger = createLogger(import.meta.url);
 
 export class ParallelProcesses {
   #maxConcurrency = 1;
-  #currentConcurrency = 1;
+  #dynamicTargetConcurrency = 1;
   #processInInsertOrder = false;
   #autoStart = true;
   #emitter = null;
@@ -49,7 +49,7 @@ export class ParallelProcesses {
         throw new Error('systemMonitor is required for dynamic concurrency mode');
       }
       this.#systemMonitor = options.systemMonitor;
-      this.#currentConcurrency = 1; // Always start at 1 for dynamic mode
+      this.#dynamicTargetConcurrency = 1; // Always start at 1 for dynamic mode
       
       this.#systemMonitor.on('load-update', ({ recommendation }) => {
         this.#handleLoadRecommendation(recommendation);
@@ -103,7 +103,7 @@ export class ParallelProcesses {
     if (this.#pauseConditionFn && !this.#pauseConditionFn()) {
       this.#paused = true;
     }
-    const concurrencyLimit = this.#systemMonitor ? this.#currentConcurrency : this.#maxConcurrency;
+    const concurrencyLimit = this.#systemMonitor ? this.#dynamicTargetConcurrency : this.#maxConcurrency;
     const totalPending = this.#queues.high.length + this.#queues.normal.length + this.#queues.low.length;
     if (!this.#paused && this.#processingCnt < concurrencyLimit && totalPending > 0) {
       if (this.#processingCnt === 0 && this.#emitter) {
@@ -146,7 +146,7 @@ export class ParallelProcesses {
   }
 
   start() {
-    const concurrencyLimit = this.#systemMonitor ? this.#currentConcurrency : this.#maxConcurrency;
+    const concurrencyLimit = this.#systemMonitor ? this.#dynamicTargetConcurrency : this.#maxConcurrency;
     for (let i = 1; i <= concurrencyLimit; i++) {
       this.#dequeue();
     }
@@ -180,10 +180,6 @@ export class ParallelProcesses {
         }
       }
     }
-  }
-
-  get currentConcurrency() {
-    return this.#currentConcurrency;
   }
 
   get processInInsertOrder() {
@@ -228,43 +224,43 @@ export class ParallelProcesses {
   #handleLoadRecommendation(recommendation) {
     const now = Date.now();
     const totalPending = this.#queues.high.length + this.#queues.normal.length + this.#queues.low.length;
-    logger.trace(`Received load recommendation: ${recommendation.action} (queue: ${totalPending}, processing: ${this.#processingCnt}, current: ${this.#currentConcurrency})`);
+    logger.trace(`Received load recommendation: ${recommendation.action} (queue: ${totalPending}, processing: ${this.#processingCnt}, current: ${this.#dynamicTargetConcurrency})`);
     
     if (now - this.#lastConcurrencyCheck < this.#concurrencyCheckInterval) {
       logger.trace(`Skipping adjustment - too soon (${now - this.#lastConcurrencyCheck}ms < ${this.#concurrencyCheckInterval}ms)`);
       return;
     }
     
-    const oldConcurrency = this.#currentConcurrency;
+    const oldConcurrency = this.#dynamicTargetConcurrency;
     
     switch (recommendation.action) {
       case 'REDUCE_AGGRESSIVE':
-        this.#currentConcurrency = Math.max(1, Math.floor(this.#currentConcurrency * 0.5));
-        logger.trace(`REDUCE_AGGRESSIVE: ${oldConcurrency} -> ${this.#currentConcurrency}`);
+        this.#dynamicTargetConcurrency = Math.max(1, Math.floor(this.#dynamicTargetConcurrency * 0.5));
+        logger.trace(`REDUCE_AGGRESSIVE: ${oldConcurrency} -> ${this.#dynamicTargetConcurrency}`);
         break;
       case 'REDUCE':
-        this.#currentConcurrency = Math.max(1, this.#currentConcurrency - 1);
-        logger.trace(`REDUCE: ${oldConcurrency} -> ${this.#currentConcurrency}`);
+        this.#dynamicTargetConcurrency = Math.max(1, this.#dynamicTargetConcurrency - 1);
+        logger.trace(`REDUCE: ${oldConcurrency} -> ${this.#dynamicTargetConcurrency}`);
         break;
       case 'INCREASE':
         const totalPending = this.#queues.high.length + this.#queues.normal.length + this.#queues.low.length;
         if (totalPending > 0) {
-          this.#currentConcurrency = Math.min(this.#maxConcurrency, this.#currentConcurrency + 1);
-          logger.trace(`INCREASE: ${oldConcurrency} -> ${this.#currentConcurrency} (max: ${this.#maxConcurrency})`);
+          this.#dynamicTargetConcurrency = Math.min(this.#maxConcurrency, this.#dynamicTargetConcurrency + 1);
+          logger.trace(`INCREASE: ${oldConcurrency} -> ${this.#dynamicTargetConcurrency} (max: ${this.#maxConcurrency})`);
         } else {
           logger.trace(`INCREASE skipped - no pending tasks`);
         }
         break;
       case 'MAINTAIN':
-        logger.trace(`MAINTAIN: keeping concurrency at ${this.#currentConcurrency}`);
+        logger.trace(`MAINTAIN: keeping concurrency at ${this.#dynamicTargetConcurrency}`);
         break;
     }
     
-    if (oldConcurrency !== this.#currentConcurrency) {
-      logger.info(`Concurrency adjusted: ${oldConcurrency} -> ${this.#currentConcurrency} (${recommendation.action})`);
+    if (oldConcurrency !== this.#dynamicTargetConcurrency) {
+      logger.info(`Concurrency adjusted: ${oldConcurrency} -> ${this.#dynamicTargetConcurrency} (${recommendation.action})`);
       
-      if (this.#currentConcurrency > oldConcurrency) {
-        const additionalTasks = this.#currentConcurrency - oldConcurrency;
+      if (this.#dynamicTargetConcurrency > oldConcurrency) {
+        const additionalTasks = this.#dynamicTargetConcurrency - oldConcurrency;
         logger.info(`Starting ${additionalTasks} additional tasks`);
         for (let i = 1; i <= additionalTasks; i++) {
           this.#dequeue();
@@ -323,7 +319,7 @@ export class ParallelProcesses {
       paused: this.#paused,
       isDynamic: this.#systemMonitor !== null,
       maxConcurrency: this.#maxConcurrency,
-      currentConcurrency: this.#currentConcurrency,
+      dynamicTargetConcurrency: this.#dynamicTargetConcurrency,
       queueSizes: {
         high: this.#queues.high.length,
         normal: this.#queues.normal.length,
