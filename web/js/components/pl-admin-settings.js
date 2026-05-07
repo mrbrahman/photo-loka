@@ -3,122 +3,6 @@ import { authenticatedFetch } from '../authn.mjs';
 
 import sheet from "./styles/pl-admin-settings.css" with { type: "css" };
 
-// Config field metadata: grouped sections with labels, types, and help text.
-// Descriptions are taken from the server's runtime-config.mjs comments.
-const CONFIG_SECTIONS = [
-  {
-    title: 'Startup Behavior',
-    fields: [
-      {
-        key: 'startFileWatcherAtStartup',
-        label: 'Start File Watcher at Startup',
-        type: 'boolean',
-        help: 'Start file watcher (immediate indexing) at startup.'
-      },
-      {
-        key: 'scanFilesForChangesAndIndexAtStartup',
-        label: 'Scan Files for Changes at Startup',
-        type: 'boolean',
-        help: 'Scan for file changes and index at startup.'
-      }
-    ]
-  },
-  {
-    title: 'Indexing',
-    fields: [
-      {
-        key: 'startScheduledIndexingAtStartup',
-        label: 'Start Scheduled Indexing at Startup',
-        type: 'boolean',
-        help: 'Start scheduled (cron) indexing at startup.'
-      },
-      {
-        key: 'staleDays',
-        label: 'Stale Days',
-        type: 'number',
-        help: 'Number of days a file must be stale before intake indexing.'
-      },
-      {
-        key: 'maxConcurrency',
-        label: 'Max Concurrency',
-        type: 'number',
-        help: 'Max parallel indexing tasks. Changes via this page only persist the value -- takes effect on next restart. Use the indexer control to change concurrency immediately at runtime.'
-      },
-      {
-        key: 'filesDeletedThreshold',
-        label: 'Files Deleted Threshold',
-        type: 'number',
-        help: 'Threshold for number of deleted files before alerting.'
-      }
-    ]
-  },
-  {
-    title: 'Media Processing',
-    fields: [
-      {
-        key: 'performFaceRecognition',
-        label: 'Perform Face Recognition',
-        type: 'boolean',
-        help: 'Run face recognition during indexing.'
-      },
-      {
-        key: 'performVideoCompression',
-        label: 'Perform Video Compression',
-        type: 'boolean',
-        help: 'Compress videos during indexing.'
-      },
-      {
-        key: 'videoEncoder',
-        label: 'Video Encoder',
-        type: 'select',
-        help: 'Video encoder for compression. Container is auto-determined: webm for VP8/VP9, mp4 for H.264/H.265/AV1.',
-        options: [
-          { value: 'libvpx', label: 'VP8 (libvpx) - Software' },
-          { value: 'libvpx-vp9', label: 'VP9 (libvpx-vp9) - Software' },
-          { value: 'h264_nvenc', label: 'H.264 (h264_nvenc) - NVIDIA' },
-          { value: 'h264_qsv', label: 'H.264 (h264_qsv) - Intel' },
-          { value: 'h264_amf', label: 'H.264 (h264_amf) - AMD' },
-          { value: 'hevc_nvenc', label: 'H.265/HEVC (hevc_nvenc) - NVIDIA' },
-          { value: 'hevc_qsv', label: 'H.265/HEVC (hevc_qsv) - Intel' },
-          { value: 'hevc_amf', label: 'H.265/HEVC (hevc_amf) - AMD' },
-          { value: 'libaom-av1', label: 'AV1 (libaom-av1) - Software' },
-          { value: 'av1_nvenc', label: 'AV1 (av1_nvenc) - NVIDIA RTX40+' },
-          { value: 'av1_qsv', label: 'AV1 (av1_qsv) - Intel Arc' }
-        ]
-      }
-    ]
-  },
-  {
-    title: 'Geonames API',
-    fields: [
-      {
-        key: 'geonamesHourlyLimit',
-        label: 'Hourly Limit',
-        type: 'number',
-        help: 'Geonames API hourly request limit.'
-      },
-      {
-        key: 'geonamesDailyLimit',
-        label: 'Daily Limit',
-        type: 'number',
-        help: 'Geonames API daily request limit.'
-      }
-    ]
-  },
-  {
-    title: 'File Operations',
-    fields: [
-      {
-        key: 'auditFiles',
-        label: 'Audit File Operations',
-        type: 'boolean',
-        help: 'Audit file operations for backup sync. Helps if changes (e.g. rename folders, move files) need to be synced to multiple hard drives.'
-      }
-    ]
-  }
-];
-
-
 class PlAdminSettings extends HTMLElement {
 
   #config = {};
@@ -126,19 +10,86 @@ class PlAdminSettings extends HTMLElement {
   static template = document.createElement('template');
   static {
     this.template.innerHTML = // html
-      `
+    `
       <div class="container">
         <h2>Settings</h2>
         <div id="settings-content">
-          <div class="loading">Loading configuration...</div>
+
+          <section>
+            <h3 class="section-title">Startup Behavior</h3>
+            <div class="field">
+              <sl-switch data-key="startFileWatcherAtStartup" help-text="Start file watcher (immediate indexing) at startup.">Start File Watcher at Startup</sl-switch>
+            </div>
+            <div class="field">
+              <sl-switch data-key="scanFilesForChangesAndIndexAtStartup" help-text="Scan for file changes and index at startup.">Scan Files for Changes at Startup</sl-switch>
+            </div>
+          </section>
+
+          <section>
+            <h3 class="section-title">Indexing</h3>
+            <div class="field">
+              <sl-switch data-key="startScheduledIndexingAtStartup" help-text="Start scheduled (cron) indexing at startup.">Start Scheduled Indexing at Startup</sl-switch>
+            </div>
+            <div class="field">
+              <sl-input data-key="staleDays" type="number" label="Stale Days" help-text="Number of days a file must be stale before intake indexing." size="small"></sl-input>
+            </div>
+            <div class="field">
+              <sl-input data-key="maxConcurrency" type="number" label="Max Concurrency" help-text="Max parallel indexing tasks. Changes via this page only persist the value -- takes effect on next restart." size="small"></sl-input>
+            </div>
+            <div class="field">
+              <sl-input data-key="filesDeletedThreshold" type="number" label="Files Deleted Threshold" help-text="Threshold for number of deleted files before alerting." size="small"></sl-input>
+            </div>
+          </section>
+
+          <section>
+            <h3 class="section-title">Media Processing</h3>
+            <div class="field">
+              <sl-switch data-key="performFaceRecognition" help-text="Run face recognition during indexing.">Perform Face Recognition</sl-switch>
+            </div>
+            <div class="field">
+              <sl-switch data-key="performVideoCompression" help-text="Compress videos during indexing.">Perform Video Compression</sl-switch>
+            </div>
+            <div class="field">
+              <sl-select data-key="videoEncoder" label="Video Encoder" help-text="Video encoder for compression. Container is auto-determined: webm for VP8/VP9, mp4 for H.264/H.265/AV1." size="small">
+                <sl-option value="libvpx">VP8 (libvpx) - Software</sl-option>
+                <sl-option value="libvpx-vp9">VP9 (libvpx-vp9) - Software</sl-option>
+                <sl-option value="h264_nvenc">H.264 (h264_nvenc) - NVIDIA</sl-option>
+                <sl-option value="h264_qsv">H.264 (h264_qsv) - Intel</sl-option>
+                <sl-option value="h264_amf">H.264 (h264_amf) - AMD</sl-option>
+                <sl-option value="hevc_nvenc">H.265/HEVC (hevc_nvenc) - NVIDIA</sl-option>
+                <sl-option value="hevc_qsv">H.265/HEVC (hevc_qsv) - Intel</sl-option>
+                <sl-option value="hevc_amf">H.265/HEVC (hevc_amf) - AMD</sl-option>
+                <sl-option value="libaom-av1">AV1 (libaom-av1) - Software</sl-option>
+                <sl-option value="av1_nvenc">AV1 (av1_nvenc) - NVIDIA RTX40+</sl-option>
+                <sl-option value="av1_qsv">AV1 (av1_qsv) - Intel Arc</sl-option>
+              </sl-select>
+            </div>
+          </section>
+
+          <section>
+            <h3 class="section-title">Geonames API</h3>
+            <div class="field">
+              <sl-input data-key="geonamesHourlyLimit" type="number" label="Hourly Limit" help-text="Geonames API hourly request limit." size="small"></sl-input>
+            </div>
+            <div class="field">
+              <sl-input data-key="geonamesDailyLimit" type="number" label="Daily Limit" help-text="Geonames API daily request limit." size="small"></sl-input>
+            </div>
+          </section>
+
+          <section>
+            <h3 class="section-title">File Operations</h3>
+            <div class="field">
+              <sl-switch data-key="auditFiles" help-text="Audit file operations for backup sync. Helps if changes need to be synced to multiple hard drives.">Audit File Operations</sl-switch>
+            </div>
+          </section>
+
         </div>
       </div>
     `;
   }
 
   constructor() {
-    super();
-    this.attachShadow({ mode: 'open' });
+    super().attachShadow({ mode: 'open' });
     this.shadowRoot.adoptedStyleSheets = [sheet];
   }
 
@@ -152,7 +103,7 @@ class PlAdminSettings extends HTMLElement {
       const res = await authenticatedFetch('/api/admin/getConfig');
       if (!res.ok) throw new Error('Failed to load config');
       this.#config = await res.json();
-      this.#render();
+      this.#populateAndBind();
     } catch (err) {
       const content = this.shadowRoot.getElementById('settings-content');
       content.innerHTML = '<div class="error">Failed to load configuration.</div>';
@@ -161,68 +112,36 @@ class PlAdminSettings extends HTMLElement {
     }
   }
 
-  #render() {
-    const content = this.shadowRoot.getElementById('settings-content');
-    content.innerHTML = '';
+  #populateAndBind() {
+    const root = this.shadowRoot;
 
-    for (const section of CONFIG_SECTIONS) {
-      const sectionEl = document.createElement('div');
-      sectionEl.className = 'section';
-      sectionEl.innerHTML = `<h3 class="section-title">${section.title}</h3>`;
+    for (const el of root.querySelectorAll('[data-key]')) {
+      const key = el.dataset.key;
+      const tag = el.tagName.toLowerCase();
 
-      for (const field of section.fields) {
-        const value = this.#config[field.key];
-        const fieldEl = this.#createField(field, value);
-        sectionEl.appendChild(fieldEl);
+      // Set initial value
+      if (tag === 'sl-switch') {
+        el.checked = !!this.#config[key];
+      } else if (tag === 'sl-select') {
+        el.value = this.#config[key] || '';
+      } else if (tag === 'sl-input') {
+        el.value = this.#config[key] ?? '';
       }
 
-      content.appendChild(sectionEl);
-    }
-  }
-
-  #createField(field, value) {
-    const wrapper = document.createElement('div');
-    wrapper.className = 'field';
-
-    if (field.type === 'boolean') {
-      const sw = document.createElement('sl-switch');
-      sw.checked = !!value;
-      sw.textContent = field.label;
-      sw.helpText = field.help;
-      sw.addEventListener('sl-change', () => this.#saveField(field.key, sw.checked));
-      wrapper.appendChild(sw);
-
-    } else if (field.type === 'select') {
-      const select = document.createElement('sl-select');
-      select.label = field.label;
-      select.helpText = field.help;
-      select.size = 'small';
-      select.value = value || '';
-      for (const opt of field.options) {
-        const option = document.createElement('sl-option');
-        option.value = opt.value;
-        option.textContent = opt.label;
-        select.appendChild(option);
-      }
-      select.addEventListener('sl-change', () => this.#saveField(field.key, select.value));
-      wrapper.appendChild(select);
-
-    } else {
-      // number
-      const input = document.createElement('sl-input');
-      input.type = 'number';
-      input.label = field.label;
-      input.helpText = field.help;
-      input.size = 'small';
-      input.value = value ?? '';
-      input.addEventListener('sl-change', () => {
-        const num = Number(input.value);
-        if (!isNaN(num)) this.#saveField(field.key, num);
+      // Attach save listener
+      el.addEventListener('sl-change', () => {
+        let value;
+        if (tag === 'sl-switch') {
+          value = el.checked;
+        } else if (tag === 'sl-input' && el.type === 'number') {
+          value = Number(el.value);
+          if (isNaN(value)) return;
+        } else {
+          value = el.value;
+        }
+        this.#saveField(key, value);
       });
-      wrapper.appendChild(input);
     }
-
-    return wrapper;
   }
 
   async #saveField(key, value) {
