@@ -164,3 +164,15 @@ export function cleanupExpiredTokens() {
     logger.info(`Cleaned up ${deleted} expired refresh tokens`);
   }
 }
+
+export function getAllUsers() {
+  return authnDb.getAllUsers();
+}
+
+export function updateUserRole(userId, role) {
+  if (!['admin', 'user'].includes(role)) {
+    throw new AppError('Role must be either "admin" or "user"', 'INVALID_ROLE', 'INVALID_ROLE', 400);
+  }
+  authnDb.updateUserRole(userId, role);
+  logger.info(`User ${userId} role changed to ${role}`);
+}

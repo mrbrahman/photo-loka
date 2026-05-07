@@ -141,7 +141,7 @@ class PlAppShell extends HTMLElement {
         <sl-icon name="folder2-open"></sl-icon>
         <span>Collections</span>
       </a>
-      <a class="sidebar-item" data-route="/users" disabled>
+      <a class="sidebar-item" data-route="/users">
         <sl-icon name="people"></sl-icon>
         <span>Users</span>
       </a>
@@ -386,6 +386,13 @@ class PlAppShell extends HTMLElement {
         this.#mainContent.innerHTML = '';
         this.#mainContent.style.overflowY = 'auto';
         this.#mainContent.appendChild(document.createElement('pl-admin-jobs'));
+        break;
+
+      case 'users':
+        this.#setActiveMenuItem('/users');
+        this.#mainContent.innerHTML = '';
+        this.#mainContent.style.overflowY = 'auto';
+        this.#mainContent.appendChild(document.createElement('pl-admin-users'));
         break;
     }
   }

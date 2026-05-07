@@ -44,6 +44,7 @@ import './components/pl-admin-indexer.js';
 import './components/pl-admin-dashboard.js';
 import './components/pl-admin-collections.js';
 import './components/pl-admin-jobs.js';
+import './components/pl-admin-users.js';
 import './components/pl-collection-form.js';
 
 import { initRouter } from './router.mjs';

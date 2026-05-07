@@ -1,0 +1,153 @@
+:host {
+  display: block;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.container {
+  padding: 1.5rem 2rem;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+
+.header h2 {
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.header-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* --- User Table --- */
+
+.user-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.user-table th {
+  text-align: left;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.user-table td {
+  padding: 0.6rem 0.75rem;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-primary);
+  vertical-align: middle;
+}
+
+.user-table tr:last-child td {
+  border-bottom: none;
+}
+
+.user-table .col-actions {
+  width: 100px;
+  text-align: right;
+}
+
+.user-table .col-status {
+  width: 80px;
+}
+
+.user-table .col-role {
+  width: 80px;
+}
+
+.created-cell {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* --- Create User Form --- */
+
+.create-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.create-form .full-width {
+  grid-column: 1 / -1;
+}
+
+/* --- Token Dialog --- */
+
+.token-display {
+  margin-top: 1rem;
+}
+
+.token-value {
+  font-family: Consolas, var(--sl-font-mono);
+  font-size: 0.75rem;
+  word-break: break-all;
+  background: var(--bg-secondary, #f4f4f5);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  padding: 0.75rem;
+  margin: 0.75rem 0;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.token-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+/* --- States --- */
+
+.empty-state {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  padding: 0.75rem;
+}
+
+.loading {
+  color: var(--text-secondary);
+  padding: 1rem 0;
+}
+
+.error {
+  color: var(--sl-color-danger-600);
+  padding: 1rem 0;
+}
+
+/* --- Responsive --- */
+
+@media (max-width: 640px) {
+  .container {
+    padding: 1rem;
+  }
+
+  .user-table {
+    font-size: 0.8rem;
+  }
+
+  .user-table th,
+  .user-table td {
+    padding: 0.5rem;
+  }
+
+  .create-form {
+    grid-template-columns: 1fr;
+  }
+}

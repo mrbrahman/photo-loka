@@ -1,3 +1,7 @@
+// Uses the direct better-sqlite3 instance (synchronous) rather than the async db-pool.
+// Token verification in auth middleware must be synchronous in the request path,
+// and the rest of the auth operations follow suit for consistency, and are
+// lightweight (use small tables that are indexed).
 import { db } from '#db/sqlite-database';
 
 export function createUser(username, passwordHash, role) {
@@ -64,4 +68,14 @@ export function deleteAllUserRefreshTokens(userId) {
 export function cleanupExpiredTokens() {
   const stmt = db.prepare("DELETE FROM refresh_tokens WHERE expires_at <= datetime('now','localtime')");
   return stmt.run().changes;
+}
+
+export function getAllUsers() {
+  const stmt = db.prepare('SELECT user_id, username, role, failed_login_attempts, locked_at, created_at FROM users ORDER BY created_at ASC');
+  return stmt.all();
+}
+
+export function updateUserRole(userId, role) {
+  const stmt = db.prepare('UPDATE users SET role = ? WHERE user_id = ?');
+  return stmt.run(role, userId);
 }

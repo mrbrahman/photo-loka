@@ -136,6 +136,11 @@ export function initRouter() {
     ensureAppShell().route('collections', { mode: 'admin' });
   });
 
+  router.on('/admin/users', () => {
+    if (!adminGuard()) return;
+    ensureAppShell().route('users', { mode: 'admin' });
+  });
+
   router.resolve();
 }
 

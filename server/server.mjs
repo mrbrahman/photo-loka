@@ -24,6 +24,7 @@ import configRoutes from './routes/config.routes.mjs';
 import watchersRoutes from './routes/watchers.routes.mjs';
 import jobsRoutes from './routes/jobs.routes.mjs';
 import adminJobsRoutes from './routes/admin-jobs.routes.mjs';
+import adminUsersRoutes from './routes/admin-users.routes.mjs';
 import backupRoutes from './routes/backup.routes.mjs';
 import { frameRouter, adminFrameRouter, frameSSEClients } from './routes/frames.routes.mjs';
 import dashboardRoutes from './routes/dashboard.routes.mjs';
@@ -86,6 +87,7 @@ app.use('/api/admin', authenticateToken, requireAdmin, dashboardRoutes);
 app.use('/api/admin', authenticateToken, requireAdmin, watchersRoutes);
 app.use('/api/admin', authenticateToken, requireAdmin, jobsRoutes);
 app.use('/api/admin', authenticateToken, requireAdmin, adminJobsRoutes);
+app.use('/api/admin', authenticateToken, requireAdmin, adminUsersRoutes);
 
 // Utility endpoints
 app.get('/speed-test', (req, res) => {
