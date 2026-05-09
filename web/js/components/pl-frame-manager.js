@@ -10,9 +10,9 @@ class PlFrameManager extends HTMLElement {
   static {
     this.template.innerHTML = // html
     `
-      <div class="app-container">
+      <div class="container">
         <div class="header">
-          <h2 style="margin:0">Display Frames</h2>
+          <h2>Display Frames</h2>
           <sl-button variant="primary" size="medium" id="new-frame-btn">
             <sl-icon slot="prefix" name="plus-lg"></sl-icon> New Frame
           </sl-button>
