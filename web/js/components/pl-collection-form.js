@@ -85,6 +85,69 @@ class PlCollectionForm extends HTMLElement {
     `;
   }
 
+  static intakeCardTemplate = document.createElement('template');
+  static {
+    this.intakeCardTemplate.innerHTML = // html
+      `
+      <div class="intake-card">
+        <div class="intake-card-header">
+          <span class="intake-card-title"></span>
+          <div class="intake-card-actions">
+            <sl-switch class="status-toggle" size="small" checked>Active</sl-switch>
+            <sl-icon-button name="trash" label="Remove" class="remove-intake-btn"></sl-icon-button>
+          </div>
+        </div>
+        <div class="intake-fields">
+          <div class="path-field intake-full-width">
+            <label class="path-label">Path *</label>
+            <input class="path-input" type="text" placeholder="/path/to/intake/" autocomplete="off" />
+            <datalist class="path-datalist"></datalist>
+            <div class="path-status"></div>
+          </div>
+          <sl-select class="method-select" label="Method" value="scheduled">
+            <sl-option value="immediate">Immediate (watcher)</sl-option>
+            <sl-option value="scheduled">Scheduled (cron)</sl-option>
+            <sl-option value="on-demand">On-demand</sl-option>
+          </sl-select>
+        </div>
+        <div class="config-options" hidden></div>
+      </div>
+    `;
+  }
+
+  static immediateConfigTemplate = document.createElement('template');
+  static {
+    this.immediateConfigTemplate.innerHTML = // html
+      `
+      <h5 class="config-options-title">Watcher Options</h5>
+      <div class="config-row">
+        <sl-switch class="await-write-finish" checked>Await Write Finish</sl-switch>
+      </div>
+      <div class="config-row">
+        <sl-switch class="ignore-initial" checked>Ignore Initial</sl-switch>
+      </div>
+    `;
+  }
+
+  static scheduledConfigTemplate = document.createElement('template');
+  static {
+    this.scheduledConfigTemplate.innerHTML = // html
+      `
+      <h5 class="config-options-title">Schedule Options</h5>
+      <div class="config-row">
+        <sl-input class="schedule-input" placeholder="0 2 * * *" size="small" style="flex:1">
+          <span slot="label">Schedule</span>
+          <span slot="help-text">Uses <a href="https://crontab.guru/" target="_blank" rel="noopener" class="pattern-link">cron</a> syntax (5 fields)</span>
+        </sl-input>
+      </div>
+      <div class="cron-help"></div>
+      <div class="config-row">
+        <sl-input class="stale-days-input" label="Stale Days" type="number" value="0" size="small"
+                  help-text="Wait this many days before indexing, to allow review. 0 = no wait."></sl-input>
+      </div>
+    `;
+  }
+
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
@@ -158,7 +221,13 @@ class PlCollectionForm extends HTMLElement {
 
     // Collection path autocomplete + validation
     let pathInput = sr.getElementById('collection-path');
-    pathInput.addEventListener('input', () => this.#onPathInput('collection-path', pathInput));
+    let pathDatalist = sr.getElementById('path-suggestions');
+    pathInput.addEventListener('input', () => {
+      clearTimeout(this.#pathTimers['collection-path']);
+      let val = pathInput.value.trim();
+      if (val.length < 2) return;
+      this.#pathTimers['collection-path'] = setTimeout(() => this.#fetchPathSuggestionsEl(pathInput, pathDatalist), 300);
+    });
     pathInput.addEventListener('blur', () => this.#validatePath('collection-path', pathInput.value));
 
     // Folder pattern validation (debounced on input)
@@ -171,21 +240,50 @@ class PlCollectionForm extends HTMLElement {
 
   // --- Path Autocomplete & Validation ---
 
-  #onPathInput(id, input) {
-    clearTimeout(this.#pathTimers[id]);
-    let val = input.value.trim();
-    if (val.length < 2) return;
-    this.#pathTimers[id] = setTimeout(() => this.#fetchPathSuggestions(id, val), 300);
+  async #validatePath(id, value) {
+    if (!value || !value.trim()) return;
+    let sr = this.shadowRoot;
+    let statusEl = sr.getElementById('path-status');
+    let inputEl = sr.getElementById(id);
+
+    try {
+      let res = await authenticatedFetch(`/api/admin/listSubDirs?path=${encodeURIComponent(value.trim())}`);
+      if (!res.ok) {
+        this.#setPathStatus(statusEl, 'invalid', 'Path does not exist');
+        inputEl.classList.remove('valid');
+        inputEl.classList.add('invalid');
+      } else {
+        this.#setPathStatus(statusEl, 'valid', 'Path exists');
+        inputEl.classList.remove('invalid');
+        inputEl.classList.add('valid');
+      }
+    } catch (err) {
+      this.#setPathStatus(statusEl, 'invalid', 'Unable to validate path');
+    }
   }
 
-  async #fetchPathSuggestions(id, pathStr) {
-    let sr = this.shadowRoot;
-    let datalistId = id === 'collection-path' ? 'path-suggestions' : `${id}-suggestions`;
-    let datalist = sr.getElementById(datalistId);
+  async #validatePathEl(inputEl, statusEl) {
+    let value = inputEl.value.trim();
+    if (!value) return;
 
-    // Determine the directory to list:
-    // If path ends with a separator, use it directly.
-    // Otherwise, use the parent directory (user is typing a partial name).
+    try {
+      let res = await authenticatedFetch(`/api/admin/listSubDirs?path=${encodeURIComponent(value)}`);
+      if (!res.ok) {
+        this.#setPathStatus(statusEl, 'invalid', 'Path does not exist');
+        inputEl.classList.remove('valid');
+        inputEl.classList.add('invalid');
+      } else {
+        this.#setPathStatus(statusEl, 'valid', 'Path exists');
+        inputEl.classList.remove('invalid');
+        inputEl.classList.add('valid');
+      }
+    } catch (err) {
+      this.#setPathStatus(statusEl, 'invalid', 'Unable to validate path');
+    }
+  }
+
+  async #fetchPathSuggestionsEl(inputEl, datalist) {
+    let pathStr = inputEl.value.trim();
     let sep = pathStr.includes('\\') ? '\\' : '/';
     let dirToList = pathStr;
     if (!pathStr.endsWith(sep)) {
@@ -196,43 +294,14 @@ class PlCollectionForm extends HTMLElement {
 
     try {
       let res = await authenticatedFetch(`/api/admin/listSubDirs?path=${encodeURIComponent(dirToList)}`);
-      if (!res.ok) {
-        if (datalist) datalist.innerHTML = '';
-        return;
-      }
+      if (!res.ok) { datalist.innerHTML = ''; return; }
       let dirs = await res.json();
-
-      if (datalist) {
-        datalist.innerHTML = '';
-        for (let d of dirs) {
-          datalist.appendChild(Object.assign(document.createElement('option'), { value: dirToList + d + sep }));
-        }
+      datalist.innerHTML = '';
+      for (let d of dirs) {
+        datalist.appendChild(Object.assign(document.createElement('option'), { value: dirToList + d + sep }));
       }
     } catch (err) {
-      if (datalist) datalist.innerHTML = '';
-    }
-  }
-
-  async #validatePath(id, value) {
-    if (!value || !value.trim()) return;
-    let sr = this.shadowRoot;
-    let statusEl = id === 'collection-path'
-      ? sr.getElementById('path-status')
-      : sr.querySelector(`[data-path-status="${id}"]`);
-
-    try {
-      let res = await authenticatedFetch(`/api/admin/listSubDirs?path=${encodeURIComponent(value.trim())}`);
-      if (!res.ok) {
-        this.#setPathStatus(statusEl, 'invalid', 'Path does not exist');
-        sr.getElementById(id).classList.remove('valid');
-        sr.getElementById(id).classList.add('invalid');
-      } else {
-        this.#setPathStatus(statusEl, 'valid', 'Path exists');
-        sr.getElementById(id).classList.remove('invalid');
-        sr.getElementById(id).classList.add('valid');
-      }
-    } catch (err) {
-      this.#setPathStatus(statusEl, 'invalid', 'Unable to validate path');
+      datalist.innerHTML = '';
     }
   }
 
@@ -285,143 +354,112 @@ class PlCollectionForm extends HTMLElement {
 
   #addIntakeCard(intake = null) {
     let idx = this.#intakeCounter++;
-    let cardId = `intake-${idx}`;
-    let card = document.createElement('div');
-    card.className = 'intake-card';
-    card.id = cardId;
+    let card = this.constructor.intakeCardTemplate.content.cloneNode(true).firstElementChild;
 
     let method = intake?.method || 'scheduled';
     let status = intake?.status || 'active';
-    let isOnDemand = method === 'on-demand';
 
-    card.innerHTML = `
-      <div class="intake-card-header">
-        <span class="intake-card-title">Intake Path #${idx + 1}</span>
-        <div class="intake-card-actions">
-          ${!isOnDemand ? `<sl-switch id="${cardId}-status" size="small" ${status === 'active' ? 'checked' : ''}>Active</sl-switch>` : ''}
-          <sl-icon-button name="trash" label="Remove" class="remove-intake-btn"></sl-icon-button>
-        </div>
-      </div>
-      <div class="intake-fields">
-        <div class="path-field intake-full-width">
-          <label class="path-label">Path *</label>
-          <input id="${cardId}-path" class="path-input" type="text"
-                 placeholder="/path/to/intake/" list="${cardId}-path-suggestions" autocomplete="off" />
-          <datalist id="${cardId}-path-suggestions"></datalist>
-          <div class="path-status" data-path-status="${cardId}-path"></div>
-        </div>
-        <sl-select id="${cardId}-method" label="Method" value="${method}" class="method-select">
-          <sl-option value="immediate">Immediate (watcher)</sl-option>
-          <sl-option value="scheduled">Scheduled (cron)</sl-option>
-          <sl-option value="on-demand">On-demand</sl-option>
-        </sl-select>
-      </div>
-      <div id="${cardId}-config" class="config-options" ${method === 'on-demand' ? 'hidden' : ''}>
-        ${this.#buildConfigOptions(cardId, method, intake?.config)}
-      </div>
-    `;
+    // Title
+    card.querySelector('.intake-card-title').textContent = `Intake Path #${idx + 1}`;
 
+    // Status toggle - hide for on-demand
+    let statusToggle = card.querySelector('.status-toggle');
+    if (method === 'on-demand') {
+      statusToggle.hidden = true;
+    } else {
+      statusToggle.checked = status === 'active';
+    }
+
+    // Path input + datalist association
+    let pathInput = card.querySelector('.path-input');
+    let datalist = card.querySelector('.path-datalist');
+    let datalistId = `intake-dl-${idx}`;
+    datalist.id = datalistId;
+    pathInput.setAttribute('list', datalistId);
+    if (intake?.path) pathInput.value = intake.path;
+
+    // Method select
+    let methodSelect = card.querySelector('.method-select');
+    methodSelect.value = method;
+
+    // Config options
+    this.#applyConfigTemplate(card, method, intake?.config);
+
+    // Append to DOM
     this.shadowRoot.getElementById('intake-cards').appendChild(card);
 
-    // Populate path value after DOM insertion
+    // Validate pre-filled path
     if (intake?.path) {
-      this.shadowRoot.getElementById(`${cardId}-path`).value = intake.path;
-      this.#validatePath(`${cardId}-path`, intake.path);
+      this.#validatePathEl(pathInput, card.querySelector('.path-status'));
     }
 
     // Event listeners
     card.querySelector('.remove-intake-btn').addEventListener('click', () => card.remove());
 
-    let pathInput = this.shadowRoot.getElementById(`${cardId}-path`);
-    pathInput.addEventListener('input', () => this.#onPathInput(`${cardId}-path`, pathInput));
-    pathInput.addEventListener('blur', () => this.#validatePath(`${cardId}-path`, pathInput.value));
+    pathInput.addEventListener('input', () => {
+      clearTimeout(this.#pathTimers[datalistId]);
+      let val = pathInput.value.trim();
+      if (val.length < 2) return;
+      this.#pathTimers[datalistId] = setTimeout(() => this.#fetchPathSuggestionsEl(pathInput, datalist), 300);
+    });
+    pathInput.addEventListener('blur', () => this.#validatePathEl(pathInput, card.querySelector('.path-status')));
 
-    let methodSelect = this.shadowRoot.getElementById(`${cardId}-method`);
     methodSelect.addEventListener('sl-change', () => {
-      let configDiv = this.shadowRoot.getElementById(`${cardId}-config`);
-      let content = this.#buildConfigOptions(cardId, methodSelect.value, null);
-      configDiv.innerHTML = content;
-      configDiv.hidden = !content;
-      this.#attachCronListener(cardId);
+      this.#applyConfigTemplate(card, methodSelect.value, null);
 
-      // Show/hide status toggle based on method
-      let statusToggle = this.shadowRoot.getElementById(`${cardId}-status`);
+      // Show/hide status toggle
+      let toggle = card.querySelector('.status-toggle');
       if (methodSelect.value === 'on-demand') {
-        if (statusToggle) statusToggle.style.display = 'none';
+        toggle.hidden = true;
       } else {
-        if (statusToggle) {
-          statusToggle.style.display = '';
-        } else {
-          // Insert toggle if switching from on-demand to another method
-          let actionsDiv = card.querySelector('.intake-card-actions');
-          let sw = document.createElement('sl-switch');
-          sw.id = `${cardId}-status`;
-          sw.size = 'small';
-          sw.checked = true;
-          sw.textContent = 'Active';
-          actionsDiv.prepend(sw);
-        }
+        toggle.hidden = false;
       }
     });
-
-    this.#attachCronListener(cardId);
   }
 
-  #buildConfigOptions(cardId, method, config) {
+  #applyConfigTemplate(card, method, config) {
+    let configDiv = card.querySelector('.config-options');
+    configDiv.innerHTML = '';
+
     if (method === 'immediate') {
-      let awaitWrite = config?.awaitWriteFinish ?? true;
-      let ignoreInitial = config?.ignoreInitial ?? true;
-      return `
-        <h5 class="config-options-title">Watcher Options</h5>
-        <div class="config-row">
-          <sl-switch id="${cardId}-awaitWriteFinish" ${awaitWrite ? 'checked' : ''}>Await Write Finish</sl-switch>
-        </div>
-        <div class="config-row">
-          <sl-switch id="${cardId}-ignoreInitial" ${ignoreInitial ? 'checked' : ''}>Ignore Initial</sl-switch>
-        </div>
-      `;
+      let frag = this.constructor.immediateConfigTemplate.content.cloneNode(true);
+      let awaitSwitch = frag.querySelector('.await-write-finish');
+      let ignoreSwitch = frag.querySelector('.ignore-initial');
+      awaitSwitch.checked = config?.awaitWriteFinish ?? true;
+      ignoreSwitch.checked = config?.ignoreInitial ?? true;
+      configDiv.appendChild(frag);
+      configDiv.hidden = false;
     } else if (method === 'scheduled') {
-      let schedule = config?.schedule || '';
-      let staleDays = config?.staleDays ?? 0;
-      return `
-        <h5 class="config-options-title">Schedule Options</h5>
-        <div class="config-row">
-          <sl-input id="${cardId}-schedule" placeholder="0 2 * * *"
-                    value="${schedule}" size="small" style="flex:1">
-            <span slot="label">Schedule</span>
-            <span slot="help-text">Uses <a href="https://crontab.guru/" target="_blank" rel="noopener" class="pattern-link">cron</a> syntax (5 fields)</span>
-          </sl-input>
-        </div>
-        <div id="${cardId}-cron-help" class="cron-help"></div>
-        <div class="config-row">
-          <sl-input id="${cardId}-staleDays" label="Stale Days" type="number"
-                    value="${staleDays}" size="small"
-                    help-text="Wait this many days before indexing, to allow review. 0 = no wait."></sl-input>
-        </div>
-      `;
+      let frag = this.constructor.scheduledConfigTemplate.content.cloneNode(true);
+      let scheduleInput = frag.querySelector('.schedule-input');
+      let staleDaysInput = frag.querySelector('.stale-days-input');
+      scheduleInput.value = config?.schedule || '';
+      staleDaysInput.value = config?.staleDays ?? 0;
+      configDiv.appendChild(frag);
+      configDiv.hidden = false;
+      this.#attachCronListener(card);
+    } else {
+      configDiv.hidden = true;
     }
-    // on-demand: no config
-    return '';
   }
 
-  #attachCronListener(cardId) {
-    let scheduleInput = this.shadowRoot.getElementById(`${cardId}-schedule`);
+  #attachCronListener(card) {
+    let scheduleInput = card.querySelector('.schedule-input');
     if (!scheduleInput) return;
 
-    // Show initial cron help if value exists
+    let helpEl = card.querySelector('.cron-help');
     let val = scheduleInput.value.trim();
-    if (val) this.#updateCronHelp(cardId, val);
+    if (val) this.#updateCronHelp(helpEl, val);
 
     scheduleInput.addEventListener('sl-input', () => {
-      this.#updateCronHelp(cardId, scheduleInput.value.trim());
+      this.#updateCronHelp(helpEl, scheduleInput.value.trim());
     });
     scheduleInput.addEventListener('sl-blur', () => {
-      this.#updateCronHelp(cardId, scheduleInput.value.trim());
+      this.#updateCronHelp(helpEl, scheduleInput.value.trim());
     });
   }
 
-  #updateCronHelp(cardId, value) {
-    let helpEl = this.shadowRoot.getElementById(`${cardId}-cron-help`);
+  #updateCronHelp(helpEl, value) {
     if (!helpEl) return;
 
     if (!value) {
@@ -475,9 +513,8 @@ class PlCollectionForm extends HTMLElement {
     let intakeConfigs = [];
     let intakeCards = sr.querySelectorAll('.intake-card');
     for (let card of intakeCards) {
-      let cardId = card.id;
-      let path = sr.getElementById(`${cardId}-path`).value.trim();
-      let method = sr.getElementById(`${cardId}-method`).value;
+      let path = card.querySelector('.path-input').value.trim();
+      let method = card.querySelector('.method-select').value;
 
       if (!path) {
         notify('All intake paths must be filled in', 'warning');
@@ -486,11 +523,11 @@ class PlCollectionForm extends HTMLElement {
 
       let config = {};
       if (method === 'immediate') {
-        config.awaitWriteFinish = sr.getElementById(`${cardId}-awaitWriteFinish`)?.checked ?? true;
-        config.ignoreInitial = sr.getElementById(`${cardId}-ignoreInitial`)?.checked ?? true;
+        config.awaitWriteFinish = card.querySelector('.await-write-finish')?.checked ?? true;
+        config.ignoreInitial = card.querySelector('.ignore-initial')?.checked ?? true;
       } else if (method === 'scheduled') {
-        let schedule = sr.getElementById(`${cardId}-schedule`)?.value?.trim() || '';
-        let staleDays = parseInt(sr.getElementById(`${cardId}-staleDays`)?.value) || 0;
+        let schedule = card.querySelector('.schedule-input')?.value?.trim() || '';
+        let staleDays = parseInt(card.querySelector('.stale-days-input')?.value) || 0;
 
         if (schedule && !isValidCron(schedule)) {
           notify('Invalid cron expression in intake config', 'warning');
@@ -502,8 +539,8 @@ class PlCollectionForm extends HTMLElement {
 
       // Determine status (on-demand has no toggle)
       let status = 'active';
-      let statusToggle = sr.getElementById(`${cardId}-status`);
-      if (statusToggle) {
+      let statusToggle = card.querySelector('.status-toggle');
+      if (statusToggle && !statusToggle.hidden) {
         status = statusToggle.checked ? 'active' : 'stopped';
       }
 
