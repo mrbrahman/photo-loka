@@ -27,7 +27,6 @@ const logger = createLogger(import.meta.url);
 //   filesDeletedThreshold            (number)  - threshold for number of deleted files before alerting
 //
 //   startScheduledIndexingAtStartup  (boolean) - start scheduled (cron) indexing at startup
-//   staleDays                        (number)  - number of days a file must be stale before intake indexing
 //
 //   performVideoCompression          (boolean) - compress videos during indexing
 //

@@ -3,7 +3,6 @@
   "startScheduledIndexingAtStartup": true,
   "scanFilesForChangesAndIndexAtStartup": false,
   "filesDeletedThreshold": 5,
-  "staleDays": 0,
   "performVideoCompression": true,
   "auditFiles": true,
   "geonamesHourlyLimit": 1000,

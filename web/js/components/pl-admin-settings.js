@@ -30,9 +30,7 @@ class PlAdminSettings extends HTMLElement {
             <div class="field">
               <sl-switch data-key="startScheduledIndexingAtStartup" help-text="Start scheduled (cron) indexing at startup.">Start Scheduled Indexing at Startup</sl-switch>
             </div>
-            <div class="field">
-              <sl-input data-key="staleDays" type="number" label="Stale Days" help-text="Number of days a file must be stale before intake indexing." size="small"></sl-input>
-            </div>
+
             <div class="field">
               <sl-input data-key="maxConcurrency" type="number" label="Max Concurrency" help-text="Max parallel indexing tasks. Changes via this page only persist the value -- takes effect on next restart." size="small"></sl-input>
             </div>

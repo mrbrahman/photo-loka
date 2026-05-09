@@ -7,7 +7,6 @@ import { getCollection, getCollectionByIntakePath } from '#collections/collectio
 import { bulkAddToIndexQueue } from './queue-manager.mjs';
 import { indexFile } from './file-indexer.mjs';
 import { shouldIgnoreFile } from '#utils/file-filters';
-import { config } from '#runtime-config';
 
 const logger = createLogger(import.meta.url);
 
@@ -35,7 +34,7 @@ export async function startIntakeFileIndexing(collection_id, dir, staleDays = nu
       
       for (const intakeConfig of collection.intake_configs) {
         if (intakeConfig.method === 'scheduled') {
-          const configStaleDays = staleDays ?? intakeConfig.config?.staleDays ?? config.staleDays;
+          const configStaleDays = staleDays ?? intakeConfig.config?.staleDays ?? 0;
           enqueueNewFiles(collection, intakeConfig.path, configStaleDays);
         }
       }
@@ -52,7 +51,7 @@ export async function startIntakeFileIndexing(collection_id, dir, staleDays = nu
 async function enqueueNewFiles(collection, dirPath, staleDays = null) {
   logger.info(`Starting enqueueNewFiles for: ${dirPath}`);
 
-  const days = staleDays ?? config.staleDays;
+  const days = staleDays ?? 0;
   const cutoffDate = new Date(Date.now() - (days * 24 * 60 * 60 * 1000));
   
   try {
