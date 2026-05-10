@@ -17,7 +17,8 @@
 // 6. The only exception is 'album name' component, which can also update the backend. But
 //    that is fine, since the album name update does not span multiple albums
 
-import {debounce, throttle, notify, showConfirmDialog} from '../utils.mjs';
+import {debounce, throttle, notify, showConfirmDialog, showProgress, hideProgress} from '../utils.mjs';
+import { authenticatedFetch } from '../authn.mjs';
 
 import sheet from "./styles/pl-gallery.css" with { type: "css" };
 
@@ -26,7 +27,7 @@ class PlGallery extends HTMLElement {
   // internal variables
   #albums = []; #albumsInBuffer = {}; #albumsSelectedCnt = {}; #itemsSelected = [];
   // variables that can be get/set
-  #data; #mode = 'default';
+  #data; #mode = 'default'; #query = {}; #slideshowItemId = null;
 
   static template = document.createElement('template');
   static {
@@ -52,13 +53,66 @@ class PlGallery extends HTMLElement {
     this.shadowRoot.adoptedStyleSheets = [sheet];
   }
 
-  connectedCallback() {
+  async connectedCallback() {
 
     this.shadowRoot.appendChild(this.constructor.template.content.cloneNode(true));
-    // console.log("logging data... ")
-    // console.log(this.data);
 
-    this.#albums = this.data.map(d=>{
+    // Fetch data based on mode
+    const data = await this.#fetchData();
+    if (!data) return; // error already notified
+    if (!this.isConnected) return; // component removed during fetch
+
+    this.#data = data;
+    this.#renderGallery();
+  }
+
+  async #fetchData() {
+    showProgress();
+    try {
+      let res;
+      const { collectionId = 1, searchText, bounds } = this.#query;
+      switch (this.#mode) {
+        case 'search':
+          res = await authenticatedFetch('/api/search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ collection_id: collectionId, searchText })
+          });
+          break;
+        case 'trash':
+          res = await authenticatedFetch(`/api/getTrashedItems?collection_id=${collectionId}`);
+          break;
+        case 'geo':
+          res = await authenticatedFetch('/api/searchByGpsCoordinates', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ collection_id: collectionId, bounds })
+          });
+          break;
+        default:
+          res = await authenticatedFetch('/api/getAll');
+      }
+      if (!res.ok) throw await res.json().catch(() => ({ error: { message: `${res.status} ${res.statusText}` } }));
+      return await res.json();
+    } catch (err) {
+      notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
+      return null;
+    } finally {
+      hideProgress();
+    }
+  }
+
+  #renderGallery() {
+    if (this.#data.length === 0) {
+      this.shadowRoot.getElementById('gallery').innerHTML =
+        '<div style="padding: 2rem; text-align: center; color: var(--text-secondary);">No results found</div>';
+      return;
+    }
+
+    const totalItems = this.#data.map(x => x.items.length).reduce((a, c) => a + c, 0);
+    notify(`Found ${this.#data.length.toLocaleString()} albums containing ${totalItems.toLocaleString()} items`);
+
+    this.#albums = this.#data.map(d=>{
 
       let album = Object.assign(document.createElement('pl-album'), {
         id: d.id,
@@ -151,6 +205,11 @@ class PlGallery extends HTMLElement {
 
     window.addEventListener('resize', this.#throttleHandleResize)
     ;
+
+    // Open slideshow if requested via property (e.g. direct URL visit)
+    if (this.#slideshowItemId) {
+      requestAnimationFrame(() => this.openSlideshow(this.#slideshowItemId));
+    }
   }
 
   // TODO: can we add only one set of listeners to all albums?
@@ -478,7 +537,7 @@ class PlGallery extends HTMLElement {
     if(result !== 1) return;
 
     try {
-      let allUuids = this.data.flatMap(d => d.items.map(i => i.data.id));
+      let allUuids = this.#data.flatMap(d => d.items.map(i => i.data.id));
       let res = await fetch('/api/emptyTrash', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
@@ -702,13 +761,6 @@ class PlGallery extends HTMLElement {
     console.log('in adoptedCallback')
   }
 
-  get data(){
-    return this.#data;
-  }
-  set data(_){
-    this.#data = _;
-  }
-
   get mode(){
     return this.#mode;
   }
@@ -716,12 +768,26 @@ class PlGallery extends HTMLElement {
     this.#mode = _ || 'default';
   }
 
-  get data_src(){
-    return this._data_src;
+  get query(){
+    return this.#query;
   }
-  set data_src(_){
-    this._data_src = _;
-    // TODO: do a fetch and set this.#data
+  /**
+   * Mode-specific parameters for data fetching.
+   * @param {object} _ - Query object, shape depends on mode:
+   *   mode 'default': { collectionId: number }
+   *   mode 'search':  { collectionId: number, searchText: string }
+   *   mode 'trash':   { collectionId: number }
+   *   mode 'geo':     { collectionId: number, bounds: { sw: {lat, lng}, ne: {lat, lng} } }
+   */
+  set query(_){
+    this.#query = _ || {};
+  }
+
+  get slideshowItemId(){
+    return this.#slideshowItemId;
+  }
+  set slideshowItemId(_){
+    this.#slideshowItemId = _ || null;
   }
 
   get isSlideshowOpen() {

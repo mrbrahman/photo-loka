@@ -189,21 +189,10 @@ class PlMap extends HTMLElement {
     // Highlight the clicked marker/cluster
     this.setActiveMarker(cluster);
 
-    try {
-      const response = await authenticatedFetch('/api/searchByGpsCoordinates', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ collection_id: 1, bounds })
-      });
-      const data = await response.json();
-
-      this.showGalleryPanel(data, latlng);
-    } catch (error) {
-      console.error('Error loading GPS data for gallery:', error);
-    }
+    this.showGalleryPanel(bounds, latlng);
   }
 
-  showGalleryPanel(data, latlng) {
+  showGalleryPanel(bounds, latlng) {
     const container = this.shadowRoot.getElementById('container');
     const wrapper = this.shadowRoot.getElementById('gallery-wrapper');
     const isFirstOpen = !container.classList.contains('split');
@@ -215,17 +204,22 @@ class PlMap extends HTMLElement {
     // Clear previous gallery
     wrapper.innerHTML = '';
 
+    const gallery = Object.assign(document.createElement('pl-gallery'), {
+      mode: 'geo',
+      query: { collectionId: 1, bounds }
+    });
+
     if (isFirstOpen) {
       // Show the panel first so it gets dimensions
       container.classList.add('split');
 
       // Defer gallery creation to next frame so the panel has its final dimensions
       requestAnimationFrame(() => {
-        wrapper.appendChild(Object.assign(document.createElement('pl-gallery'), { data }));
+        wrapper.appendChild(gallery);
       });
     } else {
       // Panel already visible - safe to create gallery immediately
-      wrapper.appendChild(Object.assign(document.createElement('pl-gallery'), { data }));
+      wrapper.appendChild(gallery);
     }
 
     setTimeout(() => {

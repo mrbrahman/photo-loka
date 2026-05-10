@@ -1,5 +1,4 @@
-import { notify } from '../utils.mjs';
-import { authenticatedFetch, isAdmin } from '../authn.mjs';
+import { isAdmin } from '../authn.mjs';
 import { getTheme, toggleTheme } from '../theme.mjs';
 import { router } from '../router.mjs';
 
@@ -15,6 +14,7 @@ class PlAppShell extends HTMLElement {
   #mode = 'app'; // 'app' | 'admin'
 
   #mainContent = null; #progressBar = null; #sidebar = null; #backdrop = null;
+  #progressCount = 0;
 
   // --- Shell template (nav-header + content area with empty sidebar-nav) ---
 
@@ -244,12 +244,18 @@ class PlAppShell extends HTMLElement {
     document.addEventListener('pl-gallery-slideshow-opened', this.handleSlideshowOpened);
     document.addEventListener('pl-gallery-slideshow-changed', this.handleSlideshowChanged);
     document.addEventListener('pl-gallery-slideshow-closed', this.handleSlideshowClosed);
+
+    // Global progress bar events (any component can trigger via showProgress/hideProgress utils)
+    document.addEventListener('pl-progress-show', this.#handleProgressShow);
+    document.addEventListener('pl-progress-hide', this.#handleProgressHide);
   }
 
   disconnectedCallback() {
     document.removeEventListener('pl-gallery-slideshow-opened', this.handleSlideshowOpened);
     document.removeEventListener('pl-gallery-slideshow-changed', this.handleSlideshowChanged);
     document.removeEventListener('pl-gallery-slideshow-closed', this.handleSlideshowClosed);
+    document.removeEventListener('pl-progress-show', this.#handleProgressShow);
+    document.removeEventListener('pl-progress-hide', this.#handleProgressHide);
   }
 
   // --- Mode / Sidebar ---
@@ -320,23 +326,36 @@ class PlAppShell extends HTMLElement {
     switch (view) {
       case 'gallery':
         this.#setActiveMenuItem('/');
-        this.#loadGallery(() => authenticatedFetch('/api/getAll'), slideshowItemId, view);
+        this.#mainContent.innerHTML = '';
+        this.#mainContent.style.overflowY = 'hidden';
+        this.#mainContent.appendChild(Object.assign(document.createElement('pl-gallery'), {
+          mode: 'default',
+          query: { collectionId: this.#state.collection_id },
+          slideshowItemId
+        }));
         break;
 
       case 'search':
         this.#setActiveMenuItem(null);
         this.shadowRoot.getElementById('nav-search-box').value = searchText;
-        this.#loadGallery(() => authenticatedFetch('/api/search', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ collection_id: this.#state.collection_id, searchText })
-        }), slideshowItemId, view);
+        this.#mainContent.innerHTML = '';
+        this.#mainContent.style.overflowY = 'hidden';
+        this.#mainContent.appendChild(Object.assign(document.createElement('pl-gallery'), {
+          mode: 'search',
+          query: { collectionId: this.#state.collection_id, searchText },
+          slideshowItemId
+        }));
         break;
 
       case 'trash':
         this.#setActiveMenuItem('/trash');
-        this.#loadGallery(() => authenticatedFetch(`/api/getTrashedItems?collection_id=${this.#state.collection_id}`),
-          slideshowItemId, view, 'trash');
+        this.#mainContent.innerHTML = '';
+        this.#mainContent.style.overflowY = 'hidden';
+        this.#mainContent.appendChild(Object.assign(document.createElement('pl-gallery'), {
+          mode: 'trash',
+          query: { collectionId: this.#state.collection_id },
+          slideshowItemId
+        }));
         break;
 
       case 'map':
@@ -415,56 +434,25 @@ class PlAppShell extends HTMLElement {
     });
   }
 
-  // --- Gallery ---
-
-  async #loadGallery(fetchFn, slideshowItemId, routePath, mode = 'default') {
-    this.#showProgressBar();
-    try {
-      const res = await fetchFn();
-      if (!res.ok) throw await res.json().catch(() => ({error: {message: `${res.status} ${res.statusText}`}}));
-      const data = await res.json();
-      this.#showGallery(data, slideshowItemId, routePath, mode);
-    } catch (err) {
-      notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
-    } finally {
-      this.#hideProgressBar();
-    }
-  }
-
-  #showGallery(data, slideshowItemId, routePath, mode = 'default') {
-    this.#mainContent.style.overflowY = 'hidden';
-
-    if (data.length === 0) {
-      this.#mainContent.innerHTML = '<div style="padding: 2rem; text-align: center; color: var(--text-secondary);">No results found</div>';
-      return;
-    }
-
-    const gallery = Object.assign(document.createElement('pl-gallery'), { data, mode });
-    gallery.dataset.view = routePath;
-    this.#mainContent.innerHTML = '';
-    this.#mainContent.appendChild(gallery);
-
-    if (slideshowItemId) {
-      requestAnimationFrame(() => gallery.openSlideshow(slideshowItemId));
-    }
-
-    const totalItems = data.map(x => x.items.length).reduce((a, c) => a + c, 0);
-    notify(`Found ${data.length.toLocaleString()} albums containing ${totalItems.toLocaleString()} items`);
-  }
-
   // --- Progress Bar ---
 
-  #showProgressBar() {
-    this.#progressBar.toggleAttribute("indeterminate");
-    this.#progressBar.classList.remove("hide");
-  }
+  #handleProgressShow = () => {
+    this.#progressCount++;
+    if (this.#progressCount === 1) {
+      this.#progressBar.toggleAttribute('indeterminate', true);
+      this.#progressBar.classList.remove('hide');
+    }
+  };
 
-  #hideProgressBar(timeout = 500) {
-    setTimeout(() => {
-      this.#progressBar.classList.add("hide");
-      this.#progressBar.toggleAttribute("indeterminate");
-    }, timeout);
-  }
+  #handleProgressHide = () => {
+    this.#progressCount = Math.max(0, this.#progressCount - 1);
+    if (this.#progressCount === 0) {
+      setTimeout(() => {
+        this.#progressBar.classList.add('hide');
+        this.#progressBar.toggleAttribute('indeterminate', false);
+      }, 500);
+    }
+  };
 
   #updateThemeToggle() {
     const isDark = getTheme() === 'dark';

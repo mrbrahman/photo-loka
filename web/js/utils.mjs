@@ -62,6 +62,18 @@ export function throttle(fn, threshhold, scope) {
   };
 }
 
+// Global progress bar utility.
+// Any component can call showProgress() / hideProgress() to control the
+// app-shell's progress bar via events. Supports nested calls via ref-counting
+// in the listener (app-shell).
+export function showProgress() {
+  document.dispatchEvent(new Event('pl-progress-show'));
+}
+
+export function hideProgress() {
+  document.dispatchEvent(new Event('pl-progress-hide'));
+}
+
 export function showConfirmDialog(title, message, btn1Text='OK', btn2Text='Cancel'){
   return new Promise((resolve) => {
     const dialog = document.createElement('sl-dialog');
