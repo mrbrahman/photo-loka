@@ -1,5 +1,5 @@
 import { notify } from '../utils.mjs';
-import { authenticatedFetch } from '../authn.mjs';
+import { getUsers, createUser, unlockUser, changeUserRole, generateToken } from '../api/admin-api.mjs';
 
 import sheet from "./styles/pl-admin-users.css" with { type: "css" };
 
@@ -95,9 +95,7 @@ class PlAdminUsers extends HTMLElement {
 
   async #loadUsers() {
     try {
-      const res = await authenticatedFetch('/api/admin/users');
-      if (!res.ok) throw new Error('Failed to load users');
-      const data = await res.json();
+      const data = await getUsers();
       this.#users = data.users;
       this.#render();
     } catch (err) {
@@ -215,22 +213,12 @@ class PlAdminUsers extends HTMLElement {
     btn.loading = true;
 
     try {
-      const res = await authenticatedFetch('/api/admin/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password, role })
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to create user');
-      }
-
+      await createUser(username, password, role);
       notify(`User "${username}" created`, 'success');
       this.#hideCreateDialog();
       await this.#loadUsers();
     } catch (err) {
-      notify(err.message, 'danger');
+      notify(err.error?.message || 'Failed to create user', 'danger');
     } finally {
       btn.loading = false;
     }
@@ -238,10 +226,7 @@ class PlAdminUsers extends HTMLElement {
 
   async #unlockUser(userId) {
     try {
-      const res = await authenticatedFetch(`/api/admin/users/${userId}/unlock`, {
-        method: 'POST'
-      });
-      if (!res.ok) throw new Error('Failed to unlock user');
+      await unlockUser(userId);
       notify('User unlocked', 'success');
       await this.#loadUsers();
     } catch (err) {
@@ -254,21 +239,11 @@ class PlAdminUsers extends HTMLElement {
     const newRole = currentRole === 'admin' ? 'user' : 'admin';
 
     try {
-      const res = await authenticatedFetch(`/api/admin/users/${userId}/role`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role: newRole })
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to change role');
-      }
-
+      await changeUserRole(userId, newRole);
       notify(`Role changed to ${newRole}`, 'success');
       await this.#loadUsers();
     } catch (err) {
-      notify(err.message, 'danger');
+      notify(err.error?.message || 'Failed to change role', 'danger');
       console.error(err);
     }
   }
@@ -284,15 +259,7 @@ class PlAdminUsers extends HTMLElement {
     btn.loading = true;
 
     try {
-      const res = await authenticatedFetch(`/api/admin/users/${this.#pendingTokenUserId}/token`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ expiresInDays: days })
-      });
-
-      if (!res.ok) throw new Error('Failed to generate token');
-
-      const data = await res.json();
+      const data = await generateToken(this.#pendingTokenUserId, days);
       this.shadowRoot.getElementById('token-expiry-dialog').hide();
       this.shadowRoot.getElementById('token-value').textContent = data.token;
       this.shadowRoot.getElementById('token-dialog').show();

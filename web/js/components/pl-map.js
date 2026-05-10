@@ -1,6 +1,6 @@
 import sheet from "./styles/pl-map.css" with { type: "css" };
 import leafletSheet from "leaflet-css" with { type: "css" };
-import { authenticatedFetch } from '../authn.mjs';
+import { getGpsCoordinates } from '../api/search-api.mjs';
 
 class PlMap extends HTMLElement {
 
@@ -106,8 +106,7 @@ class PlMap extends HTMLElement {
 
   async loadGpsData() {
     try {
-      const response = await authenticatedFetch('/api/getGpsCoordinates');
-      const data = await response.json();
+      const data = await getGpsCoordinates();
       
       if (data.length === 0) {
         this.showNoDataMessage();

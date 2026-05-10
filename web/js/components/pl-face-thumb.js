@@ -1,5 +1,5 @@
 import {notify, showConfirmDialog} from '../utils.mjs';
-import {authenticatedFetch} from '../authn.mjs';
+import { getFaceSuggestions, searchPersonNames, nameFaceCluster, updatePersonName, dismissFaceCluster } from '../api/faces-api.mjs';
 
 import sheet from "./styles/pl-face-thumb.css" with { type: "css" };
 
@@ -91,9 +91,7 @@ class PlFaceThumb extends HTMLElement {
   async #fetchSuggestion(datalist) {
     if (!this.#clusterId) return;
     try {
-      let res = await authenticatedFetch(`/api/faceSuggestions/${encodeURIComponent(this.#clusterId)}`);
-      if (!res.ok) return;
-      let data = await res.json();
+      let data = await getFaceSuggestions(this.#clusterId);
       let suggestions = data.suggestions || [];
       datalist.innerHTML = '';
       this.#hasMlSuggestions = suggestions.length > 0;
@@ -116,9 +114,7 @@ class PlFaceThumb extends HTMLElement {
 
   async #fetchNameLookup(query, datalist) {
     try {
-      let res = await authenticatedFetch(`/api/searchPersonNames?q=${encodeURIComponent(query)}`);
-      if (!res.ok) return;
-      let data = await res.json();
+      let data = await searchPersonNames(query);
       let names = data.names || [];
       this.#lastLookupQuery = query;
       this.#lastLookupComplete = names.length < 20;
@@ -141,17 +137,11 @@ class PlFaceThumb extends HTMLElement {
     }
 
     try {
-      let res, msg;
+      let result, msg;
 
       if (!oldName) {
         // Naming an unnamed cluster - no choice needed
-        res = await authenticatedFetch(`/api/nameFaceCluster/${encodeURIComponent(this.#clusterId)}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: newName }),
-        });
-        if (!res.ok) throw await res.json().catch(() => ({ error: { message: `${res.status}` } }));
-        let result = await res.json();
+        result = await nameFaceCluster(this.#clusterId, newName);
         msg = `Named ${result.count} photo(s) as ${newName}`;
 
         this.dispatchEvent(new CustomEvent('pl-face-named', {
@@ -175,23 +165,10 @@ class PlFaceThumb extends HTMLElement {
         }
 
         if (choice === 1) {
-          // Rename person globally
-          res = await authenticatedFetch('/api/updatePersonName', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ oldName, newName }),
-          });
+          result = await updatePersonName(oldName, newName);
         } else {
-          // Rename this cluster only
-          res = await authenticatedFetch(`/api/nameFaceCluster/${encodeURIComponent(this.#clusterId)}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: newName }),
-          });
+          result = await nameFaceCluster(this.#clusterId, newName);
         }
-
-        if (!res.ok) throw await res.json().catch(() => ({ error: { message: `${res.status}` } }));
-        let result = await res.json();
 
         msg = choice === 1
           ? `Renamed "${oldName}" to "${newName}" (${result.count} photo(s))`
@@ -217,10 +194,7 @@ class PlFaceThumb extends HTMLElement {
     if (confirmed !== 1) return;
 
     try {
-      let res = await authenticatedFetch(`/api/dismissFaceCluster/${encodeURIComponent(this.#clusterId)}`, {
-        method: 'PUT',
-      });
-      if (!res.ok) throw await res.json().catch(() => ({ error: { message: `${res.status}` } }));
+      await dismissFaceCluster(this.#clusterId);
 
       notify('Face dismissed', 'success', 2000);
       this.dispatchEvent(new CustomEvent('pl-face-dismissed', {

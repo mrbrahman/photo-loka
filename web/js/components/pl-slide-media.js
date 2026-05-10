@@ -1,4 +1,5 @@
 import {notify} from '../utils.mjs';
+import { updateRating } from '../api/media-api.mjs';
 
 import sheet from "./styles/pl-slide-media.css" with { type: "css" };
 
@@ -120,42 +121,24 @@ class PlSlideMedia extends HTMLElement {
     }
   }
 
-  #handleRatingChanged = (evt) => {
+  #handleRatingChanged = async (evt) => {
     let item = this.item, newRating = evt.target.value;
-    console.log(item);
 
     if (item.data.rating == newRating) {
       return;
     }
 
-    fetch('/api/updateRating', {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        uuid_arr: [item.data.id],
-        newRating
-      })
-    })
-    .then(async res => {
-      if (!res.ok) {
-        throw await res.json().catch(() => ({error: {message: `${res.status} ${res.statusText}`}}));
-      }
-    })
-    .then(() => {
+    try {
+      await updateRating([item.data.id], newRating);
       item.data.rating = newRating;
-
       if (item.elem) {
         item.elem.rating = newRating;
       }
-
       notify(`Updated rating for this item`, 'success');
-    })
-    .catch(err => {
+    } catch(err) {
       notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
       this.shadowRoot.getElementById('rating').value = item.data.rating;
-    });
+    }
   }
 
   #playPauseMedia() {

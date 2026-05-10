@@ -1,4 +1,5 @@
 import {notify, throttle} from '../utils.mjs';
+import { updateAlbumName, searchForExistingAlbums } from '../api/albums-api.mjs';
 
 import sheet from "./styles/pl-album-name.css" with { type: "css" };
 
@@ -63,49 +64,20 @@ class PlAlbumName extends HTMLElement {
     this.dispatchEvent(selectAllEvent);
   }
 
-  #handleSave = (evt) => {
+  #handleSave = async (evt) => {
     if(this.shadowRoot.getElementById('album-name').innerText == this.albumName){
       return;
     }
 
-    // album name is changed, update in backend
-    fetch('/api/updateAlbumName', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        collection_id: 1, // TODO: hardcoded for now, update this when "state" is implemented
-        currAlbumName: this.#albumName,
-        newAlbumName: this.shadowRoot.getElementById('album-name').innerText
-      })
-    })
-    .then(res=>
-      res.json()
-      .then(data=>({
-        result: data,
-        ok: res.ok,
-        status: res.status,
-        statusText: res.statusText
-      }))
-    )
-    .then(out=>{
-      if(!out.ok){
-        throw out.result
-      }
-    })
-    .then(()=>{
+    try {
+      await updateAlbumName(1, this.#albumName, this.shadowRoot.getElementById('album-name').innerText);
       // update UI
       this.albumName = this.shadowRoot.getElementById('album-name').innerText;
       this.shadowRoot.getElementById('album-name').blur();
       this.shadowRoot.getElementById('edit-controls').style.visibility = 'hidden';
-
       notify('Album name updated successfully', 'success');
-      
-    })
-    .catch(err=>{
+    } catch(err) {
       if(err.error?.code === "FOLDER_EXISTS"){
-        // directory already exists
         this.dispatchEvent(new CustomEvent('pl-rename-dir-not-empty', {
           detail: {
             newAlbumName: this.shadowRoot.getElementById('album-name').innerText
@@ -114,9 +86,7 @@ class PlAlbumName extends HTMLElement {
       } else {
         notify(`<strong>Error</strong>:</br>${err.error?.code || err.code}`, 'error', -1);
       }
-
-    });
-
+    }
   }
 
   #handleCancel = (evt) => {
@@ -134,7 +104,7 @@ class PlAlbumName extends HTMLElement {
   //   console.log('in handle hover')
   // }
 
-  #handleFocus = (evt) => {
+  #handleFocus = async (evt) => {
     this.shadowRoot.getElementById('edit-controls').style.visibility = 'visible';
 
     // position to cursor to enable easy editing
@@ -152,31 +122,16 @@ class PlAlbumName extends HTMLElement {
       sel.removeAllRanges();
       sel.addRange(range);
 
-      // TODO: remove hardcoding, may be when there is at least one other person using this sytem :-)
       let searchStr = albumNameText.textContent.substring(0,15);
-      fetch(`/api/searchForExistingAlbums?searchStr=${searchStr}&wantFullName=true`)
-      .then(async res=>{
-        if(!res.ok){
-          throw await res.json().catch(() => ({error: {message: `${res.status} ${res.statusText}`}}));
-        }
-        return res.json();
-      })
-      .then((output)=>{
-
-        let rows = output.map(d=>`${d.similar}: ${d.cnt}`)
-
-        // ideally would want to do this in an auto-complete kind of feature
-        // but sl-combobox is still not planned. See https://github.com/shoelace-style/shoelace/discussions/2103
-        // TODO: Once it becomes available, will need to use that
-        // But for now, just use an alert
+      try {
+        let output = await searchForExistingAlbums(searchStr, true);
+        let rows = output.map(d=>`${d.similar}: ${d.cnt}`);
         if (rows.length > 0){
           notify(rows.join('<BR>'), 'info', 5000);
         }
-      })
-      .catch(err=>{
+      } catch(err) {
         notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
-  
-      });
+      }
     }
 
   }
@@ -202,30 +157,16 @@ class PlAlbumName extends HTMLElement {
     }
   }, 1000)
 
-  #suggestAlbumNames = (txt) => {
-    fetch(`/api/searchForExistingAlbums?searchStr=${txt.substring(15).trim()}&wantFullName=false`)
-    .then(async res=>{
-      if(!res.ok){
-        throw await res.json().catch(() => ({error: {message: `${res.status} ${res.statusText}`}}));
-      }
-      return res.json();
-    })
-    .then((output)=>{
-
-      let rows = output.map(d=>`${d.similar}: ${d.cnt}`)
-
-      // ideally would want to do this in an auto-complete kind of feature
-      // but sl-combobox is still not planned. See https://github.com/shoelace-style/shoelace/discussions/2103
-      // TODO: Once it becomes available, will need to use that
-      // But for now, just use an alert
+  #suggestAlbumNames = async (txt) => {
+    try {
+      let output = await searchForExistingAlbums(txt.substring(15).trim(), false);
+      let rows = output.map(d=>`${d.similar}: ${d.cnt}`);
       if (rows.length > 0){
         notify(rows.join('<BR>'), 'info', 5000);
       }
-    })
-    .catch(err=>{
-        notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
-  
-    });
+    } catch(err) {
+      notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
+    }
   }
 
   #handleInput = (evt) => {

@@ -1,5 +1,5 @@
 import { notify } from '../utils.mjs';
-import { authenticatedFetch } from '../authn.mjs';
+import { scanForChanges, setAllIntakeStatus, setIntakeStatus } from '../api/admin-api.mjs';
 import { cronToHuman } from '../cron-utils.mjs';
 
 import sheet from "./styles/pl-collection-card.css" with { type: "css" };
@@ -262,8 +262,7 @@ class PlCollectionCard extends HTMLElement {
     const btn = this.shadowRoot.querySelector('.scan-btn');
     btn.loading = true;
     try {
-      const res = await authenticatedFetch(`/api/admin/scanForChanges/${this.#data.collection_id}`, { method: 'POST' });
-      if (!res.ok) throw new Error('Failed');
+      await scanForChanges(this.#data.collection_id);
       notify('Scan for changes started', 'success');
     } catch (err) {
       notify('Failed to start scan', 'danger');
@@ -277,12 +276,7 @@ class PlCollectionCard extends HTMLElement {
     const btn = this.shadowRoot.querySelector('.collection-toggle-btn');
     const newStatus = btn.name === 'pause-circle' ? 'stopped' : 'active';
     try {
-      const res = await authenticatedFetch(`/api/admin/setAllIntakeStatus/${this.#data.collection_id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      });
-      if (!res.ok) throw new Error('Failed');
+      await setAllIntakeStatus(this.#data.collection_id, newStatus);
       notify(newStatus === 'active' ? 'Intakes started' : 'Intakes stopped', 'success');
 
       // Update collection-level button + badge
@@ -323,12 +317,7 @@ class PlCollectionCard extends HTMLElement {
     const intakeIndex = parseInt(btn.dataset.intakeIndex);
     const newStatus = btn.name === 'pause-circle' ? 'stopped' : 'active';
     try {
-      const res = await authenticatedFetch(`/api/admin/setIntakeStatus/${this.#data.collection_id}/${intakeIndex}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      });
-      if (!res.ok) throw new Error('Failed');
+      await setIntakeStatus(this.#data.collection_id, intakeIndex, newStatus);
       notify(newStatus === 'active' ? 'Intake started' : 'Intake stopped', 'success');
 
       // Update the clicked button

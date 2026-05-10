@@ -7,6 +7,8 @@ import './components/pl-slide.js';
 import './components/pl-slide-media.js';
 import './components/pl-item-info.js';
 
+import { getNextFrameItem } from './api/frame-api.mjs';
+
 const IMAGE_DISPLAY_DURATION = 7000;
 
 // request full screen
@@ -35,18 +37,7 @@ function releaseWakeLock() {
 }
 
 async function fetchNextItem() {
-  const res = await fetch('/frame/getNext');
-  const output = await res.json();
-  
-  if (!res.ok) {
-    if (res.status === 423) {
-      const error = { message: output.error?.message || 'Frame is paused'};
-      throw error;
-    }
-    throw new Error(output.error?.message || `Server error: ${res.status}`);
-  }
-  
-  return output;
+  return await getNextFrameItem();
 }
 
 function showError(message) {

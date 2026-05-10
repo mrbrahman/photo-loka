@@ -1,6 +1,7 @@
 import { notify, showConfirmDialog } from '../utils.mjs';
-import { authenticatedFetch } from '../authn.mjs';
 import { serialize } from 'shoelace/utilities/form.js';
+import { searchItems } from '../api/search-api.mjs';
+import { createFrame, updateFrame, deleteFrame, pauseFrame, resumeFrame } from '../api/admin-api.mjs';
 
 import sheet from "./styles/pl-frame-item.css" with { type: "css" };
 
@@ -153,18 +154,10 @@ class PlFrameItem extends HTMLElement {
 
       loadBtn.loading = true;
       try {
-        const response = await authenticatedFetch('/api/search', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            collection_id: this.shadowRoot.getElementById('collection').value || null,
-            searchText: searchStr
-          })
-        });
-        
-        if (!response.ok) throw new Error('Search failed');
-        
-        const results = await response.json();
+        const results = await searchItems(
+          this.shadowRoot.getElementById('collection').value || null,
+          searchStr
+        );
         const items = results.flatMap(album => album.items).slice(0, 6);
         
         previewGrid.innerHTML = items.map(item => `
@@ -189,32 +182,16 @@ class PlFrameItem extends HTMLElement {
       
       try {
         const data = serialize(form);
-        console.log(data)
         data.collection_id = data.collection_id === 'null' ? null : parseInt(data.collection_id);
         
         if (this.#data.frame_id) {
           // Update existing frame
-          const response = await authenticatedFetch(`/api/admin/updateFrame/${this.#data.frame_id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-          });
-          
-          if (!response.ok) throw new Error('Save failed');
-          
+          await updateFrame(this.#data.frame_id, data);
           Object.assign(this.#data, data);
           notify('Frame saved successfully!', 'success');
         } else {
           // Create new frame
-          const response = await authenticatedFetch('/api/admin/createNewFrame', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-          });
-          
-          if (!response.ok) throw new Error('Save failed');
-          
-          const { frame_id } = await response.json();
+          const { frame_id } = await createFrame(data);
           const newFrame = { ...data, frame_id };
           
           notify('Frame saved successfully!', 'success');
@@ -236,12 +213,7 @@ class PlFrameItem extends HTMLElement {
       if (!confirm(`Delete ${this.#data.frame_name}?`)) return;
       
       try {
-        const response = await authenticatedFetch(`/api/admin/deleteFrame/${this.#data.frame_id}`, {
-          method: 'DELETE'
-        });
-        
-        if (!response.ok) throw new Error('Delete failed');
-        
+        await deleteFrame(this.#data.frame_id);
         notify('Frame deleted', 'warning');
         this.dispatchEvent(new CustomEvent('pl-frame-deleted', { bubbles: true, composed: true }));
       } catch (error) {
@@ -276,12 +248,7 @@ class PlFrameItem extends HTMLElement {
       e.stopPropagation();
       
       try {
-        const response = await authenticatedFetch(`/api/admin/resumeFrame/${this.#data.frame_id}`, {
-          method: 'POST'
-        });
-        
-        if (!response.ok) throw new Error('Resume failed');
-        
+        await resumeFrame(this.#data.frame_id);
         this.#data.manualPause.paused = false;
         this.#data.manualPause.resumeAtSchedule = null;
         this.#updateDisplay();
@@ -295,17 +262,10 @@ class PlFrameItem extends HTMLElement {
 
   async #pauseFrame(resumeAtSchedule) {
     try {
-      const response = await authenticatedFetch(`/api/admin/pauseFrame/${this.#data.frame_id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ resumeAtSchedule })
-      });
-      
-      if (!response.ok) throw new Error('Pause failed');
-      
+      await pauseFrame(this.#data.frame_id, resumeAtSchedule);
       this.#data.manualPause.paused = true;
       this.#data.manualPause.resumeAtSchedule = resumeAtSchedule;
-      this.#updateDisplay();  // TODO: just update the relevant parts instead of re-rendering everything
+      this.#updateDisplay();
       notify('Frame paused', 'success');
     } catch (error) {
       notify('Failed to pause frame', 'danger');

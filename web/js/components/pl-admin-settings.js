@@ -1,5 +1,5 @@
 import { notify } from '../utils.mjs';
-import { authenticatedFetch } from '../authn.mjs';
+import { getConfig, updateConfig } from '../api/admin-api.mjs';
 
 import sheet from "./styles/pl-admin-settings.css" with { type: "css" };
 
@@ -98,9 +98,7 @@ class PlAdminSettings extends HTMLElement {
 
   async #loadConfig() {
     try {
-      const res = await authenticatedFetch('/api/admin/getConfig');
-      if (!res.ok) throw new Error('Failed to load config');
-      this.#config = await res.json();
+      this.#config = await getConfig();
       this.#populateAndBind();
     } catch (err) {
       const content = this.shadowRoot.getElementById('settings-content');
@@ -144,12 +142,7 @@ class PlAdminSettings extends HTMLElement {
 
   async #saveField(key, value) {
     try {
-      const res = await authenticatedFetch('/api/admin/updateConfig', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key, value })
-      });
-      if (!res.ok) throw new Error('Save failed');
+      await updateConfig(key, value);
       this.#config[key] = value;
       notify(`Updated ${key}`, 'success');
     } catch (err) {

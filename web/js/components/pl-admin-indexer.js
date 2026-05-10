@@ -1,5 +1,5 @@
 import { notify } from '../utils.mjs';
-import { authenticatedFetch } from '../authn.mjs';
+import { getIndexerStatus, getIndexerErrors, pauseIndexer, resumeIndexer, updateIndexerConcurrency } from '../api/admin-api.mjs';
 
 import sheet from "./styles/pl-admin-indexer.css" with { type: "css" };
 
@@ -152,9 +152,7 @@ class PlAdminIndexer extends HTMLElement {
 
   async #fetchStatus() {
     try {
-      const res = await authenticatedFetch('/api/admin/getIndexerStatus');
-      if (!res.ok) throw new Error('Failed to fetch status');
-      this.#status = await res.json();
+      this.#status = await getIndexerStatus();
       this.#renderStatus();
     } catch (err) {
       console.error('Indexer status fetch failed:', err);
@@ -219,9 +217,7 @@ class PlAdminIndexer extends HTMLElement {
 
   async #fetchErrors() {
     try {
-      const res = await authenticatedFetch('/api/admin/getIndexerErrors');
-      if (!res.ok) throw new Error('Failed to fetch errors');
-      const errors = await res.json();
+      const errors = await getIndexerErrors();
       this.#renderErrors(errors);
     } catch (err) {
       console.error('Indexer errors fetch failed:', err);
@@ -258,10 +254,12 @@ class PlAdminIndexer extends HTMLElement {
   }
 
   async #togglePauseResume() {
-    const endpoint = this.#status.paused ? '/api/admin/resumeIndexer' : '/api/admin/pauseIndexer';
     try {
-      const res = await authenticatedFetch(endpoint, { method: 'PUT' });
-      if (!res.ok) throw new Error('Failed');
+      if (this.#status.paused) {
+        await resumeIndexer();
+      } else {
+        await pauseIndexer();
+      }
       notify(this.#status.paused ? 'Indexer resumed' : 'Indexer paused', 'success');
       await this.#fetchStatus();
     } catch (err) {
@@ -277,8 +275,7 @@ class PlAdminIndexer extends HTMLElement {
       return;
     }
     try {
-      const res = await authenticatedFetch(`/api/admin/updateIndexerConcurrency/${value}`, { method: 'PUT' });
-      if (!res.ok) throw new Error('Failed');
+      await updateIndexerConcurrency(value);
       notify(`Concurrency updated to ${value}`, 'success');
       await this.#fetchStatus();
     } catch (err) {

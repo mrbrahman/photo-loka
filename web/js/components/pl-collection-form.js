@@ -1,5 +1,5 @@
 import { notify } from '../utils.mjs';
-import { authenticatedFetch } from '../authn.mjs';
+import { validatePath, listSubDirs, validateFolderPattern, createCollection, updateCollection, startIndexing as startCollectionIndexing } from '../api/admin-api.mjs';
 import { cronToHuman, isValidCron } from '../cron-utils.mjs';
 
 import sheet from "./styles/pl-collection-form.css" with { type: "css" };
@@ -247,8 +247,8 @@ class PlCollectionForm extends HTMLElement {
     let inputEl = sr.getElementById(id);
 
     try {
-      let res = await authenticatedFetch(`/api/admin/listSubDirs?path=${encodeURIComponent(value.trim())}`);
-      if (!res.ok) {
+      let exists = await validatePath(value.trim());
+      if (!exists) {
         this.#setPathStatus(statusEl, 'invalid', 'Path does not exist');
         inputEl.classList.remove('valid');
         inputEl.classList.add('invalid');
@@ -267,8 +267,8 @@ class PlCollectionForm extends HTMLElement {
     if (!value) return;
 
     try {
-      let res = await authenticatedFetch(`/api/admin/listSubDirs?path=${encodeURIComponent(value)}`);
-      if (!res.ok) {
+      let exists = await validatePath(value);
+      if (!exists) {
         this.#setPathStatus(statusEl, 'invalid', 'Path does not exist');
         inputEl.classList.remove('valid');
         inputEl.classList.add('invalid');
@@ -293,9 +293,7 @@ class PlCollectionForm extends HTMLElement {
     }
 
     try {
-      let res = await authenticatedFetch(`/api/admin/listSubDirs?path=${encodeURIComponent(dirToList)}`);
-      if (!res.ok) { datalist.innerHTML = ''; return; }
-      let dirs = await res.json();
+      let dirs = await listSubDirs(dirToList);
       datalist.innerHTML = '';
       for (let d of dirs) {
         datalist.appendChild(Object.assign(document.createElement('option'), { value: dirToList + d + sep }));
@@ -325,12 +323,7 @@ class PlCollectionForm extends HTMLElement {
     }
 
     try {
-      let res = await authenticatedFetch('/api/admin/validateFolderPattern', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pattern })
-      });
-      let result = await res.json();
+      let result = await validateFolderPattern(pattern);
       if (result.valid) {
         let msg = `Example: "${pattern}" -> "${result.example}"`;
         if (this.#isEdit && pattern !== this.#originalPattern) {
@@ -563,33 +556,18 @@ class PlCollectionForm extends HTMLElement {
     saveBtn.loading = true;
 
     try {
-      let url, method;
+      let result;
       if (this.#isEdit) {
-        url = `/api/admin/updateCollection/${this.#data.collection_id}`;
-        method = 'PUT';
+        result = await updateCollection(this.#data.collection_id, payload);
       } else {
-        url = '/api/admin/createNewCollection';
-        method = 'POST';
+        result = await createCollection(payload);
       }
-
-      let res = await authenticatedFetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (!res.ok) {
-        let err = await res.json().catch(() => ({ error: { message: `Server error: ${res.status}` } }));
-        throw new Error(err.error?.message || `Request failed: ${res.status}`);
-      }
-
-      let result = await res.json();
 
       // Start indexing if requested (create mode only)
       if (startIndexing && !this.#isEdit && result) {
         let collectionId = result; // createNewCollection returns the new ID
         try {
-          await authenticatedFetch(`/api/admin/startIndexingFirstTime?collection_id=${collectionId}`, { method: 'POST' });
+          await startCollectionIndexing(collectionId);
           notify('Collection created and indexing started', 'success');
         } catch (indexErr) {
           notify('Collection created but failed to start indexing', 'warning');
@@ -603,7 +581,7 @@ class PlCollectionForm extends HTMLElement {
         bubbles: true, composed: true
       }));
     } catch (err) {
-      notify(err.message || 'Failed to save collection', 'danger');
+      notify(err.error?.message || 'Failed to save collection', 'danger');
       console.error(err);
     } finally {
       saveBtn.loading = false;

@@ -18,7 +18,8 @@
 //    that is fine, since the album name update does not span multiple albums
 
 import {debounce, throttle, notify, showConfirmDialog, showProgress, hideProgress} from '../utils.mjs';
-import { authenticatedFetch } from '../authn.mjs';
+import { searchItems, getTrashedItems, searchByGpsCoordinates, getAllItems } from '../api/search-api.mjs';
+import { updateRating, trashItems, togglePrivate, restoreFromTrash, cleanupTrash, emptyTrash, moveItems } from '../api/media-api.mjs';
 
 import sheet from "./styles/pl-gallery.css" with { type: "css" };
 
@@ -69,31 +70,13 @@ class PlGallery extends HTMLElement {
   async #fetchData() {
     showProgress();
     try {
-      let res;
       const { collectionId = 1, searchText, bounds } = this.#query;
       switch (this.#mode) {
-        case 'search':
-          res = await authenticatedFetch('/api/search', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ collection_id: collectionId, searchText })
-          });
-          break;
-        case 'trash':
-          res = await authenticatedFetch(`/api/getTrashedItems?collection_id=${collectionId}`);
-          break;
-        case 'geo':
-          res = await authenticatedFetch('/api/searchByGpsCoordinates', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ collection_id: collectionId, bounds })
-          });
-          break;
-        default:
-          res = await authenticatedFetch('/api/getAll');
+        case 'search':  return await searchItems(collectionId, searchText);
+        case 'trash':   return await getTrashedItems(collectionId);
+        case 'geo':     return await searchByGpsCoordinates(collectionId, bounds);
+        default:        return await getAllItems();
       }
-      if (!res.ok) throw await res.json().catch(() => ({ error: { message: `${res.status} ${res.statusText}` } }));
-      return await res.json();
     } catch (err) {
       notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
       return null;
@@ -288,23 +271,7 @@ class PlGallery extends HTMLElement {
     let allAlbumNames = this.#albums.map(x=>x.album_name);
   
     try {
-      // first save in backend
-      await fetch('/api/moveItems', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          collection_id: 1,   // TODO: remove hardcoding
-          uuid_arr: this.#itemsSelected.map(x=>x.data.id),
-          new_album_name: targetAlbumName
-        })
-      })
-      .then(async res=>{
-        if(!res.ok){
-          throw await res.json().catch(() => ({error: {message: `${res.status} ${res.statusText}`}}));
-        }
-      });
+      await moveItems(1, this.#itemsSelected.map(x=>x.data.id), targetAlbumName);
 
       // now update UI
       // TODO: Find if the item is already in the targetAlbum, and if yes, ignore
@@ -381,150 +348,67 @@ class PlGallery extends HTMLElement {
     c.remove();
   }
 
-  #handleGalleryControlsRatingChanged = (evt)=>{
-    // update db here
-    fetch('/api/updateRating', {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        uuid_arr: this.#itemsSelected.map(x=>x.data.id),
-        newRating: evt.detail.newRating
-      })
-    })
-    .then(async res=>{
-      if(!res.ok){
-        throw await res.json().catch(() => ({error: {message: `${res.status} ${res.statusText}`}}));
-      }
-    })
-    .then(()=>{
-      // and then, just update UI
+  #handleGalleryControlsRatingChanged = async (evt)=>{
+    try {
+      await updateRating(this.#itemsSelected.map(x=>x.data.id), evt.detail.newRating);
       this.#albums.forEach(album=>{
         album.changeRatingSelectedItems(evt.detail.newRating);
       });
-
       notify(`Updated rating for ${this.#itemsSelected.length} item${this.#itemsSelected.length > 1 ? 's' : ''}`, 'success');
-    })
-    .catch(err=>{
+    } catch(err) {
       notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
-    });
-
+    }
   }
 
-  #handleGalleryControlsDeletePressed = (evt)=>{
-    // update db here
-    fetch(`/api/trashItems`, {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        collection_id: 1,  // TODO
-        uuid_arr: this.#itemsSelected.map(x=>x.data.id)
-      })
-    })
-    .then(async res=>{
-      if(!res.ok){
-        throw await res.json().catch(() => ({error: {message: `${res.status} ${res.statusText}`}}));
-      }
-    })
-    .then(()=>{
+  #handleGalleryControlsDeletePressed = async ()=>{
+    try {
+      await trashItems(1, this.#itemsSelected.map(x=>x.data.id));
       this.#albums.forEach(album=>album.deleteSelectedItems());
       let trashedCnt = this.#itemsSelected.length;
-      // all items selected are deleted. No need to keep gallery controls anymore
       this.#removeGalleryControls();
       notify(`${trashedCnt} item${trashedCnt > 1 ? 's' : ''} moved to trash`, 'success');
-    })
-    .catch(err=>{
+    } catch(err) {
       notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
-    });
+    }
   }
 
-  #handleGalleryControlsPrivateToggled = (evt)=>{
+  #handleGalleryControlsPrivateToggled = async (evt)=>{
     let {makePrivate} = evt.detail;
-    fetch('/api/togglePrivate', {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        collection_id: 1,  // TODO
-        uuid_arr: this.#itemsSelected.map(x=>x.data.id),
-        makePrivate
-      })
-    })
-    .then(async res=>{
-      if(!res.ok){
-        throw await res.json().catch(() => ({error: {message: `${res.status} ${res.statusText}`}}));
-      }
-    })
-    .then(()=>{
+    try {
+      await togglePrivate(1, this.#itemsSelected.map(x=>x.data.id), makePrivate);
       let cnt = this.#itemsSelected.length;
-      if(makePrivate){
-        this.#albums.forEach(album=>album.deleteSelectedItems());
-        this.#removeGalleryControls();
-      } else {
-        this.#albums.forEach(album=>album.deleteSelectedItems());
-        this.#removeGalleryControls();
-      }
+      this.#albums.forEach(album=>album.deleteSelectedItems());
+      this.#removeGalleryControls();
       notify(`${cnt} item${cnt > 1 ? 's' : ''} ${makePrivate ? 'marked private' : 'unmarked private'}`, 'success');
-    })
-    .catch(err=>{
+    } catch(err) {
       notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
-    });
+    }
   }
 
-  #handleGalleryControlsRestorePressed = ()=>{
-    fetch('/api/restoreFromTrash', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        collection_id: 1,  // TODO
-        uuid_arr: this.#itemsSelected.map(x=>x.data.id)
-      })
-    })
-    .then(async res=>{
-      if(!res.ok){
-        throw await res.json().catch(() => ({error: {message: `${res.status} ${res.statusText}`}}));
-      }
-    })
-    .then(()=>{
+  #handleGalleryControlsRestorePressed = async ()=>{
+    try {
+      await restoreFromTrash(1, this.#itemsSelected.map(x=>x.data.id));
       let cnt = this.#itemsSelected.length;
       this.#albums.forEach(album=>album.deleteSelectedItems());
       this.#removeGalleryControls();
       notify(`${cnt} item${cnt > 1 ? 's' : ''} restored from trash`, 'success');
       if(this.#mode === 'trash') this.#updateTrashCount();
-    })
-    .catch(err=>{
+    } catch(err) {
       notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
-    });
+    }
   }
 
-  #handleGalleryControlsCleanupPressed = ()=>{
-    fetch('/api/cleanupTrash', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        collection_id: 1,  // TODO
-        uuid_arr: this.#itemsSelected.map(x=>x.data.id)
-      })
-    })
-    .then(async res=>{
-      if(!res.ok){
-        throw await res.json().catch(() => ({error: {message: `${res.status} ${res.statusText}`}}));
-      }
-    })
-    .then(()=>{
+  #handleGalleryControlsCleanupPressed = async ()=>{
+    try {
+      await cleanupTrash(1, this.#itemsSelected.map(x=>x.data.id));
       let cnt = this.#itemsSelected.length;
       this.#albums.forEach(album=>album.deleteSelectedItems());
       this.#removeGalleryControls();
       notify(`${cnt} item${cnt > 1 ? 's' : ''} permanently deleted`, 'success');
       if(this.#mode === 'trash') this.#updateTrashCount();
-    })
-    .catch(err=>{
+    } catch(err) {
       notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
-    });
+    }
   }
 
   #handleEmptyTrash = async ()=>{
@@ -538,14 +422,7 @@ class PlGallery extends HTMLElement {
 
     try {
       let allUuids = this.#data.flatMap(d => d.items.map(i => i.data.id));
-      let res = await fetch('/api/emptyTrash', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ collection_id: 1, uuid_arr: allUuids })  // TODO
-      });
-      if(!res.ok){
-        throw await res.json().catch(() => ({error: {message: `${res.status} ${res.statusText}`}}));
-      }
+      await emptyTrash(1, allUuids);
       // remove all albums from gallery
       this.#albums.forEach(a => a.remove());
       this.#albums = [];

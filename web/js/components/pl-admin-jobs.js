@@ -1,5 +1,5 @@
 import { notify } from '../utils.mjs';
-import { authenticatedFetch } from '../authn.mjs';
+import { getJobs, setIntakeStatus } from '../api/admin-api.mjs';
 import { cronToHuman } from '../cron-utils.mjs';
 
 import sheet from "./styles/pl-admin-jobs.css" with { type: "css" };
@@ -38,9 +38,7 @@ class PlAdminJobs extends HTMLElement {
 
   async #loadJobs() {
     try {
-      const res = await authenticatedFetch('/api/admin/jobs');
-      if (!res.ok) throw new Error('Failed to load jobs');
-      this.#data = await res.json();
+      this.#data = await getJobs();
       this.#render();
     } catch (err) {
       this.shadowRoot.getElementById('content').innerHTML =
@@ -288,12 +286,7 @@ class PlAdminJobs extends HTMLElement {
   }
 
   async #setIntakeStatus(collectionId, intakeIndex, status) {
-    const res = await authenticatedFetch(`/api/admin/setIntakeStatus/${collectionId}/${intakeIndex}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status })
-    });
-    if (!res.ok) throw new Error('Failed to update intake status');
+    await setIntakeStatus(collectionId, intakeIndex, status);
   }
 }
 

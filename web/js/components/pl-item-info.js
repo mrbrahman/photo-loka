@@ -1,5 +1,5 @@
 import {notify} from '../utils.mjs';
-import {authenticatedFetch} from '../authn.mjs';
+import { getItemInfo, renameFile, updateDescription } from '../api/media-api.mjs';
 
 import sheet from "./styles/pl-item-info.css" with { type: "css" };
 import leafletSheet from "leaflet-css" with { type: "css" };
@@ -157,9 +157,7 @@ class PlItemInfo extends HTMLElement {
     }
 
     try {
-      let res = await authenticatedFetch(`/api/getItemInfo?uuid=${this.#uuid}`);
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-      this.#data = await res.json();
+      this.#data = await getItemInfo(this.#uuid);
       this.#populate();
       loading.hidden = true;
       body.hidden = false;
@@ -320,13 +318,7 @@ class PlItemInfo extends HTMLElement {
     status.className = 'field-status saving';
 
     try {
-      let res = await authenticatedFetch('/api/renameFile', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ collection_id: 1, uuid: this.#uuid, newBasename })
-      });
-
-      if (!res.ok) throw await res.json().catch(() => ({error: {message: `${res.status} ${res.statusText}`}}));
+      await renameFile(1, this.#uuid, newBasename);
 
       this.#originalStem = newStem;
       status.textContent = 'Saved';
@@ -349,13 +341,7 @@ class PlItemInfo extends HTMLElement {
     status.className = 'field-status saving';
 
     try {
-      let res = await authenticatedFetch('/api/updateDescription', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uuid: this.#uuid, description: newDesc })
-      });
-
-      if (!res.ok) throw await res.json().catch(() => ({error: {message: `${res.status} ${res.statusText}`}}));
+      await updateDescription(this.#uuid, newDesc);
 
       this.#originalDesc = newDesc;
       status.textContent = 'Saved';

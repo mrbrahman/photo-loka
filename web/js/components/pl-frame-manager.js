@@ -1,5 +1,5 @@
 import { notify } from '../utils.mjs';
-import { authenticatedFetch } from '../authn.mjs';
+import { getAllFrames } from '../api/admin-api.mjs';
 
 import sheet from "./styles/pl-frame-manager.css" with { type: "css" };
 
@@ -36,12 +36,7 @@ class PlFrameManager extends HTMLElement {
 
   async #loadFrames() {
     try {
-      const response = await authenticatedFetch('/api/admin/getAllFrames');
-      if (!response.ok) {
-        let errorResponse = await response.json();
-        throw new Error('Failed to load frame');
-      }
-      this.#frames = await response.json();
+      this.#frames = await getAllFrames();
       this.#renderFrames();
     } catch (error) {
       notify('Failed to load frames', 'danger');

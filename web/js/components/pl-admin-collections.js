@@ -3,7 +3,7 @@
 // - Start/Stop All Watchers (POST /api/startAllWatchers, /api/stopAllWatchers)
 // - Start/Stop Scheduled Indexing (POST /api/startScheduledIndexing, /api/stopScheduledIndexing)
 
-import { authenticatedFetch } from '../authn.mjs';
+import { getAllCollections } from '../api/admin-api.mjs';
 import './pl-collection-card.js';
 
 import sheet from "./styles/pl-admin-collections.css" with { type: "css" };
@@ -89,9 +89,7 @@ class PlAdminCollections extends HTMLElement {
   async #loadCollections() {
     const container = this.shadowRoot.getElementById('collections-list');
     try {
-      const res = await authenticatedFetch('/api/getAllCollections');
-      if (!res.ok) throw new Error('Failed to load collections');
-      const collections = await res.json();
+      const collections = await getAllCollections();
 
       if (!collections || collections.length === 0) {
         container.innerHTML = '<div class="empty-state">No collections configured</div>';

@@ -1,5 +1,5 @@
 import { notify } from '../utils.mjs';
-import { authenticatedFetch } from '../authn.mjs';
+import { getDashboardStats, getIndexerStatus } from '../api/admin-api.mjs';
 import { router } from '../router.mjs';
 
 import sheet from "./styles/pl-admin-dashboard.css" with { type: "css" };
@@ -80,9 +80,7 @@ class PlAdminDashboard extends HTMLElement {
 
   async #loadStats() {
     try {
-      const res = await authenticatedFetch('/api/admin/dashboard/stats');
-      if (!res.ok) throw new Error('Failed to load stats');
-      const data = await res.json();
+      const data = await getDashboardStats();
       this.#renderOverview(data);
       this.#renderMediaBreakdown(data.byType);
       this.#renderCollections(data.collections);
@@ -94,9 +92,7 @@ class PlAdminDashboard extends HTMLElement {
 
   async #loadIndexerStatus() {
     try {
-      const res = await authenticatedFetch('/api/admin/getIndexerStatus');
-      if (!res.ok) throw new Error('Failed to load indexer status');
-      const status = await res.json();
+      const status = await getIndexerStatus();
       this.#renderIndexerSummary(status);
     } catch (err) {
       this.shadowRoot.getElementById('indexer-summary').innerHTML =
