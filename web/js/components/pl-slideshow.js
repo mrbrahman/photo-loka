@@ -1,7 +1,7 @@
 import sheet from "./styles/pl-slideshow.css" with { type: "css" };
 
 class PlSlideshow extends HTMLElement {
-  #data=[]; #src; #startFrom; #buffer=1; #loop=false; #mode='default';
+  #data=[]; #startFrom; #buffer=1; #loop=false; #mode='default';
   #startIdx=[0,0]; #slideshowMode=false; #infoPanelOpen=false; #intervalId; #slideDuration=3;
   #closeWatcher;
 
@@ -457,14 +457,6 @@ class PlSlideshow extends HTMLElement {
   }
   get data(){
     return this.#data;
-  }
-
-  set src(_){
-    this.#src = _;
-    // TODO: implement data fetching via search-api.mjs when src-based loading is needed
-  }
-  get src(){
-    return this.#src;
   }
 
   set startFrom(_){
