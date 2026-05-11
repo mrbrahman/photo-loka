@@ -16,9 +16,13 @@ class PlMap extends HTMLElement {
       
       <div id="container">
         <div id="map"></div>
-        <button id="locate-btn" title="Zoom to my location" aria-label="Zoom to my location">
-          <sl-icon name="geo-alt-fill"></sl-icon>
-        </button>
+        <!-- Styled as plain button to match Leaflet's native zoom controls -->
+        <div id="locate-wrapper">
+          <button id="locate-btn" title="Zoom to my location" aria-label="Zoom to my location">
+            <sl-icon name="geo-alt-fill"></sl-icon>
+          </button>
+          <span id="locate-label">Fetching location...</span>
+        </div>
         <div id="gallery-panel">
           <div id="gallery-header">
             <span id="gallery-title"></span>
@@ -129,7 +133,7 @@ class PlMap extends HTMLElement {
   async #zoomToUserLocation() {
     if (!navigator.geolocation) return;
 
-    const btn = this.shadowRoot.getElementById('locate-btn');
+    const wrapper = this.shadowRoot.getElementById('locate-wrapper');
 
     // Check permission state to decide when to show loading feedback
     let permState = 'unknown';
@@ -141,7 +145,7 @@ class PlMap extends HTMLElement {
         if (permState === 'prompt') {
           // Show feedback only after user grants permission
           status.addEventListener('change', () => {
-            if (status.state === 'granted') btn.classList.add('locating');
+            if (status.state === 'granted') wrapper.classList.add('locating');
           }, { once: true });
         }
       } catch (e) {
@@ -150,16 +154,16 @@ class PlMap extends HTMLElement {
     }
 
     // If already granted, show feedback immediately
-    if (permState === 'granted') btn.classList.add('locating');
+    if (permState === 'granted') wrapper.classList.add('locating');
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        btn.classList.remove('locating');
+        wrapper.classList.remove('locating');
         const { latitude, longitude } = position.coords;
         this.#map.setView([latitude, longitude], this.#userLocationZoom);
       },
       (error) => {
-        btn.classList.remove('locating');
+        wrapper.classList.remove('locating');
         const messages = {
           1: 'Location permission denied',
           2: 'Location unavailable',

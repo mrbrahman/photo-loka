@@ -19,11 +19,19 @@
   z-index: 0;
 }
 
-#locate-btn {
+/* Styled as a plain button to match Leaflet's native zoom controls (+ / -)
+   which are rendered as <a> elements in the top-left corner. */
+#locate-wrapper {
   position: absolute;
   bottom: 12px;
   left: 12px;
   z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#locate-btn {
   width: 36px;
   height: 36px;
   border-radius: 4px;
@@ -42,7 +50,23 @@
   background: var(--bg-surface-alt, #f4f4f4);
 }
 
-#locate-btn.locating {
+#locate-label {
+  display: none;
+  background: var(--bg-surface, #fff);
+  color: var(--text-primary, #333);
+  font-size: 0.8rem;
+  font-weight: bold;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 2px solid rgba(0, 0, 0, 0.2);
+  white-space: nowrap;
+}
+
+#locate-wrapper.locating #locate-label {
+  display: block;
+}
+
+#locate-wrapper.locating #locate-btn {
   animation: pulse-locate 1s ease-in-out infinite;
 }
 
