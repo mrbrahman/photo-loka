@@ -1,6 +1,7 @@
 import sheet from "./styles/pl-map.css" with { type: "css" };
 import leafletSheet from "leaflet-css" with { type: "css" };
 import { getGpsCoordinates } from '../api/search-api.mjs';
+import { notify } from '../utils.mjs';
 
 class PlMap extends HTMLElement {
 
@@ -15,6 +16,9 @@ class PlMap extends HTMLElement {
       
       <div id="container">
         <div id="map"></div>
+        <button id="locate-btn" title="Zoom to my location" aria-label="Zoom to my location">
+          <sl-icon name="geo-alt-fill"></sl-icon>
+        </button>
         <div id="gallery-panel">
           <div id="gallery-header">
             <span id="gallery-title"></span>
@@ -29,17 +33,14 @@ class PlMap extends HTMLElement {
     `;
   }
 
-  #map;
-  #markers;
-  #activeMarkerEl;
+  #map = null;
+  #markers = null;
+  #activeMarkerEl = null;
+  #userLocationZoom = 15;
 
   constructor() {
-    super();
-    this.attachShadow({ mode: 'open' });
+    super().attachShadow({ mode: 'open' });
     this.shadowRoot.adoptedStyleSheets = [sheet, leafletSheet];
-    this.#map = null;
-    this.#markers = null;
-    this.#activeMarkerEl = null;
   }
 
   connectedCallback() {
@@ -51,6 +52,10 @@ class PlMap extends HTMLElement {
 
     this.shadowRoot.getElementById('gallery-expand').addEventListener('click', () => {
       this.toggleExpand();
+    });
+
+    this.shadowRoot.getElementById('locate-btn').addEventListener('click', () => {
+      this.#zoomToUserLocation();
     });
 
     this.initMap();
@@ -119,6 +124,51 @@ class PlMap extends HTMLElement {
       console.error('Error loading GPS data:', error);
       this.showErrorMessage();
     }
+  }
+
+  async #zoomToUserLocation() {
+    if (!navigator.geolocation) return;
+
+    const btn = this.shadowRoot.getElementById('locate-btn');
+
+    // Check permission state to decide when to show loading feedback
+    let permState = 'unknown';
+    if (navigator.permissions) {
+      try {
+        const status = await navigator.permissions.query({ name: 'geolocation' });
+        permState = status.state;
+
+        if (permState === 'prompt') {
+          // Show feedback only after user grants permission
+          status.addEventListener('change', () => {
+            if (status.state === 'granted') btn.classList.add('locating');
+          }, { once: true });
+        }
+      } catch (e) {
+        // Permissions API not supported - fall through
+      }
+    }
+
+    // If already granted, show feedback immediately
+    if (permState === 'granted') btn.classList.add('locating');
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        btn.classList.remove('locating');
+        const { latitude, longitude } = position.coords;
+        this.#map.setView([latitude, longitude], this.#userLocationZoom);
+      },
+      (error) => {
+        btn.classList.remove('locating');
+        const messages = {
+          1: 'Location permission denied',
+          2: 'Location unavailable',
+          3: 'Location request timed out'
+        };
+        notify(messages[error.code] || 'Could not get location', 'warning');
+      },
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: Infinity }
+    );
   }
 
   addMarkersToMap(items) {

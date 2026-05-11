@@ -6,11 +6,49 @@
   flex-direction: row;
 }
 
+/* z-index: 0 creates a stacking context so Leaflet's internal z-indexes
+   (tile pane ~200, marker pane ~600, popup pane ~700) are contained within
+   #map and don't bleed over sibling elements like #locate-btn or the
+   slideshow (position: fixed, z-index: 200 in pl-slideshow). */
 #map {
   flex: 1;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+  position: relative;
+  z-index: 0;
+}
+
+#locate-btn {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  z-index: 1;
+  width: 36px;
+  height: 36px;
+  border-radius: 4px;
+  border: 2px solid rgba(0, 0, 0, 0.2);
+  background: var(--bg-surface, #fff);
+  color: var(--text-primary, #333);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  padding: 0;
+}
+
+#locate-btn:hover {
+  background: var(--bg-surface-alt, #f4f4f4);
+}
+
+#locate-btn.locating {
+  animation: pulse-locate 1s ease-in-out infinite;
+}
+
+@keyframes pulse-locate {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.3); }
 }
 
 #gallery-panel {
