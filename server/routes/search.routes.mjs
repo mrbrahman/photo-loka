@@ -7,7 +7,12 @@ const router = Router();
 // TODO: rename this
 router.get('/getAll', compression(), async function(req,res,next){
   try {
-    res.json(await s.search.getAllFromDefaultCollection());
+    let collection_id = req.query.collection_id;
+    if (collection_id) {
+      res.json(await s.search.getAllFromCollection(parseInt(collection_id)));
+    } else {
+      res.json(await s.search.getAllFromDefaultCollection());
+    }
   } catch (error) {
     next(error);
   }
@@ -33,12 +38,18 @@ router.get('/getItemInfo', async function(req,res,next){
   }
 });
 
-router.get('/getGpsCoordinates', compression(), async function(req,res){
-  res.json(await s.search.getGpsCoordinates());
+router.get('/getGpsCoordinates', compression(), async function(req,res,next){
+  try {
+    let collection_id = req.query.collection_id ? parseInt(req.query.collection_id) : null;
+    res.json(await s.search.getGpsCoordinates(collection_id));
+  } catch (error) {
+    next(error);
+  }
 });
 
 router.get('/searchForExistingAlbums', async function(req,res){
-  res.json(await s.albums.searchForExistingAlbums(req.query.searchStr, req.query.wantFullName))
+  let collection_id = req.query.collection_id ? parseInt(req.query.collection_id) : null;
+  res.json(await s.albums.searchForExistingAlbums(req.query.searchStr, req.query.wantFullName, collection_id))
 });
 
 router.post('/searchByGpsCoordinates', async function(req,res){

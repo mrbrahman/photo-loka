@@ -28,14 +28,18 @@ export async function searchByGpsCoordinates(collectionId, bounds) {
   return await res.json();
 }
 
-export async function getAllItems() {
-  let res = await authenticatedFetch('/api/getAll');
+export async function getAllItems(collectionId) {
+  let url = '/api/getAll';
+  if (collectionId) url += `?collection_id=${collectionId}`;
+  let res = await authenticatedFetch(url);
   if (!res.ok) throw await res.json().catch(() => ({ error: { message: `${res.status} ${res.statusText}` } }));
   return await res.json();
 }
 
-export async function getGpsCoordinates() {
-  let res = await authenticatedFetch('/api/getGpsCoordinates');
+export async function getGpsCoordinates(collectionId) {
+  let url = '/api/getGpsCoordinates';
+  if (collectionId) url += `?collection_id=${collectionId}`;
+  let res = await authenticatedFetch(url);
   if (!res.ok) throw await res.json().catch(() => ({ error: { message: `${res.status} ${res.statusText}` } }));
   return await res.json();
 }

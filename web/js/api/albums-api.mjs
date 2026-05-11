@@ -14,10 +14,10 @@ export async function updateAlbumName(collectionId, currAlbumName, newAlbumName)
   }
 }
 
-export async function searchForExistingAlbums(searchStr, wantFullName) {
-  let res = await authenticatedFetch(
-    `/api/searchForExistingAlbums?searchStr=${encodeURIComponent(searchStr)}&wantFullName=${wantFullName}`
-  );
+export async function searchForExistingAlbums(searchStr, wantFullName, collectionId) {
+  let url = `/api/searchForExistingAlbums?searchStr=${encodeURIComponent(searchStr)}&wantFullName=${wantFullName}`;
+  if (collectionId) url += `&collection_id=${collectionId}`;
+  let res = await authenticatedFetch(url);
   if (!res.ok) throw await res.json().catch(() => ({ error: { message: `${res.status} ${res.statusText}` } }));
   return await res.json();
 }

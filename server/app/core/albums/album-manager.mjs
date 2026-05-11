@@ -34,6 +34,6 @@ export async function moveItemsToAlbum(collection_id, uuid_arr, newAlbumName){
   );
 }
 
-export async function searchForExistingAlbums(searchStr, wantFullName){
-  return await db.searchForExistingAlbums(searchStr, wantFullName)
+export async function searchForExistingAlbums(searchStr, wantFullName, collection_id){
+  return await db.searchForExistingAlbums(searchStr, wantFullName, collection_id)
 }

@@ -238,7 +238,7 @@ export async function getItemInfo(uuid){
   return await asyncGet(sql, uuid);
 }
 
-export async function getGpsCoordinates(){
+export async function getGpsCoordinates(collection_id){
   let sql = `
     select 
       round(gps_lat, 4) as lat,
@@ -250,6 +250,7 @@ export async function getGpsCoordinates(){
     and coalesce(trashed, false) = false
     and coalesce(private, false) = false
     and mediatype in ('image', 'video')
+    ${collection_id ? `and collection_id = ${collection_id}` : ''}
     group by 1, 2
   `;
   

@@ -1,6 +1,7 @@
 import { isAdmin } from '../authn.mjs';
 import { getTheme, toggleTheme } from '../theme.mjs';
-import { router } from '../router.mjs';
+import { router, getStoredCollectionId, setStoredCollectionId } from '../router.mjs';
+import { getCollections } from '../api/collections-api.mjs';
 
 import sheet from "./styles/pl-app-shell.css" with { type: "css" };
 
@@ -8,13 +9,15 @@ import sheet from "./styles/pl-app-shell.css" with { type: "css" };
 class PlAppShell extends HTMLElement {
 
   #state = {
-    collection_id: 1
+    collections: [],    // [{collection_id, collection_name, default_collection, apply_folder_pattern}]
+    collection_id: null
   };
 
   #mode = 'app'; // 'app' | 'admin'
 
   #mainContent = null; #progressBar = null; #sidebar = null; #backdrop = null;
   #progressCount = 0;
+  #collectionsReady = null; // Promise that resolves when collections are loaded
 
   // --- Shell template (nav-header + content area with empty sidebar-nav) ---
 
@@ -81,6 +84,12 @@ class PlAppShell extends HTMLElement {
   static {
     this.appSidebarTemplate.innerHTML = // html
       `
+      <div id="collection-picker">
+        <span id="collection-label" style="display:none"></span>
+        <sl-select id="collection-select" size="small" style="display:none">
+        </sl-select>
+      </div>
+
       <a class="sidebar-item" data-route="/">
         <sl-icon name="images"></sl-icon>
         <span>Photos</span>
@@ -170,7 +179,88 @@ class PlAppShell extends HTMLElement {
     if (isAdmin()) {
       this.shadowRoot.getElementById('admin-btn').style.display = '';
     }
+
+    // Fetch collections from server
+    this.#collectionsReady = this.#fetchCollections();
   }
+
+  async #fetchCollections() {
+    try {
+      const collections = await getCollections();
+      this.#state.collections = collections;
+      this.#renderCollectionPicker();
+    } catch (err) {
+      // If fetch fails, fall back to a single default
+      this.#state.collections = [{ collection_id: 1, collection_name: 'Default', default_collection: 1, apply_folder_pattern: '' }];
+    }
+  }
+
+  /**
+   * Resolves the default collection id (from localStorage or server default).
+   * Called by the router when navigating to /app without a collection id.
+   * Returns a promise that resolves to the collection_id to use.
+   */
+  async resolveDefaultCollectionId() {
+    await this.#collectionsReady;
+
+    const stored = getStoredCollectionId();
+    if (stored && this.#state.collections.find(c => c.collection_id === parseInt(stored))) {
+      return parseInt(stored);
+    }
+
+    const defaultCol = this.#state.collections.find(c => c.default_collection === 1);
+    return defaultCol ? defaultCol.collection_id : this.#state.collections[0]?.collection_id || 1;
+  }
+
+  #renderCollectionPicker() {
+    const picker = this.shadowRoot.getElementById('collection-picker');
+    if (!picker) return; // admin mode, no picker
+
+    const label = this.shadowRoot.getElementById('collection-label');
+    const select = this.shadowRoot.getElementById('collection-select');
+
+    if (this.#state.collections.length <= 1) {
+      // Single collection: show as bold label
+      select.style.display = 'none';
+      label.style.display = '';
+      label.textContent = this.#state.collections[0]?.collection_name || '';
+      return;
+    }
+
+    // Multiple collections: show dropdown
+    label.style.display = 'none';
+    select.style.display = '';
+    select.innerHTML = '';
+
+    for (const col of this.#state.collections) {
+      const option = document.createElement('sl-option');
+      option.value = String(col.collection_id);
+      option.textContent = col.collection_name;
+      select.appendChild(option);
+    }
+
+    // Set current value
+    if (this.#state.collection_id) {
+      select.value = String(this.#state.collection_id);
+    }
+
+    // Listen for changes
+    select.addEventListener('sl-change', this.#handleCollectionChange);
+  }
+
+  #handleCollectionChange = (evt) => {
+    const newId = parseInt(evt.target.value);
+    if (newId === this.#state.collection_id) return;
+
+    this.#state.collection_id = newId;
+    setStoredCollectionId(newId);
+
+    // Navigate to the same view but with the new collection
+    const currentHash = window.location.hash.replace(/^#/, '');
+    // Replace the collection id in the current URL
+    const newPath = currentHash.replace(/\/app\/c\/\d+/, `/app/c/${newId}`);
+    router.navigate(newPath);
+  };
 
   #attachEventListeners() {
     // Hamburger toggle
@@ -200,7 +290,7 @@ class PlAppShell extends HTMLElement {
       if (e.key === 'Enter') {
         const searchText = searchBox.value.trim();
         if (searchText) {
-          router.navigate(`/app/search/${encodeURIComponent(searchText)}`);
+          router.navigate(`/app/c/${this.#state.collection_id}/search/${encodeURIComponent(searchText)}`);
           searchBox.blur();
         }
       }
@@ -274,6 +364,10 @@ class PlAppShell extends HTMLElement {
       sidebarNav.appendChild(this.constructor.adminSidebarTemplate.content.cloneNode(true));
     } else {
       sidebarNav.appendChild(this.constructor.appSidebarTemplate.content.cloneNode(true));
+      // Re-render collection picker if collections are loaded
+      if (this.#state.collections.length > 0) {
+        this.#renderCollectionPicker();
+      }
     }
 
     this.#attachSidebarListeners();
@@ -296,7 +390,12 @@ class PlAppShell extends HTMLElement {
     sidebarNav.querySelectorAll('.sidebar-item[data-route]:not([disabled])').forEach(item => {
       item.addEventListener('click', (e) => {
         e.preventDefault();
-        const prefix = this.#mode === 'admin' ? '/admin' : '/app';
+        let prefix;
+        if (this.#mode === 'admin') {
+          prefix = '/admin';
+        } else {
+          prefix = `/app/c/${this.#state.collection_id}`;
+        }
         router.navigate(prefix + item.dataset.route);
         this.#closeSidebar();
       });
@@ -310,7 +409,15 @@ class PlAppShell extends HTMLElement {
     const mode = params.mode || 'app';
     this.#setMode(mode);
 
-    const { slideshowItemId, searchText } = params;
+    const { collectionId, slideshowItemId, searchText } = params;
+
+    // Update active collection from route param
+    if (collectionId) {
+      this.#state.collection_id = collectionId;
+      // Sync the picker if visible
+      const select = this.shadowRoot.getElementById('collection-select');
+      if (select) select.value = String(collectionId);
+    }
 
     if (!searchText) {
       this.shadowRoot.getElementById('nav-search-box').value = '';
@@ -362,7 +469,9 @@ class PlAppShell extends HTMLElement {
         this.#setActiveMenuItem('/map');
         this.#mainContent.innerHTML = '';
         this.#mainContent.style.overflowY = 'hidden';
-        this.#mainContent.appendChild(document.createElement('pl-map'));
+        this.#mainContent.appendChild(Object.assign(document.createElement('pl-map'), {
+          collectionId: this.#state.collection_id
+        }));
         break;
 
       case 'frames':

@@ -5,6 +5,8 @@ import { notify } from '../utils.mjs';
 
 class PlMap extends HTMLElement {
 
+  #collectionId = 1;
+
   static template = document.createElement('template');
   static {
     this.template.innerHTML = // html
@@ -115,7 +117,7 @@ class PlMap extends HTMLElement {
 
   async loadGpsData() {
     try {
-      const data = await getGpsCoordinates();
+      const data = await getGpsCoordinates(this.#collectionId);
       
       if (data.length === 0) {
         this.showNoDataMessage();
@@ -259,7 +261,7 @@ class PlMap extends HTMLElement {
 
     const gallery = Object.assign(document.createElement('pl-gallery'), {
       mode: 'geo',
-      query: { collectionId: 1, bounds }
+      query: { collectionId: this.#collectionId, bounds }
     });
 
     if (isFirstOpen) {
@@ -345,6 +347,8 @@ class PlMap extends HTMLElement {
       </div>
     `;
   }
+  get collectionId() { return this.#collectionId; }
+  set collectionId(_) { this.#collectionId = _ || 1; }
 }
 
 customElements.define('pl-map', PlMap);

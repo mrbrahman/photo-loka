@@ -121,6 +121,28 @@ sl-progress-bar.hide {
   margin: 4px 12px;
 }
 
+#collection-picker {
+  padding: 8px 12px;
+}
+
+#collection-picker sl-select {
+  width: 100%;
+  --sl-input-font-size-small: 0.9rem;
+}
+
+#collection-picker sl-select::part(combobox) {
+  border-radius: 6px;
+}
+
+#collection-label {
+  font-weight: bold;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .sidebar-section-label {
   font-size: 0.7rem;
   color: var(--text-muted);

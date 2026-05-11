@@ -42,8 +42,8 @@ export async function getItemInfo(uuid){
   return await db.getItemInfo(uuid);
 }
 
-export async function getGpsCoordinates() {
-  return await db.getGpsCoordinates();
+export async function getGpsCoordinates(collection_id) {
+  return await db.getGpsCoordinates(collection_id);
 }
 
 export async function searchByGpsCoordinates(collection_id, bounds){

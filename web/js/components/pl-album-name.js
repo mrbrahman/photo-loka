@@ -5,7 +5,7 @@ import sheet from "./styles/pl-album-name.css" with { type: "css" };
 
 class PlAlbumName extends HTMLElement {
 
-  #albumName; #albumSelectedValue='none'; #readOnly = false;
+  #albumName; #albumSelectedValue='none'; #readOnly = false; #collectionId = null;
 
   static template = document.createElement('template');
   static {
@@ -70,7 +70,7 @@ class PlAlbumName extends HTMLElement {
     }
 
     try {
-      await updateAlbumName(1, this.#albumName, this.shadowRoot.getElementById('album-name').innerText);
+      await updateAlbumName(this.#collectionId, this.#albumName, this.shadowRoot.getElementById('album-name').innerText);
       // update UI
       this.albumName = this.shadowRoot.getElementById('album-name').innerText;
       this.shadowRoot.getElementById('album-name').blur();
@@ -124,7 +124,7 @@ class PlAlbumName extends HTMLElement {
 
       let searchStr = albumNameText.textContent.substring(0,15);
       try {
-        let output = await searchForExistingAlbums(searchStr, true);
+        let output = await searchForExistingAlbums(searchStr, true, this.#collectionId);
         let rows = output.map(d=>`${d.similar}: ${d.cnt}`);
         if (rows.length > 0){
           notify(rows.join('<BR>'), 'info', 5000);
@@ -159,7 +159,7 @@ class PlAlbumName extends HTMLElement {
 
   #suggestAlbumNames = async (txt) => {
     try {
-      let output = await searchForExistingAlbums(txt.substring(15).trim(), false);
+      let output = await searchForExistingAlbums(txt.substring(15).trim(), false, this.#collectionId);
       let rows = output.map(d=>`${d.similar}: ${d.cnt}`);
       if (rows.length > 0){
         notify(rows.join('<BR>'), 'info', 5000);
@@ -245,6 +245,9 @@ class PlAlbumName extends HTMLElement {
   }
   get readOnly() { return this.#readOnly; }
   set readOnly(_) { this.#readOnly = Boolean(_); }
+
+  get collectionId() { return this.#collectionId; }
+  set collectionId(_) { this.#collectionId = _ || null; }
 
 }
 

@@ -49,6 +49,13 @@ export async function getCollection(collection_id){
   return transformEntryFromDb(output);
 }
 
+export async function getCollectionsSummary(){
+  return await asyncAll(`
+    select collection_id, collection_name, default_collection, apply_folder_pattern
+    from collections
+  `);
+}
+
 export async function getDefaultCollection(){
   // convert intake_configs back to JavaScript Array
   const output = await asyncGet(`

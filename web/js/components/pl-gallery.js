@@ -75,7 +75,7 @@ class PlGallery extends HTMLElement {
         case 'search':  return await searchItems(collectionId, searchText);
         case 'trash':   return await getTrashedItems(collectionId);
         case 'geo':     return await searchByGpsCoordinates(collectionId, bounds);
-        default:        return await getAllItems();
+        default:        return await getAllItems(collectionId);
       }
     } catch (err) {
       notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
@@ -102,7 +102,8 @@ class PlGallery extends HTMLElement {
         album_name: d.album,
         data: d.items,
         width: this.shadowRoot.getElementById('gallery').clientWidth,
-        readOnly: this.#mode === 'trash'
+        readOnly: this.#mode === 'trash',
+        collectionId: this.#query.collectionId
       });
 
       // TODO: Can we have gallery listen to these events rather than individual albums?
@@ -293,7 +294,8 @@ class PlGallery extends HTMLElement {
           id: targetAlbumName.replaceAll(/[\s/]/gi, '_'),
           album_name: targetAlbumName,
           data: this.#itemsSelected,
-          width: this.shadowRoot.getElementById('gallery').clientWidth
+          width: this.shadowRoot.getElementById('gallery').clientWidth,
+          collectionId: this.#query.collectionId
         });
 
         this.#addAlbumEventListeners(newAlbum);

@@ -237,10 +237,10 @@ export async function updateConfig(key, value) {
   if (!res.ok) return throwError(res);
 }
 
-// --- Collections (non-admin) ---
+// --- Collections (admin) ---
 
 export async function getAllCollections() {
-  let res = await authenticatedFetch('/api/getAllCollections');
+  let res = await authenticatedFetch('/api/admin/getAllCollections');
   if (!res.ok) return throwError(res);
   return await res.json();
 }

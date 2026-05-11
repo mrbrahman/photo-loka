@@ -65,6 +65,10 @@ export async function getAllCollections(){
   return await db.getAllCollections()
 }
 
+export async function getCollectionsSummary(){
+  return await db.getCollectionsSummary()
+}
+
 export async function getDefaultCollection(){
   return await db.getDefaultCollection()
 }

@@ -6,8 +6,12 @@ import * as s from '../app/services.mjs';
 // *****************************************
 const router = Router();
 
-router.get('/getAllCollections', async function(req, res){
-  res.json( await s.collections.getAllCollections() );
+router.get('/collections', async function(req, res, next){
+  try {
+    res.json( await s.collections.getCollectionsSummary() );
+  } catch (error) {
+    next(error);
+  }
 });
 
 export default router;
@@ -16,6 +20,14 @@ export default router;
 // Admin collection routes (/api/admin)
 // *****************************************
 export const adminCollectionsRouter = Router();
+
+adminCollectionsRouter.get('/getAllCollections', async function(req, res, next){
+  try {
+    res.json( await s.collections.getAllCollections() );
+  } catch (error) {
+    next(error);
+  }
+});
 
 adminCollectionsRouter.post('/createNewCollection', async function(req, res, next){
   let c = req.body;
