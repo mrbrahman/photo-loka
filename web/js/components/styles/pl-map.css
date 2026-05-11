@@ -175,6 +175,35 @@
   }
 }
 
+/* Dark theme - invert map tiles to approximate a dark basemap */
+:host-context([data-theme="dark"]) #map {
+  background: #303030;
+}
+
+:host-context([data-theme="dark"]) .leaflet-tile {
+  filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7);
+}
+
+:host-context([data-theme="dark"]) .leaflet-control-zoom a,
+:host-context([data-theme="dark"]) .leaflet-control-attribution {
+  background: var(--bg-surface-alt);
+  color: var(--text-primary);
+  border-color: var(--border-primary);
+}
+
+:host-context([data-theme="dark"]) .leaflet-control-zoom a:hover {
+  background: var(--bg-surface);
+}
+
+:host-context([data-theme="dark"]) .leaflet-control-attribution a {
+  color: var(--text-secondary);
+}
+
+:host-context([data-theme="dark"]) #locate-btn,
+:host-context([data-theme="dark"]) #locate-label {
+  border-color: var(--border-primary);
+}
+
 @media (max-width: 768px) {
   #container {
     flex-direction: column;
