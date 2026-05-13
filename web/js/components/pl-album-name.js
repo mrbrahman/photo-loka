@@ -3,9 +3,14 @@ import { updateAlbumName, searchForExistingAlbums } from '../api/albums-api.mjs'
 
 import sheet from "./styles/pl-album-name.css" with { type: "css" };
 
+// Design note: Save is always explicit (save button or Enter key), never on blur.
+// Renaming an album moves physical files on disk, so accidental renames from
+// stray blur events (especially on mobile) must be avoided.
+
 class PlAlbumName extends HTMLElement {
 
   #albumName; #albumSelectedValue='none'; #readOnly = false; #collectionId = null;
+  #closeWatcher = null;
 
   static template = document.createElement('template');
   static {
@@ -16,17 +21,20 @@ class PlAlbumName extends HTMLElement {
         <sl-icon id="select-all" class="select-none" name="check-circle"></sl-icon>
       <!-- </sl-tooltip> -->
 
-      <div id="album-name" role="textbox" spellcheck="false"></div>
-      
+      <span id="album-label"></span>
+
+      <input id="album-input" list="album-suggestions" autocomplete="off" spellcheck="false" hidden />
+      <datalist id="album-suggestions"></datalist>
+
       <div id="edit-controls">
-        <sl-icon id="save" name="check-circle-fill"></sl-icon>
-        <sl-icon id="cancel" name="x-circle"></sl-icon>
+        <sl-icon id="save" name="check-circle-fill" tabindex="0"></sl-icon>
+        <sl-icon id="cancel" name="x-circle" tabindex="0"></sl-icon>
       </div>
     `;
   }
 
   constructor() {
-    super().attachShadow({mode: 'open'}); // sets "this" and "this.shadowRoot"
+    super().attachShadow({mode: 'open'});
     this.shadowRoot.adoptedStyleSheets = [sheet];
   }
 
@@ -36,158 +44,179 @@ class PlAlbumName extends HTMLElement {
     this.#paintAlbumName();
 
     this.shadowRoot.getElementById("select-all").addEventListener('click', this.#handleSelectAll);
-    
-    this.shadowRoot.getElementById("album-name").addEventListener('click', this.#handleClick);
-    this.shadowRoot.getElementById("album-name").addEventListener('focus', this.#handleFocus);
-    this.shadowRoot.getElementById("album-name").addEventListener('blur', this.#handleBlur);
-    this.shadowRoot.getElementById("album-name").addEventListener('keydown', this.#handleKey);
-    this.shadowRoot.getElementById("album-name").addEventListener('input', this.#handleInput);
-
+    this.shadowRoot.getElementById("album-label").addEventListener('click', this.#handleLabelClick);
+    this.shadowRoot.getElementById("album-input").addEventListener('focus', this.#handleFocus);
+    this.shadowRoot.getElementById("album-input").addEventListener('keydown', this.#handleKey);
+    this.shadowRoot.getElementById("album-input").addEventListener('input', this.#handleInput);
     this.shadowRoot.getElementById("save").addEventListener('click', this.#handleSave);
-
+    this.shadowRoot.getElementById("save").addEventListener('keydown', (evt) => {
+      if (evt.key === 'Enter' || evt.key === ' ') { evt.preventDefault(); this.#handleSave(); }
+    });
     this.shadowRoot.getElementById("cancel").addEventListener('click', this.#handleCancel);
-
+    this.shadowRoot.getElementById("cancel").addEventListener('keydown', (evt) => {
+      if (evt.key === 'Enter' || evt.key === ' ') { evt.preventDefault(); this.#handleCancel(); }
+    });
   }
 
-  #handleClick = (evt) => {
-    if(this.#readOnly) return;
-    this.shadowRoot.getElementById('album-name').contentEditable = 'true';
-    this.shadowRoot.getElementById('album-name').focus();
+  #handleLabelClick = () => {
+    if (this.#readOnly) return;
+    this.#enterEditMode();
   }
 
-  #handleSelectAll = (evt) => {
-    // toggle between 'all' and 'none'
+  #enterEditMode() {
+    let label = this.shadowRoot.getElementById('album-label');
+    let input = this.shadowRoot.getElementById('album-input');
+
+    label.hidden = true;
+    input.hidden = false;
+    input.value = this.#albumName || '';
+    input.focus();
+
+    this.shadowRoot.getElementById('edit-controls').style.visibility = 'visible';
+
+    this.#closeWatcher = new CloseWatcher();
+    this.#closeWatcher.onclose = () => this.#handleCancel();
+  }
+
+  #exitEditMode() {
+    let label = this.shadowRoot.getElementById('album-label');
+    let input = this.shadowRoot.getElementById('album-input');
+
+    input.hidden = true;
+    label.hidden = false;
+
+    this.shadowRoot.getElementById('edit-controls').style.visibility = 'hidden';
+    this.#clearSuggestions();
+
+    this.#closeWatcher?.destroy();
+    this.#closeWatcher = null;
+  }
+
+  #handleSelectAll = () => {
     this.#albumSelectedValue = this.#albumSelectedValue == 'all' ? 'none' : 'all';
     this.#paintSelectAllCheckbox();
 
-    let selectAllEvent = new CustomEvent('r3-select-all-clicked', {detail: {select: this.#albumSelectedValue == 'all' ? true : false}})
-    this.dispatchEvent(selectAllEvent);
+    this.dispatchEvent(new CustomEvent('r3-select-all-clicked', {
+      detail: { select: this.#albumSelectedValue == 'all' }
+    }));
   }
 
-  #handleSave = async (evt) => {
-    if(this.shadowRoot.getElementById('album-name').innerText == this.albumName){
+  #handleSave = async () => {
+    let input = this.shadowRoot.getElementById('album-input');
+    if (input.value === this.albumName) {
+      this.#exitEditMode();
       return;
     }
 
     try {
-      await updateAlbumName(this.#collectionId, this.#albumName, this.shadowRoot.getElementById('album-name').innerText);
-      // update UI
-      this.albumName = this.shadowRoot.getElementById('album-name').innerText;
-      this.shadowRoot.getElementById('album-name').blur();
-      this.shadowRoot.getElementById('edit-controls').style.visibility = 'hidden';
+      await updateAlbumName(this.#collectionId, this.#albumName, input.value);
+      this.albumName = input.value;
+      this.#exitEditMode();
       notify('Album name updated successfully', 'success');
     } catch(err) {
-      if(err.error?.code === "FOLDER_EXISTS"){
+      if (err.error?.code === "FOLDER_EXISTS") {
         this.dispatchEvent(new CustomEvent('pl-rename-dir-not-empty', {
-          detail: {
-            newAlbumName: this.shadowRoot.getElementById('album-name').innerText
-          }
-        }))
+          detail: { newAlbumName: input.value }
+        }));
       } else {
         notify(`<strong>Error</strong>:</br>${err.error?.code || err.code}`, 'error', -1);
       }
     }
   }
 
-  #handleCancel = (evt) => {
-    if(this.shadowRoot.getElementById('album-name').innerText != this.albumName){
-      this.shadowRoot.getElementById('album-name').innerText = this.albumName;
-    }
-
-    this.shadowRoot.getElementById('album-name').contentEditable = 'false';
-    this.shadowRoot.getElementById('album-name').blur();
-    this.shadowRoot.getElementById('edit-controls').style.visibility = 'hidden';
-    window.getSelection().removeAllRanges();
+  #handleCancel = () => {
+    this.#exitEditMode();
   }
 
-  // #handleHover = (evt) => {
-  //   console.log('in handle hover')
-  // }
-
-  #handleFocus = async (evt) => {
-    this.shadowRoot.getElementById('edit-controls').style.visibility = 'visible';
-
-    // position to cursor to enable easy editing
-    let len = this.albumName.length;
+  #handleFocus = async () => {
+    // position cursor to enable easy editing
+    let input = this.shadowRoot.getElementById('album-input');
     let tbd = this.albumName.search(/(Sush Phone |Shreyas Phone )?TBD/g);
 
-    if(tbd>0){
-      var range = document.createRange();
-      var sel = window.getSelection();
-  
-      let albumNameText = this.shadowRoot.getElementById('album-name').childNodes[0];
-  
-      range.setStart(albumNameText, tbd >=0? tbd : len);
-      range.setEnd(albumNameText, len);
-      sel.removeAllRanges();
-      sel.addRange(range);
+    if (tbd > 0) {
+      // Select from TBD onwards for easy replacement
+      input.setSelectionRange(tbd, this.albumName.length);
 
-      let searchStr = albumNameText.textContent.substring(0,15);
+      let searchStr = this.albumName.substring(0, 15);
       try {
         let output = await searchForExistingAlbums(searchStr, true, this.#collectionId);
-        let rows = output.map(d=>`${d.similar}: ${d.cnt}`);
-        if (rows.length > 0){
-          notify(rows.join('<BR>'), 'info', 5000);
+        if (output.length > 0) {
+          this.#populateSuggestions(output, searchStr);
         }
       } catch(err) {
         notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
       }
     }
-
   }
 
-  #handleBlur = (evt) => {
-    // disable contentEditable when focus is lost
-    this.shadowRoot.getElementById('album-name').contentEditable = 'false';
-    
-    // if there are changes made to album name and not saved, notify, else silently remove 
-    if(this.shadowRoot.getElementById('album-name').innerText == this.albumName){
-      this.shadowRoot.getElementById('edit-controls').style.visibility = 'hidden';
-    }
-    // else ... ideally notify that user needs to save, however, 
-    // cannot notify here since blur is called even when save is pressed (before save is called)
-  }
-
-  #throttleKeyDown = throttle(()=>{
-    let txt = this.shadowRoot.getElementById('album-name').innerText
-    // need at least 2 charcters to perform lookup
+  #throttledLookup = throttle(() => {
+    let input = this.shadowRoot.getElementById('album-input');
+    let txt = input.value;
+    // Need at least some characters beyond the date prefix to perform lookup
     // TODO: remove hardcoding
-    if(!txt.includes('TBD') && txt.trim().length > 16){
-      this.#suggestAlbumNames(txt)
+    if (!txt.includes('TBD') && txt.trim().length > 16) {
+      this.#suggestAlbumNames(txt);
     }
   }, 1000)
 
   #suggestAlbumNames = async (txt) => {
+    let prefix = txt.substring(0, 15);
+    let searchPart = txt.substring(15).trim();
     try {
-      let output = await searchForExistingAlbums(txt.substring(15).trim(), false, this.#collectionId);
-      let rows = output.map(d=>`${d.similar}: ${d.cnt}`);
-      if (rows.length > 0){
-        notify(rows.join('<BR>'), 'info', 5000);
+      let output = await searchForExistingAlbums(searchPart, false, this.#collectionId);
+      if (output.length > 0) {
+        this.#populateSuggestions(output, prefix);
+      } else {
+        this.#clearSuggestions();
       }
     } catch(err) {
       notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
     }
   }
 
-  #handleInput = (evt) => {
-    this.#throttleKeyDown();
+  #handleInput = () => {
+    // When user selects a suggestion from the datalist, the browser sets the input
+    // value and fires an 'input' event. Detect this by checking if the new value
+    // matches a datalist option. If so, clear suggestions (closes the dropdown)
+    // and skip further lookups - the user has made their choice.
+    let input = this.shadowRoot.getElementById('album-input');
+    let datalist = this.shadowRoot.getElementById('album-suggestions');
+    let options = datalist.querySelectorAll('option');
+    for (let opt of options) {
+      if (opt.value === input.value) {
+        this.#clearSuggestions();
+        return;
+      }
+    }
+    this.#throttledLookup();
   }
 
   #handleKey = (evt) => {
-    if (evt.key == "Escape"){
-      evt.stopPropagation();
-      this.#handleCancel();
-    } else if(evt.key == "Enter"){
-      evt.preventDefault(); // we don't want an actual \n in the album name
+    if (evt.key === "Enter") {
+      evt.preventDefault();
       this.#handleSave();
     }
+  }
+
+  #populateSuggestions(output, prefix) {
+    let datalist = this.shadowRoot.getElementById('album-suggestions');
+    datalist.innerHTML = '';
+    for (let d of output) {
+      let opt = document.createElement('option');
+      opt.value = `${prefix} ${d.similar}`;
+      datalist.appendChild(opt);
+    }
+  }
+
+  #clearSuggestions() {
+    this.shadowRoot.getElementById('album-suggestions').innerHTML = '';
   }
 
   disconnectedCallback() {
     //implementation
   }
 
-  attributeChangedCallback(name, oldVal, newVal) {
+  attributeChangedCallback() {
     //implementation
   }
 
@@ -196,14 +225,16 @@ class PlAlbumName extends HTMLElement {
   }
 
   #paintAlbumName() {
-    this.shadowRoot.getElementById('album-name').innerText = this.#albumName;
+    let label = this.shadowRoot.getElementById('album-label');
+    if (!label) return;
+    label.textContent = this.#albumName || '';
   }
 
-  #paintSelectAllCheckbox(){
+  #paintSelectAllCheckbox() {
     let classes = ['select-none','select-some','select-all'];
     let checkbox = this.shadowRoot.getElementById('select-all');
 
-    switch(this.#albumSelectedValue){
+    switch(this.#albumSelectedValue) {
       case 'none':
         checkbox.name = "check-circle";
         checkbox.classList.remove(...classes);
@@ -213,7 +244,7 @@ class PlAlbumName extends HTMLElement {
         checkbox.name = "check-circle-fill";
         checkbox.classList.remove(...classes);
         checkbox.classList.add('select-some');
-        break;     
+        break;
       case 'all':
         checkbox.name = "check-circle-fill";
         checkbox.classList.remove(...classes);
@@ -227,8 +258,7 @@ class PlAlbumName extends HTMLElement {
   }
   set albumName(_) {
     this.#albumName = _;
-
-    if(this.isConnected){
+    if (this.isConnected) {
       this.#paintAlbumName();
     }
   }
@@ -236,13 +266,13 @@ class PlAlbumName extends HTMLElement {
   get albumSelectedValue() {
     return this.#albumSelectedValue;
   }
-  set albumSelectedValue(_){
+  set albumSelectedValue(_) {
     this.#albumSelectedValue = _;
-    
-    if(this.isConnected){
+    if (this.isConnected) {
       this.#paintSelectAllCheckbox();
     }
   }
+
   get readOnly() { return this.#readOnly; }
   set readOnly(_) { this.#readOnly = Boolean(_); }
 

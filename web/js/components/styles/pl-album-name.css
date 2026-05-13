@@ -1,52 +1,43 @@
 :host {
-  /* height: 50px; */
   display: grid;
   grid-template-rows: 1fr;
   grid-template-columns: auto 1fr auto;
-  /* grid-column-gap: 1px; */
   align-items: center;
   background-color: var(--bg-page);
   z-index: 1;
-  /* "auto" does not transition yet 
-    see 
-    https://codepen.io/matuzo/post/animating-css-grid-layout-properties
-    https://nemzes.net/posts/animating-height-auto/
-    https://css-tricks.com/using-css-transitions-auto-dimensions/ and 
-    https://n12v.com/css-transition-to-from-auto/
-  
-    however, for whatever reason, the max-width / grid-workaround also did not work here as expected 
-    need to debug some other day. Until then there is no transition/animation :-/  
-  */
   transition: all 0.3s;
 }
 
-#album-name {
+#album-label {
   font-size: 0.95rem;
-  /* color: rgb(60, 64, 67); */
   filter: blur(0.35px);
-  margin: auto;
   padding: 0.5rem;
-  
-  /* overflow-y: scroll; */ 
-  /* TODO: overflow does not work without height, and  
-    specifying height is messing up with verticle alignment
-  */
-  margin: 0 5px 0 5px;
+  margin: 0 5px;
   border-radius: 5px;
   width: fit-content;
   min-width: 50px;
+  cursor: text;
 }
 
-#album-name:hover {
-  cursor: text;
+#album-label:hover {
   background: var(--bg-surface);
   outline: 2px solid var(--border-secondary);
 }
 
-#album-name:focus {
+#album-input {
+  font-family: inherit;
+  font-size: 0.95rem;
+  padding: 0.5rem;
+  margin: 0 5px;
+  border-radius: 5px;
+  min-width: 50px;
+  width: calc(100% - 10px);
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  outline: none;
+  color: inherit;
   background: var(--bg-surface-alt);
-  outline: 2px solid var(--status-saved);
-  transition: all 0.3s; /* want transition to happen only during focus, and not hover */
+  border-color: var(--status-saved);
 }
 
 sl-icon {
@@ -54,7 +45,6 @@ sl-icon {
 }
 
 #select-all {
-  /* visibility: hidden; */ /* cannot transition, hence showing always*/
   font-size: 1.5rem;
   transition: transform 0.3s;
   cursor: pointer;
