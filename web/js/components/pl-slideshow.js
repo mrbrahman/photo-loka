@@ -304,6 +304,10 @@ class PlSlideshow extends HTMLElement {
     if(activeSlide.dataset.type.startsWith('video')){
       activeSlide.play = false;
     }
+    // Close info on outgoing slide first to destroy its CloseWatcher
+    // before creating a new one on the incoming slide
+    activeSlide.infoPanelOpen = false;
+
     activeSlide.classList.add('left');
     activeSlide.classList.remove('active');
 
@@ -374,6 +378,10 @@ class PlSlideshow extends HTMLElement {
     if(activeSlide.dataset.type.startsWith('video')){
       activeSlide.play = false;
     }
+    // Close info on outgoing slide first to destroy its CloseWatcher
+    // before creating a new one on the incoming slide
+    activeSlide.infoPanelOpen = false;
+
     activeSlide.classList.add('right');
     activeSlide.classList.remove('active');
 

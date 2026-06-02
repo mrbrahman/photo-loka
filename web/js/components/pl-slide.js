@@ -142,6 +142,9 @@ class PlSlide extends HTMLElement {
     let infoSlot = this.shadowRoot.getElementById('info-slot');
 
     if (this.#infoPanelOpen) {
+      this.#infoCloseWatcher?.destroy();
+      this.#infoCloseWatcher = null;
+
       container.classList.add('info-open');
       if (!infoSlot.querySelector('pl-item-info')) {
         let info = Object.assign(document.createElement('pl-item-info'), {
