@@ -178,6 +178,7 @@ const insertIntoExifUpdates = db.prepare(insertIntoExifUpdatesStatement);
 const updateRatingInDb = db.prepare(updateRatingStatement);
 const updateDescriptionInDb = db.prepare(updateDescriptionStatement);
 const updateFilenameInDb = db.prepare(updateFilenameStatement);
+const fileAuditInDb = db.prepare(fileAuditStatement);
 
 function transformDataToMetadataRow(row){
   ['faces','objects','keywords','xmpregion','geolocation_api_json'].forEach(c=>{
@@ -209,6 +210,12 @@ export async function getIndexedFilesModifyTime(collection_id){
 export async function getFileName(uuid){
   const result = await asyncGet(getFileNameStatement, {uuid});
   return result.filename;
+}
+
+export async function getFileNames(uuid_arr){
+  const placeholders = uuid_arr.map(() => '?').join(',');
+  const sql = `SELECT uuid, filename FROM metadata WHERE uuid IN (${placeholders})`;
+  return await asyncAll(sql, ...uuid_arr);
 }
 
 export async function retriveMetadata(uuid){
@@ -273,6 +280,18 @@ export async function scheduleExif(uuid_arr, new_exif_json){
 
 export async function fileAudit(collection_id, action, path1, path2=null){
   return await asyncRun(fileAuditStatement, {collection_id, action, path1, path2});
+}
+
+// Batch insert audit entries in a single transaction (avoids N worker-pool roundtrips).
+// entries: array of {action, path1, path2}
+export function fileAuditBatch(collection_id, entries){
+  const insertMany = db.transaction(function(collection_id, entries){
+    for (let entry of entries){
+      fileAuditInDb.run({collection_id, action: entry.action, path1: entry.path1, path2: entry.path2});
+    }
+  });
+
+  insertMany(collection_id, entries);
 }
 
 // TODO: will be used for scheduled trash cleanup
