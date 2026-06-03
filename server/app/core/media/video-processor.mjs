@@ -2,7 +2,7 @@ import { spawn } from 'child_process';
 import os from 'os';
 import path from 'path';
 import fs from 'fs';
-import {glob} from 'glob';
+import {globSync} from 'node:fs';
 import {config} from '#runtime-config';
 import {startupConfig} from '#startup-config';
 import {getFileName} from '#indexing/indexer-db';
@@ -126,7 +126,7 @@ async function compressVideoWithFFMpeg(uuid, inputVideoPath) {
     await runFFmpeg(pass2Args, uuid, inputVideoPath);
 
     // Cleanup passlog files
-    for (const f of glob.sync(`${passlogfile}*`)) {
+    for (const f of globSync(`${passlogfile}*`)) {
       fs.unlinkSync(f);
     }
   } else if (isVP9) {
@@ -162,7 +162,7 @@ async function compressVideoWithFFMpeg(uuid, inputVideoPath) {
     await runFFmpeg(pass2Args, uuid, inputVideoPath);
 
     // Cleanup passlog files
-    for (const f of glob.sync(`${passlogfile}*`)) {
+    for (const f of globSync(`${passlogfile}*`)) {
       fs.unlinkSync(f);
     }
   } else {
@@ -189,7 +189,7 @@ export function deleteCompressedVideo(uuid) {
     path.join(thumbDir, `${uuid}_compressed_video.*`),
   ];
   for (const pattern of patterns) {
-    for (const filePath of glob.sync(pattern)) {
+    for (const filePath of globSync(pattern)) {
       fs.unlinkSync(filePath);
     }
   }
