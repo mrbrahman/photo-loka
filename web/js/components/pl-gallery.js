@@ -282,6 +282,22 @@ class PlGallery extends HTMLElement {
       // the selected items are also in the selectedItems list
       this.#albums.forEach(album=>album.deleteSelectedItems());
 
+      // Clean up stale element references and selection state from moved items.
+      // The source album's deleteSelectedItems applies a scale(0) animation to the
+      // old elem, so we must discard it so addNewItems creates fresh elements
+      // with correct transforms in the target album.
+      // Why not just reset scale to 1? Because the old elem's entire style.transform
+      // is wrong -- it has translate(x,y) values for its position in the SOURCE album.
+      // After doLayout runs in addNewItems, the item gets new layout.trX/trY for the
+      // target album, but #paintItem's !isConnected branch only re-appends without
+      // updating transform/dimensions. Discarding elem forces the undefined path in
+      // #paintItem, which creates a fresh element with correct position, size, and no
+      // leftover animation state.
+      for (let item of this.#itemsSelected) {
+        item.elem = undefined;
+        if (item.layout) item.layout.selected = false;
+      }
+
       // now add them to the target album
       if(allAlbumNames.includes(targetAlbumName)){
         // album exists, just move the items there
@@ -320,7 +336,9 @@ class PlGallery extends HTMLElement {
       }
 
       this.#reAssignAlbumPositions();
-      this.#selectivelyPaintAlbums();
+      // Defer selective painting to the next frame to ensure album offsetTop values
+      // are settled after position reassignment (layout reflow).
+      requestAnimationFrame(() => this.#selectivelyPaintAlbums());
 
       notify(`${this.#itemsSelected.length} item${this.#itemsSelected.length > 1 ? 's' : ''} moved`, 'success');
 
