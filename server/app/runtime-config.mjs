@@ -28,7 +28,6 @@ const logger = createLogger(import.meta.url);
 //
 //   startScheduledIndexingAtStartup  (boolean) - start scheduled (cron) indexing at startup
 //
-//   performVideoCompression          (boolean) - compress videos during indexing
 //
 //   auditFiles                       (boolean) - audit file operations for backup sync
 //                                                helps if changes (e.g. rename folders, move files)

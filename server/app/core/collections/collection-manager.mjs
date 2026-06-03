@@ -25,7 +25,7 @@ export async function createNewCollection(record){
   if(albumTypes.indexOf(record.album_type)<0){
     throw new AppError(`${record.album_type} is invalid album type. Valid values are: ${albumTypes.join(', ')}`, 'ValidationError', 'INVALID_ALBUM_TYPE', 400);
   }
-  
+
   let id = await db.createNewCollection(record);
   watcher.startWatcherForCollection({collection_id: id, ...record});
   cronJobs.scheduleCronJobsForCollection({collection_id: id, ...record});

@@ -57,6 +57,12 @@ if(currentVersion < 5){
   db.pragma("user_version = 5");
 }
 
+if(currentVersion < 6){
+  addCompressVideosColumn();
+  currentVersion = 6;
+  db.pragma("user_version = 6");
+}
+
 // define a json_patch_agg SQL aggregate function, which is similar to the SQLite provided
 // json_patch function, however this is an aggregate function
 // this is used in merging all exif updates required to be done on a file in 'exif_updates' table
@@ -304,6 +310,12 @@ function rebuildMetadataTable(version, columnDef, newColumns) {
   // db.prepare(`DROP TABLE ${backupTable}`).run();
 
   logger.info(`Migration v${version} complete (${newCount} rows migrated). Backup table: ${backupTable}`);
+}
+
+function addCompressVideosColumn() {
+  logger.info("adding compress_videos column to collections table ...");
+  // 1 = compress, 0 or null = do not compress
+  db.prepare(`ALTER TABLE collections ADD COLUMN compress_videos INTEGER`).run();
 }
 
 function addPrivateColumn(version) {

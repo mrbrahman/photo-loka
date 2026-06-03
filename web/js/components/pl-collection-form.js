@@ -52,6 +52,8 @@ class PlCollectionForm extends HTMLElement {
 
             <sl-switch id="default-collection">Default Collection</sl-switch>
 
+            <sl-switch id="compress-videos">Compress Videos</sl-switch>
+
           </div>
 
           <!-- Intake Paths Section -->
@@ -188,6 +190,7 @@ class PlCollectionForm extends HTMLElement {
     sr.getElementById('trash-days').value = d.trash_days ?? 30;
     sr.getElementById('folder-pattern').value = d.apply_folder_pattern || '';
     sr.getElementById('default-collection').checked = !!d.default_collection;
+    sr.getElementById('compress-videos').checked = !!d.compress_videos;
 
     // Store original pattern for change detection in edit mode
     this.#originalPattern = d.apply_folder_pattern || '';
@@ -489,6 +492,7 @@ class PlCollectionForm extends HTMLElement {
     let trashDays = parseInt(sr.getElementById('trash-days').value) || 30;
     let folderPattern = sr.getElementById('folder-pattern').value.trim();
     let defaultCollection = sr.getElementById('default-collection').checked ? 1 : 0;
+    let compressVideos = sr.getElementById('compress-videos').checked ? 1 : null;
 
     // Basic client-side validation
     if (!collectionName) {
@@ -547,7 +551,8 @@ class PlCollectionForm extends HTMLElement {
       intake_configs: intakeConfigs,
       apply_folder_pattern: folderPattern || null,
       default_collection: defaultCollection,
-      trash_days: trashDays
+      trash_days: trashDays,
+      compress_videos: compressVideos
     };
 
     let saveBtn = sr.getElementById('save-index-btn').style.display === 'none'

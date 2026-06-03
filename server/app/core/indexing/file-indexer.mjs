@@ -94,12 +94,12 @@ export async function indexFile(collection, sourceFileName, uuid, inPlace){
           await fileOps.moveItem(null, preCompressedWebm, thumbsDir, true);
           logger.info(`Moved pre-compressed webm: ${preCompressedWebm}`);
         } else {
-          if(config.performVideoCompression){
+          if(collection.compress_videos){
             // perform video compression to help with streaming
             // add to the 'low' priority indexing queue
             addToIndexQueue(videoProcessor.compressVideo, [p.uuid, p.filename], 'low');
           } else {
-            logger.info(`Skipping video compression as per config for file: ${p.uuid} ${p.filename}`);
+            logger.info(`Skipping video compression (not enabled for collection) for file: ${p.uuid} ${p.filename}`);
           }
         }
       }
