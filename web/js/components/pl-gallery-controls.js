@@ -112,7 +112,18 @@ class PlGalleryControls extends HTMLElement {
     });
 
     this.shadowRoot.getElementById("organize")
-    .addEventListener('click', ()=>dialog.show());
+    .addEventListener('click', ()=>{
+      let prefix = this.#deriveAlbumPrefix();
+      inp.value = prefix;
+      inp.helpText = prefix === '' ? 'Multiple dates selected - enter full album name' : '';
+      dialog.show();
+      // Position cursor at end after dialog opens
+      dialog.addEventListener('sl-after-show', ()=>{
+        inp.focus();
+        let len = inp.value.length;
+        inp.input.setSelectionRange(len, len);
+      }, {once: true});
+    });
 
     this.#paintTrashedButtons();
   }
@@ -155,6 +166,21 @@ class PlGalleryControls extends HTMLElement {
       case 'restore': this.#handleRestore(); break;
       case 'cleanup': this.#handleCleanup(); break;
     }
+  }
+
+  // TODO: use collection's apply_folder_pattern instead of hardcoded prefix length
+  #deriveAlbumPrefix(){
+    let entries = Object.entries(this.#selectedAlbums).filter(([_, cnt]) => cnt > 0);
+    if (entries.length === 0) return '';
+
+    // Extract date prefixes (first 15 chars) from all source albums
+    let prefixes = entries.map(([name]) => name.substring(0, 15));
+
+    // All source albums must share the same date prefix
+    let distinct = [...new Set(prefixes)];
+    if (distinct.length !== 1) return '';
+
+    return distinct[0] + ' ';
   }
 
   disconnectedCallback() {
