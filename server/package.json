@@ -4,7 +4,7 @@
   "description": "Relive every (captured) moment!",
   "main": "index.js",
   "scripts": {
-    "start": "nodemon --ignore ./data --ignore ./public -- --env-file=.env server.mjs",
+    "start": "node --env-file=.env server.mjs",
     "create-user": "node --env-file=.env scripts/create-user.mjs",
     "unlock-user": "node --env-file=.env scripts/unlock-user.mjs",
     "generate-token": "node --env-file=.env scripts/generate-token.mjs"

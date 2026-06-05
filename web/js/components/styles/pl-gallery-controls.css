@@ -67,3 +67,26 @@ sl-icon-button {
     display: unset;
   }
 }
+
+/* Organize dialog input */
+#organize-input {
+  width: 100%;
+  padding: 0.5rem;
+  font-size: 1rem;
+  font-family: inherit;
+  border: 1px solid var(--sl-color-neutral-300);
+  border-radius: var(--sl-border-radius-medium);
+  background: var(--sl-color-neutral-0);
+  color: var(--sl-color-neutral-900);
+}
+#organize-input:focus {
+  outline: none;
+  border-color: var(--sl-color-primary-500);
+  box-shadow: 0 0 0 3px var(--sl-color-primary-500 / 0.2);
+}
+#organize-help {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.85rem;
+  color: var(--sl-color-neutral-500);
+}

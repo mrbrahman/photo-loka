@@ -232,6 +232,7 @@ class PlGallery extends HTMLElement {
       if(!this.shadowRoot.querySelector('pl-gallery-controls')){
         let c = document.createElement('pl-gallery-controls');
         c.mode = this.#mode;
+        c.collectionId = this.#query.collectionId;
         this.shadowRoot.append(c);
 
         c.addEventListener('pl-gallery-controls-closed', this.#handleGalleryControlsClosed);
