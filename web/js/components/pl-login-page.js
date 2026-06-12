@@ -11,9 +11,9 @@ class PlLoginPage extends HTMLElement {
     `
       <div class="login-container">
         <div class="login-card">
-          <img src="assets/R3-resized.png" alt="Rewind Replay" class="logo">
-          <h1>Rewind, Replay</h1>
-          <p class="tagline">Relive your captured moments</p>
+          <img src="assets/icon-454.png" alt="Photo Loka" class="logo">
+          <h1>Photo Loka</h1>
+          <p class="tagline">Your world in photos!</p>
           
           <form id="login-form">
             <sl-input 

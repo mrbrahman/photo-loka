@@ -1,6 +1,6 @@
 {
-  "name": "Rewind Replay",
-  "short_name": "Rewind",
+  "name": "Photo-Loka",
+  "short_name": "Photos",
   "description": "Self-hosted photos app for organizing and searching your photos",
   "start_url": "/",
   "display": "standalone",
@@ -9,14 +9,8 @@
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "assets/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "assets/icon-512.png",
-      "sizes": "512x512",
+      "src": "assets/icon-454.png",
+      "sizes": "454x454",
       "type": "image/png",
       "purpose": "any maskable"
     }
