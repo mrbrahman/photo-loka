@@ -75,9 +75,21 @@ sl-progress-bar.hide {
 }
 
 #nav-header > #nav-title {
-  font-weight: bold;
+  font-weight: 900;
+  letter-spacing: -0.03em;
   white-space: nowrap;
-  color: var(--text-primary);
+  text-decoration: none;
+}
+
+#nav-header > #nav-title .brand-name {
+  background: linear-gradient(90deg, var(--brand-blue-start), var(--brand-blue-end));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+#nav-header > #nav-title .brand-accent {
+  color: var(--brand-orange);
 }
 
 #logo {

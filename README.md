@@ -1,6 +1,6 @@
-# Rewind-Replay: Relive your (captured) moments!
+# Photo-Loka: Your world in photos!
 
-Rewind-Replay is (planned to be) a no frills, self-hosted photos app that helps in organizing and more importantly searching your photos.
+Photo-Loka is (planned to be) a no frills, self-hosted photos app that helps in organizing and more importantly searching your photos.
 
 ![Screenshot](web/assets/Screen-Sizes.jpg)
 
@@ -74,7 +74,7 @@ Also, many things are rough around the edges, simply because I'm the sole user &
         e.g. `album:trip camera:samsung type:video l:or`
         will translate as
         `{album}: "trip"* OR {camera}: "samsung"* OR {type}: "video"*`
-    5. Any un-prefixed condition will be applied to/restricted to all [search-enabled columns](https://github.com/mrbrahman/rewind-replay/blob/develop/app/database/search-db.mjs#L3)
+    5. Any un-prefixed condition will be applied to/restricted to all [search-enabled columns](server/app/core/search/search-db.mjs#L3)
     6. For advanced needs (including querying non restricted columns - for e.g. `file_date`), use the "raw"
        input using SQLite FTS syntax. Thich will be used as-is in the filter.
         e.g. 
@@ -112,9 +112,7 @@ The frame is setup, and available at `http://<server-ip>/frame.html`
 
 Traditional frames are static and manual. This is dynamic, automated, and server-controlled.
 
-Your memories don’t sit in storage — they stay alive.
-
-A true "rewind-replay" feature!
+Your memories don’t sit in storage — they stay alive!
 
 ## Backup helper
 
@@ -158,13 +156,13 @@ TODO - sync timestamps on +2 level folders
 
 - **Install code (just clone this repo)**
   ```bash
-  git clone https://github.com/mrbrahman/rewind-replay.git
+  git clone https://github.com/mrbrahman/photo-loka.git
   ```
-  Or, grab the latest release from the [Releases](https://github.com/mrbrahman/rewind-replay/releases) page
+  Or, grab the latest release from the [Releases](https://github.com/mrbrahman/photo-loka/releases) page
 
 - **Install node dependencies**
   ```bash
-  cd rewind-replay/server
+  cd photo-loka/server
   npm install
   ```
 
@@ -185,7 +183,7 @@ TODO - sync timestamps on +2 level folders
 
 - **Start server**
   ```bash
-  cd rewind-replay/server
+  cd photo-loka/server
   node --env-file=.env server.mjs
   ```
 
@@ -300,7 +298,7 @@ TODO - sync timestamps on +2 level folders
     'http://localhost:9000/api/updateIndexerConcurrency/2'
   ```
 - Create a [user](#create-user) using the CLI commands as shown below
-- Visit your rewind-replay page http://localhost:9000
+- Visit your photo-loka page http://localhost:9000
 - Enjoy!
 
 ## User management
@@ -359,19 +357,19 @@ Or place the authoriation in `.curlrc`
 
 ## Start nodejs server using systemd
 
-* Place .service file in `~/.config/systemd/user/rewind-replay.service`
+* Place .service file in `~/.config/systemd/user/photo-loka.service`
 * Use the following commands to start/restart/stop etc
   ```bash
-  alias start='systemctl --user start rewind-replay.service'
-  alias stop='systemctl --user stop rewind-replay.service'
-  alias rs='systemctl --user restart rewind-replay.service'
+  alias start='systemctl --user start photo-loka.service'
+  alias stop='systemctl --user stop photo-loka.service'
+  alias rs='systemctl --user restart photo-loka.service'
   ```
 * Use the follwing for checking logs in `journalctl`
   ```bash
   # logs from the start of the service
-  alias log='journalctl --user -u rewind-replay.service --all --no-hostname'
+  alias log='journalctl --user -u photo-loka.service --all --no-hostname'
   # similar to `tail -50f`
-  alias logs='journalctl --user -f -u rewind-replay.service --all --no-hostname --lines 50'
+  alias logs='journalctl --user -f -u photo-loka.service --all --no-hostname --lines 50'
   # just logs from today
-  alias lt='journalctl --user -u rewind-replay.service --all --no-hostname --since today'
+  alias lt='journalctl --user -u photo-loka.service --all --no-hostname --since today'
   ```

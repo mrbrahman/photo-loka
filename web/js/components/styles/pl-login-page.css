@@ -35,8 +35,8 @@
 
 /* Branding elements */
 .logo {
-  width: 80px;
-  height: 80px;
+  width: 120px;
+  height: 120px;
   margin-bottom: 1rem;
 }
 
@@ -46,9 +46,29 @@ h1 {
   color: var(--text-primary);
 }
 
+/* Two-tone wordmark (Lato Black): "Photo-" in a blue->cyan gradient, "Loka" in flat orange */
+h1.brand {
+  font-weight: 900;
+  letter-spacing: 0.025em;
+  font-size: 2.4rem;
+}
+
+h1.brand .brand-name {
+  background: linear-gradient(90deg, var(--brand-blue-start), var(--brand-blue-end));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+h1.brand .brand-accent {
+  color: var(--brand-orange);
+}
+
 .tagline {
   margin: 0 0 2rem 0;
-  color: var(--text-secondary);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--brand-tagline);
   font-size: 0.95rem;
 }
 

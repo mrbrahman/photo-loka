@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rewind-replay-v2';
+const CACHE_NAME = 'photo-loka-v2';
 const urlsToCache = [
   '/',
   '/manifest.json',

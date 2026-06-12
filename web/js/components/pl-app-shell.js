@@ -32,11 +32,11 @@ class PlAppShell extends HTMLElement {
           <sl-icon-button class="nav-item" id="hamburger-btn" name="list" label="Menu"></sl-icon-button>
 
           <a class="nav-item" id="nav-logo" href="/">
-            <img id="logo" src="assets/icon-454.png" alt="Relive!">
+            <img id="logo" src="assets/icon-454.png" alt="Photo-Loka">
           </a>
 
           <a class="nav-item" id="nav-title" href="/">
-            Photo-Loka
+            <span class="brand-name">Photo-</span><span class="brand-accent">Loka</span>
           </a>
 
           <input class="nav-item" id="nav-search-box" type="search" placeholder="Search your memories..."/>

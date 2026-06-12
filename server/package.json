@@ -1,7 +1,7 @@
 {
-  "name": "rewind-replay",
+  "name": "photo-loka",
   "version": "0.0.1",
-  "description": "Relive every (captured) moment!",
+  "description": "Your world in photos!",
   "main": "index.js",
   "scripts": {
     "start": "node --env-file=.env server.mjs",

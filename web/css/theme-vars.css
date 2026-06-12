@@ -48,6 +48,14 @@
   --login-gradient-start: #667eea;
   --login-gradient-end: #764ba2;
   --login-card-bg: white;
+
+  /* Brand wordmark (Photo-Loka). Exact colors sampled from the logo art.
+     "Photo-" uses a left-to-right blue->cyan gradient; "Loka" and the
+     tagline are flat. Same values in light and dark modes. */
+  --brand-blue-start: #0C71C9;
+  --brand-blue-end: #08B4C0;
+  --brand-orange: #FC7205;
+  --brand-tagline: #2C9199;
 }
 
 :root[data-theme="dark"] {
@@ -91,7 +99,7 @@
   --status-error: #ef5350;
 
   /* Login */
-  --login-gradient-start: #1e1e2e;
-  --login-gradient-end: #2d1b4e;
+  --login-gradient-start: #443f9c;
+  --login-gradient-end: #5d3287;
   --login-card-bg: #1e1e2e;
 }

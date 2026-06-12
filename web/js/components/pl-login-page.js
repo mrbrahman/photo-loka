@@ -11,8 +11,8 @@ class PlLoginPage extends HTMLElement {
     `
       <div class="login-container">
         <div class="login-card">
-          <img src="assets/icon-454.png" alt="Photo Loka" class="logo">
-          <h1>Photo Loka</h1>
+          <img src="assets/icon-454.png" alt="Photo-Loka" class="logo">
+          <h1 class="brand"><span class="brand-name">Photo-</span><span class="brand-accent">Loka</span></h1>
           <p class="tagline">Your world in photos!</p>
           
           <form id="login-form">
