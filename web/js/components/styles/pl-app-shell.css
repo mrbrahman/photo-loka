@@ -6,9 +6,8 @@
 }
 
 #app-container {
-  display: grid;
-  grid-template-columns: 1fr;
-  grid-template-rows: var(--progress-bar-height, 4px) 60px 1fr;
+  display: flex;
+  flex-direction: column;
   height: 100%;
   width: 100%;
 }
@@ -19,15 +18,53 @@ sl-progress-bar {
   margin-top: 1px;
   --height: var(--progress-bar-height, 4px);
   --indicator-color: orange;
+  flex: 0 0 var(--progress-bar-height, 4px);
 }
 
 sl-progress-bar.hide {
   visibility: hidden;
 }
 
+/* --- Update Available Banner --- */
+
+#update-banner {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: linear-gradient(90deg, var(--brand-blue-start), var(--brand-blue-end));
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  max-height: 100px;
+  overflow: hidden;
+  transition: max-height 0.3s ease, padding 0.3s ease;
+}
+
+#update-banner.hide {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+#update-btn::part(base) {
+  background-color: #fff;
+  border-color: #fff;
+  color: var(--brand-blue-start);
+  font-weight: 600;
+}
+
+#update-btn::part(base):hover {
+  background-color: rgba(255, 255, 255, 0.9);
+  border-color: rgba(255, 255, 255, 0.9);
+}
+
 /* --- Nav Header --- */
 
 #nav-header {
+  flex: 0 0 60px;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   max-width: 100%;
@@ -106,6 +143,8 @@ sl-progress-bar.hide {
 /* --- Content Area (sidebar + main) --- */
 
 #content-area {
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   overflow: hidden;
   position: relative;
@@ -271,4 +310,34 @@ sl-progress-bar.hide {
   overflow-y: hidden;
   position: relative;
   background-color: var(--bg-page);
+}
+
+/* --- Update Available Icon --- */
+
+#update-btn {
+  font-size: 1.3rem;
+  color: var(--brand-orange);
+}
+
+#update-btn.hide {
+  display: none;
+}
+
+/* --- Updating State --- */
+
+#content-area.updating {
+  filter: blur(8px);
+  pointer-events: none;
+}
+
+#update-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  z-index: 200;
 }

@@ -18,6 +18,9 @@ class PlAppShell extends HTMLElement {
   #mainContent = null; #progressBar = null; #sidebar = null; #backdrop = null;
   #progressCount = 0;
   #collectionsReady = null; // Promise that resolves when collections are loaded
+  #swRegistration = null;
+  #updatePollInterval = null;
+  #pageVersion = null; // version of the SW that was active when this page loaded
 
   // --- Shell template (nav-header + content area with empty sidebar-nav) ---
 
@@ -27,6 +30,11 @@ class PlAppShell extends HTMLElement {
       `
       <div id="app-container">
         <sl-progress-bar id="progress-bar" class="hide"></sl-progress-bar>
+
+        <div id="update-banner" class="hide">
+          <span>New version available</span>
+          <sl-button id="update-btn" size="small">Update</sl-button>
+        </div>
 
         <nav id="nav-header">
           <sl-icon-button class="nav-item" id="hamburger-btn" name="list" label="Menu"></sl-icon-button>
@@ -182,6 +190,9 @@ class PlAppShell extends HTMLElement {
 
     // Fetch collections from server
     this.#collectionsReady = this.#fetchCollections();
+
+    // Service worker registration and update detection
+    this.#initServiceWorker();
   }
 
   async #fetchCollections() {
@@ -346,6 +357,8 @@ class PlAppShell extends HTMLElement {
     document.removeEventListener('pl-gallery-slideshow-closed', this.handleSlideshowClosed);
     document.removeEventListener('pl-progress-show', this.#handleProgressShow);
     document.removeEventListener('pl-progress-hide', this.#handleProgressHide);
+    document.removeEventListener('visibilitychange', this.#handleVisibilityChange);
+    if (this.#updatePollInterval) clearInterval(this.#updatePollInterval);
   }
 
   // --- Mode / Sidebar ---
@@ -562,6 +575,122 @@ class PlAppShell extends HTMLElement {
       }, 500);
     }
   };
+
+  // --- Service Worker Update ---
+  //
+  // Page-side companion to web/sw.js for the PWA update mechanism.
+  // See sw.js header for the full design overview.
+  //
+  // Responsibilities:
+  //   - Register the SW
+  //   - Trigger update checks (10-min poll while visible, on visibilitychange)
+  //   - Listen for new SWs activating and show the "App update available" banner
+  //   - Gate the banner on initial controller state (suppress on first install)
+  //   - Ask the active and new SWs for their VERSION via postMessage to
+  //     populate the banner (v{old} -> v{new})
+  //   - On user tapping Update: blur content, show progress, reload
+
+  async #initServiceWorker() {
+    if (!('serviceWorker' in navigator)) return;
+
+    // Capture controller state BEFORE registration. If there's no controller at
+    // page load, this is either a first install or a hard reload (rare in real use).
+    // Either way, we shouldn't show the "Update available" banner for that initial
+    // install/activation.
+    const initiallyControlled = !!navigator.serviceWorker.controller;
+
+    try {
+      this.#swRegistration = await navigator.serviceWorker.register('/sw.js');
+
+      // Capture the version of the active SW at page load (the version this page is running)
+      if (this.#swRegistration.active) {
+        this.#pageVersion = await this.#getSwVersion(this.#swRegistration.active);
+      }
+
+      // Listen for new SWs found during the page's lifetime.
+      this.#swRegistration.addEventListener('updatefound', () => {
+        console.log('[sw] updatefound: new version detected, installing');
+        const installing = this.#swRegistration.installing;
+        if (installing) {
+          installing.addEventListener('statechange', async () => {
+            console.log('[sw] new worker state:', installing.state);
+            if (installing.state === 'activated' && initiallyControlled) {
+              const newVersion = await this.#getSwVersion(installing);
+              this.#showUpdateIcon(this.#pageVersion, newVersion);
+            }
+          });
+        }
+      });
+
+      // Poll every minute while visible (TODO: change back to 10 min after testing)
+      this.#updatePollInterval = setInterval(() => {
+        if (document.visibilityState === 'visible') {
+          console.log('[sw] polling for update');
+          this.#swRegistration.update();
+        }
+      }, 1 * 60 * 1000);
+
+      // Check on resume from background
+      document.addEventListener('visibilitychange', this.#handleVisibilityChange);
+    } catch (err) {
+      // SW registration failed - not critical, app still works
+    }
+  }
+
+  #handleVisibilityChange = () => {
+    if (document.visibilityState === 'visible' && this.#swRegistration) {
+      console.log('[sw] checking for update on resume');
+      this.#swRegistration.update();
+    }
+  };
+
+  #getSwVersion(sw) {
+    return new Promise(resolve => {
+      const channel = new MessageChannel();
+      const timeout = setTimeout(() => resolve(null), 2000);
+      channel.port1.onmessage = (event) => {
+        clearTimeout(timeout);
+        resolve(event.data?.version || null);
+      };
+      sw.postMessage({ type: 'getVersion' }, [channel.port2]);
+    });
+  }
+
+  #showUpdateIcon(oldVersion, newVersion) {
+    const banner = this.shadowRoot.getElementById('update-banner');
+    if (!banner.classList.contains('hide')) return; // already shown
+
+    const label = banner.querySelector('span');
+    if (oldVersion && newVersion) {
+      label.textContent = `App update available (v${oldVersion} \u2192 v${newVersion})`;
+    } else if (newVersion) {
+      label.textContent = `App update available (v${newVersion})`;
+    } else {
+      label.textContent = 'App update available';
+    }
+
+    banner.classList.remove('hide');
+    const btn = this.shadowRoot.getElementById('update-btn');
+    btn.addEventListener('click', () => this.#applyUpdate(), { once: true });
+  }
+
+  #applyUpdate() {
+    // Show progress bar and blur content
+    this.#progressBar.toggleAttribute('indeterminate', true);
+    this.#progressBar.classList.remove('hide');
+
+    const contentArea = this.shadowRoot.getElementById('content-area');
+    contentArea.classList.add('updating');
+
+    // Show "Updating..." overlay
+    const overlay = document.createElement('div');
+    overlay.id = 'update-overlay';
+    overlay.textContent = 'Updating...';
+    this.shadowRoot.getElementById('app-container').appendChild(overlay);
+
+    // Reload after a brief moment so the user sees the feedback
+    setTimeout(() => location.reload(), 300);
+  }
 
   #updateThemeToggle() {
     const isDark = getTheme() === 'dark';
