@@ -8,10 +8,11 @@ const router = Router();
 router.get('/getAll', compression(), async function(req,res,next){
   try {
     let collection_id = req.query.collection_id;
+    let { from, to } = req.query;
     if (collection_id) {
-      res.json(await s.search.getAllFromCollection(parseInt(collection_id)));
+      res.json(await s.search.getAllFromCollection(parseInt(collection_id), from, to));
     } else {
-      res.json(await s.search.getAllFromDefaultCollection());
+      res.json(await s.search.getAllFromDefaultCollection(from, to));
     }
   } catch (error) {
     next(error);

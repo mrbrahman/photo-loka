@@ -2,11 +2,20 @@
 
 import { authenticatedFetch } from '../authn.mjs';
 
-export async function updateAlbumName(collectionId, currAlbumName, newAlbumName) {
+/**
+ * Rename an album within a single day. Identified by (album_date, currAlbumName);
+ * the new name applies to the same album_date.
+ */
+export async function updateAlbumName(collectionId, albumDate, currAlbumName, newAlbumName) {
   let res = await authenticatedFetch('/api/updateAlbumName', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ collection_id: collectionId, currAlbumName, newAlbumName })
+    body: JSON.stringify({
+      collection_id: collectionId,
+      album_date: albumDate,
+      currAlbumName,
+      newAlbumName
+    })
   });
   if (!res.ok) {
     let err = await res.json().catch(() => ({ error: { message: `${res.status} ${res.statusText}` } }));

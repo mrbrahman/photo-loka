@@ -29,6 +29,7 @@ import './components/pl-app-shell.js';
 import './components/pl-thumb.js';
 import './components/pl-album.js';
 import './components/pl-album-name.js';
+import './components/pl-day-section.js';
 import './components/pl-gallery.js';
 import './components/pl-gallery-controls.js';
 import './components/pl-slide-media.js';

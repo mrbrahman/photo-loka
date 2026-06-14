@@ -5,6 +5,7 @@ import sheet from "./styles/pl-gallery-controls.css" with { type: "css" };
 class PlGalleryControls extends HTMLElement {
   #ctr; #rating; #allPrivate = false; #mode = 'default'; #selectedAlbums = {}; #closeWatcher;
   #collectionId = null;
+  #placeholderText = '';
 
   static template = document.createElement('template');
   static {
@@ -58,10 +59,10 @@ class PlGalleryControls extends HTMLElement {
         </div>
       </div>
 
-      <sl-dialog label="Create/Move-to New Album">
-        <input id="organize-input" list="organize-suggestions" autocomplete="off" spellcheck="false" />
+      <sl-dialog label="Organize selected items">
+        <p id="organize-help">Enter an album name. Each selected day will get its own folder with this name.</p>
+        <input id="organize-input" list="organize-suggestions" autocomplete="off" spellcheck="false" placeholder="Album name (or leave blank)" />
         <datalist id="organize-suggestions"></datalist>
-        <span id="organize-help" hidden></span>
         <sl-button id="save" slot="footer" variant="primary">Save</sl-button>
         <sl-button id="cancel" slot="footer" variant="primary">Cancel</sl-button>
       </sl-dialog>
@@ -129,21 +130,13 @@ class PlGalleryControls extends HTMLElement {
 
     this.shadowRoot.getElementById("organize")
     .addEventListener('click', ()=>{
-      let prefix = this.#deriveAlbumPrefix();
-      inp.value = prefix;
-      let help = this.shadowRoot.getElementById('organize-help');
-      if (prefix === '') {
-        help.textContent = 'Multiple dates selected - enter full album name';
-        help.hidden = false;
-      } else {
-        help.hidden = true;
-      }
+      // In timeline view the dialog takes only the descriptive part of the
+      // album name; the gallery infers the day(s) from selected items and
+      // builds full folder paths server-side. Always start empty.
+      inp.value = '';
       dialog.show();
-      // Position cursor at end after dialog opens
       dialog.addEventListener('sl-after-show', ()=>{
         inp.focus();
-        let len = inp.value.length;
-        inp.setSelectionRange(len, len);
       }, {once: true});
     });
 
@@ -190,24 +183,9 @@ class PlGalleryControls extends HTMLElement {
     }
   }
 
-  // TODO: use collection's apply_folder_pattern instead of hardcoded prefix length
-  #deriveAlbumPrefix(){
-    let entries = Object.entries(this.#selectedAlbums).filter(([_, cnt]) => cnt > 0);
-    if (entries.length === 0) return '';
-
-    // Extract date prefixes (first 15 chars) from all source albums
-    let prefixes = entries.map(([name]) => name.substring(0, 15));
-
-    // All source albums must share the same date prefix
-    let distinct = [...new Set(prefixes)];
-    if (distinct.length !== 1) return '';
-
-    return distinct[0] + ' ';
-  }
-
   #handleOrganizeInput = () => {
     let inp = this.shadowRoot.getElementById('organize-input');
-    // If user selected a suggestion, clear suggestions and stop lookups
+    // If user picks a suggestion, clear suggestions and stop lookups
     let datalist = this.shadowRoot.getElementById('organize-suggestions');
     for (let opt of datalist.querySelectorAll('option')) {
       if (opt.value === inp.value) {
@@ -218,22 +196,22 @@ class PlGalleryControls extends HTMLElement {
     this.#throttledOrganizeLookup();
   }
 
-  // TODO: remove hardcoding (same as pl-album-name)
+  // Suggestions for the descriptive part of the album name. Skips the lookup
+  // when the input is the configured placeholder (no point suggesting albums
+  // by their TBD label) or shorter than 2 chars.
   #throttledOrganizeLookup = throttle(() => {
     let inp = this.shadowRoot.getElementById('organize-input');
-    let txt = inp.value;
-    if (!txt.includes('TBD') && txt.trim().length > 16) {
-      this.#suggestAlbumNames(txt);
-    }
+    let txt = inp.value.trim();
+    if (txt.length < 2) return;
+    if (this.#placeholderText && txt === this.#placeholderText) return;
+    this.#suggestAlbumNames(txt);
   }, 1000)
 
   #suggestAlbumNames = async (txt) => {
-    let prefix = txt.substring(0, 15);
-    let searchPart = txt.substring(15).trim();
     try {
-      let output = await searchForExistingAlbums(searchPart, false, this.#collectionId);
+      let output = await searchForExistingAlbums(txt, false, this.#collectionId);
       if (output.length > 0) {
-        this.#populateSuggestions(output, prefix);
+        this.#populateSuggestions(output);
       } else {
         this.#clearSuggestions();
       }
@@ -242,12 +220,12 @@ class PlGalleryControls extends HTMLElement {
     }
   }
 
-  #populateSuggestions(output, prefix) {
+  #populateSuggestions(output) {
     let datalist = this.shadowRoot.getElementById('organize-suggestions');
     datalist.innerHTML = '';
     for (let d of output) {
       let opt = document.createElement('option');
-      opt.value = `${prefix} ${d.similar}`;
+      opt.value = d.similar;
       datalist.appendChild(opt);
     }
   }
@@ -361,6 +339,9 @@ class PlGalleryControls extends HTMLElement {
 
   get collectionId() { return this.#collectionId; }
   set collectionId(_) { this.#collectionId = _ || null; }
+
+  get placeholderText() { return this.#placeholderText; }
+  set placeholderText(_) { this.#placeholderText = _ || ''; }
 
 }
 

@@ -56,11 +56,21 @@ export async function emptyTrash(collectionId, uuids) {
   if (!res.ok) throw await res.json().catch(() => ({ error: { message: `${res.status} ${res.statusText}` } }));
 }
 
-export async function moveItems(collectionId, uuids, newAlbumName) {
+/**
+ * Move items into a target (album_date, album_name) bucket. The target
+ * album folder is created if needed; the server uses the collection's
+ * apply_folder_pattern (moustache) to compute the on-disk folder path.
+ */
+export async function moveItems(collectionId, uuids, targetAlbumDate, targetAlbumName) {
   let res = await authenticatedFetch('/api/moveItems', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ collection_id: collectionId, uuid_arr: uuids, new_album_name: newAlbumName })
+    body: JSON.stringify({
+      collection_id: collectionId,
+      uuid_arr: uuids,
+      target_album_date: targetAlbumDate,
+      target_album_name: targetAlbumName
+    })
   });
   if (!res.ok) throw await res.json().catch(() => ({ error: { message: `${res.status} ${res.statusText}` } }));
 }

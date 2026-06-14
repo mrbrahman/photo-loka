@@ -5,6 +5,26 @@ const exiftool = new ExifTool({
   geolocation: true
 });
 
+// Treat missing, year-zero, or unparseable EXIF dates as null. exiftool-vendored
+// usually returns ExifDateTime instances with year/month/day, but for malformed
+// values it may yield strings like '0000:00:00 00:00:00' or year < 1900.
+function validExifDate(tag) {
+  if (!tag) return null;
+
+  // ExifDateTime instances expose .year. Trust their parser.
+  if (typeof tag === 'object' && typeof tag.year === 'number') {
+    if (tag.year < 1900) return null;
+    return tag.toString();
+  }
+
+  // Fallback: string-like value. Reject obvious garbage and unparseable strings.
+  const s = tag.toString();
+  if (!s || s.startsWith('0000')) return null;
+  const d = new Date(s);
+  if (isNaN(d.getTime()) || d.getFullYear() < 1900) return null;
+  return s;
+}
+
 export async function getMetadata(file){
   // exiftool needs a file, and not buffer
   // since it is just a wrapper around perl exiftool
@@ -82,10 +102,13 @@ export async function getMetadata(file){
       tags.GeolocationCountry || null
     ].filter(x=>x).join(", ") || null,
     duration: tags.Duration||null,
-    datetime_original: tags.DateTimeOriginal ? tags.DateTimeOriginal.toString() : null,
-    create_date: tags.CreateDate ? tags.CreateDate.toString() : null,
+    datetime_original: validExifDate(tags.DateTimeOriginal),
+    create_date: validExifDate(tags.CreateDate),
     file_modify_date: tags.FileModifyDate ? tags.FileModifyDate.toString() : null,
-    file_date: tags.DateTimeOriginal ? tags.DateTimeOriginal.toString() : (tags.CreateDate ? tags.CreateDate.toString() : (tags.FileModifyDate.toString() ))
+    // capture_time is the capture time (or best fallback). file-indexer fills the
+    // gap from folder path (in-place) or mtime (intake) when both EXIF
+    // dates are invalid/missing.
+    capture_time: validExifDate(tags.DateTimeOriginal) || validExifDate(tags.CreateDate) || null
   }
 
 }

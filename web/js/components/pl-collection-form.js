@@ -44,11 +44,15 @@ class PlCollectionForm extends HTMLElement {
             <sl-input id="trash-days" label="Trash Days" type="number" value="30"></sl-input>
 
             <div class="full-width">
-              <sl-input id="folder-pattern" label="Folder Pattern" placeholder="yyyy/yyyy-mm-dd">
-                <span slot="help-text">Uses <a href="https://github.com/felixge/node-dateformat#mask-options" target="_blank" rel="noopener" class="pattern-link">dateformat</a> tokens. E.g.: yyyy (year), mm (month), dd (day)</span>
+              <sl-input id="folder-pattern" label="Folder Pattern" placeholder="{{yyyy}}/{{yyyy}}-{{mm}}-{{dd}} {{album}}">
+                <span slot="help-text">Moustache-style tokens: <code>{{yyyy}}</code>, <code>{{mm}}</code>, <code>{{dd}}</code>, and <code>{{album}}</code> (must be last). Example: <code>{{yyyy}}/{{yyyy}}-{{mm}}-{{dd}} {{album}}</code></span>
               </sl-input>
               <div id="pattern-status" class="pattern-help"></div>
             </div>
+
+            <sl-input id="placeholder-album-text" label="Placeholder Album Name" placeholder="TBD">
+              <span slot="help-text">Used as the album name when intake creates a new folder. Highlights in the gallery as needing review. Empty disables.</span>
+            </sl-input>
 
             <sl-switch id="default-collection">Default Collection</sl-switch>
 
@@ -189,6 +193,7 @@ class PlCollectionForm extends HTMLElement {
     sr.getElementById('album-type').value = d.album_type || 'FOLDER_ALBUM';
     sr.getElementById('trash-days').value = d.trash_days ?? 30;
     sr.getElementById('folder-pattern').value = d.apply_folder_pattern || '';
+    sr.getElementById('placeholder-album-text').value = d.placeholder_album_text ?? 'TBD';
     sr.getElementById('default-collection').checked = !!d.default_collection;
     sr.getElementById('compress-videos').checked = !!d.compress_videos;
 
@@ -491,6 +496,7 @@ class PlCollectionForm extends HTMLElement {
     let albumType = sr.getElementById('album-type').value;
     let trashDays = parseInt(sr.getElementById('trash-days').value) || 30;
     let folderPattern = sr.getElementById('folder-pattern').value.trim();
+    let placeholderAlbumText = sr.getElementById('placeholder-album-text').value.trim();
     let defaultCollection = sr.getElementById('default-collection').checked ? 1 : 0;
     let compressVideos = sr.getElementById('compress-videos').checked ? 1 : null;
 
@@ -550,6 +556,7 @@ class PlCollectionForm extends HTMLElement {
       album_type: albumType,
       intake_configs: intakeConfigs,
       apply_folder_pattern: folderPattern || null,
+      placeholder_album_text: placeholderAlbumText,
       default_collection: defaultCollection,
       trash_days: trashDays,
       compress_videos: compressVideos

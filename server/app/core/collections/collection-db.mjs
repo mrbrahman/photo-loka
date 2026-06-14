@@ -9,6 +9,11 @@ function transformEntryToDb(row){
   ['intake_configs'].map(c=>{
     tRow[c] = JSON.stringify(tRow[c])
   });
+  // Default placeholder text to 'TBD' when caller omits it. Pass empty string
+  // or null deliberately to disable the placeholder for a collection.
+  if (tRow.placeholder_album_text === undefined) {
+    tRow.placeholder_album_text = 'TBD';
+  }
   return tRow;
 }
 
@@ -22,9 +27,9 @@ function transformEntryFromDb(row){
 export async function createNewCollection(entry){
   const info = await asyncRun(`
     insert into collections
-    (collection_name, collection_path, album_type, intake_configs, apply_folder_pattern, default_collection, compress_videos)
+    (collection_name, collection_path, album_type, intake_configs, apply_folder_pattern, default_collection, compress_videos, placeholder_album_text)
     values
-    (@collection_name, @collection_path, @album_type, json(@intake_configs), @apply_folder_pattern, @default_collection, @compress_videos)
+    (@collection_name, @collection_path, @album_type, json(@intake_configs), @apply_folder_pattern, @default_collection, @compress_videos, @placeholder_album_text)
   `, transformEntryToDb(entry));
   return info.lastInsertRowid;
 }
@@ -33,7 +38,7 @@ export async function getAllCollections(){
   // convert intake_configs back to JavaScript Array
   const output = await asyncAll(`
     select collection_id, collection_name, collection_path, album_type,
-      intake_configs, apply_folder_pattern, default_collection, compress_videos
+      intake_configs, apply_folder_pattern, default_collection, compress_videos, placeholder_album_text
     from collections
   `);
   return output.map(transformEntryFromDb)
@@ -43,7 +48,7 @@ export async function getCollection(collection_id){
   // convert intake_configs back to JavaScript Array
   const output = await asyncGet(`
     select collection_id, collection_name, collection_path, album_type,
-      intake_configs, apply_folder_pattern, default_collection, trash_days, compress_videos
+      intake_configs, apply_folder_pattern, default_collection, trash_days, compress_videos, placeholder_album_text
     from collections where collection_id = ?
   `, collection_id);
   return transformEntryFromDb(output);
@@ -51,7 +56,7 @@ export async function getCollection(collection_id){
 
 export async function getCollectionsSummary(){
   return await asyncAll(`
-    select collection_id, collection_name, default_collection, apply_folder_pattern
+    select collection_id, collection_name, default_collection, apply_folder_pattern, placeholder_album_text
     from collections
   `);
 }
@@ -60,7 +65,7 @@ export async function getDefaultCollection(){
   // convert intake_configs back to JavaScript Array
   const output = await asyncGet(`
     select collection_id, collection_name, collection_path, album_type,
-      intake_configs, apply_folder_pattern, default_collection, compress_videos
+      intake_configs, apply_folder_pattern, default_collection, compress_videos, placeholder_album_text
     from collections where default_collection = 1
   `);
   return transformEntryFromDb(output);
@@ -69,7 +74,7 @@ export async function getDefaultCollection(){
 export async function getCollectionByIntakePath(dirPath){
   const output = await asyncGet(`
     select collection_id, collection_name, collection_path, album_type,
-      intake_configs, apply_folder_pattern, default_collection, trash_days, compress_videos
+      intake_configs, apply_folder_pattern, default_collection, trash_days, compress_videos, placeholder_album_text
     from collections, json_each(intake_configs)
     where json_extract(value, '$.path') = ?
   `, dirPath);
@@ -85,7 +90,8 @@ export async function updateCollection(collection_id, entry){
       apply_folder_pattern = @apply_folder_pattern,
       default_collection = @default_collection,
       trash_days = @trash_days,
-      compress_videos = @compress_videos
+      compress_videos = @compress_videos,
+      placeholder_album_text = @placeholder_album_text
     where collection_id = @collection_id
   `, { collection_id, ...transformEntryToDb(entry) });
 }

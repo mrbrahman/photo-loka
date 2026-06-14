@@ -13,24 +13,24 @@ where uuid = @uuid
 const insertIntoMetadataStatement = `
 insert into metadata
 (
-  collection_id, uuid, album, filename,
+  collection_id, uuid, album_date, album_name, filename,
   description, filesize, ext, mimetype, mediatype,
   keywords, xmpregion, faces, objects, rating, 
   image_width, image_height, aspectratio,
   make, model, orientation, duration, 
   gps_lat, gps_long, gps_alt, geolocation_api_json, geo_address,
-  datetime_original, create_date, file_modify_date, file_date,
+  datetime_original, create_date, file_modify_date, capture_time,
   indexed_dt
 )
 values
 (
-  @collection_id, @uuid, @album, @filename,
+  @collection_id, @uuid, @album_date, @album_name, @filename,
   @description, @filesize, @ext, @mimetype, @mediatype,
   @keywords, @xmpregion, @faces, @objects, @rating, 
   @image_width, @image_height, @aspectratio,
   @make, @model, @orientation, @duration, 
   @gps_lat, @gps_long, @gps_alt, @geolocation_api_json, @geo_address,
-  @datetime_original, @create_date, @file_modify_date, @file_date,
+  @datetime_original, @create_date, @file_modify_date, @capture_time,
   datetime('now','localtime')
 )
 `;
@@ -39,7 +39,8 @@ const updateMetadataStatement = `
   update metadata
   set
     -- collection_id = @collection_id,
-    -- album = @album,
+    -- album_date = @album_date,
+    -- album_name = @album_name,
     -- filename = @filename,
     description = @description,
     filesize = @filesize,
@@ -66,7 +67,7 @@ const updateMetadataStatement = `
     datetime_original = @datetime_original,
     create_date = @create_date,
     file_modify_date = @file_modify_date,
-    file_date = @file_date
+    capture_time = @capture_time
   where uuid = @uuid
 `;
 

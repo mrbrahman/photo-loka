@@ -13,7 +13,7 @@ function extractAiQuery(searchStr) {
   return match ? match[1] : null;
 }
 
-export async function search(collection_id, searchStr, trashed = false, groupByAlbum = true, orderBy = null){
+export async function search(collection_id, searchStr, trashed = false, groupByDay = true, orderBy = null){
   const aiQuery = searchStr ? extractAiQuery(searchStr.trim()) : null;
 
   if (aiQuery) {
@@ -23,19 +23,27 @@ export async function search(collection_id, searchStr, trashed = false, groupByA
 
     const inList = uuids.map(u => `'${u}'`).join(',');
     const rawFilter = `raw:"uuid in (${inList})"`;
-    return await db.runSearch(collection_id, rawFilter, trashed, false, groupByAlbum, orderBy);
+    return await db.runSearch(collection_id, rawFilter, trashed, false, groupByDay, orderBy);
   }
 
-  return await db.runSearch(collection_id, searchStr, trashed, false, groupByAlbum, orderBy);
+  return await db.runSearch(collection_id, searchStr, trashed, false, groupByDay, orderBy);
 }
 
-export async function getAllFromCollection(collection_id){
-  return await db.runSearch(collection_id)
+export async function getAllFromCollection(collection_id, fromDate, toDate){
+  // Default to last 365 days when no explicit range provided. Search and
+  // other modes (trash, geo) intentionally don't apply this window - those
+  // are user-driven queries where we want to see everything that matches.
+  if (!fromDate) {
+    const d = new Date();
+    d.setDate(d.getDate() - 365);
+    fromDate = d.toISOString().slice(0, 10);
+  }
+  return await db.runSearch(collection_id, null, false, false, true, null, { fromDate, toDate })
 }
 
-export async function getAllFromDefaultCollection(){
+export async function getAllFromDefaultCollection(fromDate, toDate){
   let c = await getDefaultCollection();
-  return await getAllFromCollection(c.collection_id);
+  return await getAllFromCollection(c.collection_id, fromDate, toDate);
 }
 
 export async function getItemInfo(uuid){

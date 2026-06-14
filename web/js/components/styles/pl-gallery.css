@@ -18,10 +18,8 @@
   height: 100%;
 }
 
-pl-album {
+pl-day-section {
   width: 100%;
-  position: absolute;
-  transition: top 0.3s;
 }
 
 :host {
@@ -30,7 +28,7 @@ pl-album {
   height: 100%;
 }
 
-#album-nav-btns {
+#day-nav-btns {
   position: fixed;
   bottom: 3vh;
   right: 30px;
@@ -39,7 +37,7 @@ pl-album {
   z-index: 10;
 }
 
-#album-nav-btns sl-icon-button {
+#day-nav-btns sl-icon-button {
   font-size: 1.5rem;
   background: rgba(0, 0, 0, 0.5);
   color: white;
@@ -47,22 +45,21 @@ pl-album {
   transition: opacity 0.2s;
 }
 
-#album-nav-btns sl-icon-button:first-child {
+#day-nav-btns sl-icon-button:first-child {
   border-radius: 50% 50% 0 0;
 }
 
-#album-nav-btns sl-icon-button:last-child {
+#day-nav-btns sl-icon-button:last-child {
   border-radius: 0 0 50% 50%;
 }
 
-#album-nav-btns sl-icon-button:hover {
+#day-nav-btns sl-icon-button:hover {
   opacity: 1;
 }
 
 @media (max-width: 640px) {
-  #album-nav-btns {
+  #day-nav-btns {
     bottom: 2vh;
     right: 10px;
   }
-
 }

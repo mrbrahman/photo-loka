@@ -3,7 +3,7 @@ import { createLogger } from '#utils/logger';
 
 const logger = createLogger(import.meta.url);
 
-export const restrictSearchCols = ['album', 'filename', 'description', 'keywords', 'faces', 'objects', 'mediatype', 'make', 'model', 'geo_address'];
+export const restrictSearchCols = ['album_date', 'album_name', 'filename', 'description', 'keywords', 'faces', 'objects', 'mediatype', 'make', 'model', 'geo_address'];
 
 // aliases: the right side (realCol) can also be known by the left side (alias)
 export const aliases = {
@@ -17,6 +17,7 @@ export const aliases = {
   camera: 'model',
   type: 'mediatype',
   desc: 'description',
+  album: 'album_name',  // legacy 'album:' search prefix maps to album_name
   l: 'logical'
 }
 
@@ -24,21 +25,21 @@ function converToFilterStr(searchStr){
   /*
     Features:
     1. When multiple conditions are prsent, by default they are "AND"ed.
-        e.g. album:trip camera:samsung type:video
+        e.g. album_name:trip camera:samsung type:video
         will translate as
-        {album}: "trip"* AND {camera}: "samsung"* AND {type}: "video"*
+        {album_name}: "trip"* AND {camera}: "samsung"* AND {type}: "video"*
     2. This can be overwritten using the "logical" or "l" input. E.g. l:or
     3. The input from "logical" keyword applies to all conditions
-        e.g. album:trip camera:samsung type:video l:or
+        e.g. album_name:trip camera:samsung type:video l:or
         will translate as
-        {album}: "trip"* OR {camera}: "samsung"* OR {type}: "video"*
+        {album_name}: "trip"* OR {camera}: "samsung"* OR {type}: "video"*
     4. Any un-prefixed condition will be applied to all search-enabled columns
        in the restrictSearchCols array
-    5. For advanced needs (including querying non restricted columns - for e.g. file_date), use the "raw"
+    5. For advanced needs (including querying non restricted columns - for e.g. capture_time), use the "raw"
        input using SQLite FTS syntax. Thich will be used as-is in the filter.
         e.g. 
-          raw:"metadata match '{album}: (states* AND trip*)'"
-          raw:"strftime('%W',file_date)=strftime('%W',date()) and strftime('%Y',file_date) != strftime('%Y',date())" --> all 'past' photos of current week
+          raw:"metadata match '{album_name}: (states* AND trip*)'"
+          raw:"strftime('%W',capture_time)=strftime('%W',date()) and strftime('%Y',capture_time) != strftime('%Y',date())" --> all 'past' photos of current week
     6. "raw" can be clubbled with other filters, if needed
   
     TODO: implement faces (array columns) OR, AND and ONLY conditions
@@ -106,17 +107,20 @@ function converToFilterStr(searchStr){
 }
 
 function orderByClause(inp) {
-  const defaultClause = 'order by album desc, datetime(file_date) desc';
+  // Used for the flat (non-grouped) path, e.g. frame manager. Day-grouped
+  // queries override this with their own ordering. capture_time is the per-item
+  // capture time; coalesce-to-0 puts no-time items at the end of any sort.
+  const defaultClause = 'order by album_date desc, datetime(capture_time) desc';
   if(!inp) return defaultClause;
 
-  if(inp.toLowerCase() === 'asc') return 'order by datetime(file_date) asc';
-  if(inp.toLowerCase() === 'desc') return 'order by datetime(file_date) desc';
+  if(inp.toLowerCase() === 'asc') return 'order by datetime(capture_time) asc';
+  if(inp.toLowerCase() === 'desc') return 'order by datetime(capture_time) desc';
   if(inp.toLowerCase() === 'random') return 'order by random()';
 
   return defaultClause;
 }
 
-export async function runSearch(collection_id, searchStr, trashed = false, isPrivate = false, groupByAlbum = true, orderBy = null){
+export async function runSearch(collection_id, searchStr, trashed = false, isPrivate = false, groupByDay = true, orderBy = null, dateRange = null){
   let filters = [], limit = false;
   
   filters.push(`coalesce(trashed, false) = ${trashed}`);
@@ -140,52 +144,83 @@ export async function runSearch(collection_id, searchStr, trashed = false, isPri
   } else {
     limit = true;
   }
+
+  // Optional date-range filter (used by /getAll to default to the last year).
+  // album_date is a YYYY-MM-DD string column, so direct string comparison
+  // works without timezone normalization.
+  if (dateRange?.fromDate) {
+    filters.push(`album_date >= '${dateRange.fromDate}'`);
+  }
+  if (dateRange?.toDate) {
+    filters.push(`album_date <= '${dateRange.toDate}'`);
+  }
   // logger.debug(filters)
 
-  const baseQuery = `
-    select album,
-      --aspectratio, uuid, mediatype, coalesce(rating,0) as rating, file_date,
-      json_object(
-        'data', 
-          json_object(
-            'ar', round(aspectratio, 2),
-            'id', uuid,
-            'type', mediatype,
-            'rating', coalesce(rating,0),
-            'dur', 
-              case
-                when duration >= 3600 then 
-                  cast(duration/3600 as int) || ':' || substr('0' || cast((duration % 3600)/60 as int), -2) || ':' || substr('0' || cast(duration % 60 as int), -2)
-                when duration is not null then 
-                  cast(duration/60 as int) || ':' || substr('0' || cast(duration % 60 as int), -2)
-              end,
-            'hasGps', case when gps_lat is not null then 1 else 0 end,
-            'hasDesc', case when trim(coalesce(description,'')) not in ('', 'null') then 1 else 0 end,
-            'hasTags', case when trim(coalesce(keywords,'')) not in ('', 'null', '[null]') then 1 else 0 end,
-            'private', case when coalesce(private, 0) = 1 then 1 else 0 end
-          )
-      ) as item
-    from metadata
-    where ${filters.join(' and ')}
-    and mediatype in ('image', 'video')  -- TODO: add audio
-    ${orderByClause(orderBy)}
+  // Item JSON shape (used by both grouped and flat paths):
+  //   { albumDate, albumName, data: { ar, id, type, rating, dur, hasGps,
+  //     hasDesc, hasTags, private, t, hasTime } }
+  // - albumDate: YYYY-MM-DD; the day this item belongs to in the timeline.
+  // - albumName: descriptive part only (e.g. 'New Year' or 'New Year/Subfolder').
+  // - t: unix epoch seconds derived from capture_time, or 0 when null.
+  // - hasTime: 1 if capture_time is non-null (real EXIF capture time), 0 if it
+  //   was a fallback (mtime / null). No-time items render at end of day.
+  const itemSelect = `
+    json_object(
+      'albumDate', album_date,
+      'albumName', coalesce(album_name, ''),
+      'data', json_object(
+        'ar', round(aspectratio, 2),
+        'id', uuid,
+        'type', mediatype,
+        'rating', coalesce(rating,0),
+        'dur',
+          case
+            when duration >= 3600 then
+              cast(duration/3600 as int) || ':' || substr('0' || cast((duration % 3600)/60 as int), -2) || ':' || substr('0' || cast(duration % 60 as int), -2)
+            when duration is not null then
+              cast(duration/60 as int) || ':' || substr('0' || cast(duration % 60 as int), -2)
+          end,
+        'hasGps', case when gps_lat is not null then 1 else 0 end,
+        'hasDesc', case when trim(coalesce(description,'')) not in ('', 'null') then 1 else 0 end,
+        'hasTags', case when trim(coalesce(keywords,'')) not in ('', 'null', '[null]') then 1 else 0 end,
+        'private', case when coalesce(private, 0) = 1 then 1 else 0 end,
+        't', coalesce(unixepoch(capture_time), 0),
+        'hasTime', case when capture_time is not null then 1 else 0 end
+      )
+    )
   `;
 
   let sql;
-  if (groupByAlbum) {
+  if (groupByDay) {
+    // Day grouping: items within a day are ordered by datetime DESC of
+    // capture_time (timed items first newest -> oldest; null capture_time coalesces
+    // to 0 and falls to the end). album_name + filename used as
+    // tiebreakers and to cluster no-time items by album.
     sql = `
-      with t as (${baseQuery})
-      select album, json_group_array(json(item)) as items 
+      with t as (
+        select
+          album_date as day,
+          ${itemSelect} as item
+        from metadata
+        where ${filters.join(' and ')}
+        and mediatype in ('image', 'video')
+        order by album_date desc,
+                 coalesce(unixepoch(capture_time), 0) desc,
+                 album_name asc, filename asc
+      )
+      select day, json_group_array(json(item)) as items
       from t
-      group by album
-      order by album desc
-      ${limit ? 'limit 300' : ''}
+      group by day
+      order by day desc
+      ${limit ? 'limit 365' : ''}
     `;
   } else {
     sql = `
-      with t as (${baseQuery})
-      select *
-      from t
+      select album_name, ${itemSelect} as item
+      from metadata
+      where ${filters.join(' and ')}
+      and mediatype in ('image', 'video')
+      ${orderByClause(orderBy)}
       ${limit ? 'limit 300' : ''}
     `;
   }
@@ -193,34 +228,33 @@ export async function runSearch(collection_id, searchStr, trashed = false, isPri
   logger.debug(sql)
   
   let results = await asyncAll(sql);
-  return groupByAlbum ? transform1(results) : transform2(results) // .map(row => {album: row.album, item: JSON.parse(row.item)})
+  return groupByDay ? transformDayGrouped(results) : transformFlat(results);
 }
 
-function transform1(rows){
-  return rows.map(row=>{
-    row['items'] = JSON.parse(row['items']);
-    row['id'] = row['album'].replace(/[\s&\/]/ig, '_');
-    return row
-  });
+function transformDayGrouped(rows){
+  return rows.map(row => ({
+    day: row.day,
+    items: JSON.parse(row.items)
+  }));
 }
 
-function transform2(rows){
-  return rows.map(row=>{
-    row['item'] = JSON.parse(row['item']);
-    return row
-  });
+function transformFlat(rows){
+  return rows.map(row => ({
+    album: row.album_name,
+    item: JSON.parse(row.item)
+  }));
 }
 
 export async function getItemInfo(uuid){
   let sql = `
     select 
-      uuid, album, filename,
+      uuid, album_date, album_name, filename,
       description, filesize, ext, mimetype, mediatype,
       keywords, faces, objects, rating,
       image_width, image_height, duration,
       make, model,
       gps_lat, gps_long, gps_alt, geo_address,
-      datetime_original, create_date, file_modify_date, file_date,
+      datetime_original, create_date, file_modify_date, capture_time,
       indexed_dt, trashed_dt,
       (select json_group_array(json_object(
         'face_idx', fr.face_idx,

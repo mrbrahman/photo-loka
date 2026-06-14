@@ -6,7 +6,7 @@ export async function getLibraryStats() {
     select
       count(*) filter (where coalesce(trashed, 0) = 0) as totalItems,
       coalesce(sum(filesize) filter (where coalesce(trashed, 0) = 0), 0) as totalSize,
-      count(distinct album) filter (where coalesce(trashed, 0) = 0) as albums,
+      count(distinct album_date || '|' || coalesce(album_name, '')) filter (where coalesce(trashed, 0) = 0) as albums,
       count(*) filter (where coalesce(trashed, 0) = 1) as trashedItems,
       count(*) filter (where coalesce(trashed, 0) = 0 and mediatype = 'image') as imageCount,
       coalesce(sum(filesize) filter (where coalesce(trashed, 0) = 0 and mediatype = 'image'), 0) as imageSize,

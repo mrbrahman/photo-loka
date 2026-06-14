@@ -24,7 +24,7 @@ export async function indexFile(collection, sourceFileName, uuid, inPlace){
   // are dependent on former steps
   logger.info(`Indexing ${sourceFileName}`);
   let fileStart = performance.now();
-  
+
   // Step 1: Read metadata from file
   // unfortunately cannot pass buffer here
   try{
@@ -33,21 +33,35 @@ export async function indexFile(collection, sourceFileName, uuid, inPlace){
     throw `ERROR during getMetadata for file: ${sourceFileName}: ${error}`;
   }
 
-  // TODO: split this into i) get album name and ii) move the file to collection at the end
-  // Step 2: Use the metadata to physically move the file into collection. Determine album
+  // Step 1b: Fall back for capture_time if EXIF didn't yield a valid one.
+  //  - intake: file isn't placed yet; we need *some* value to drive folder
+  //    placement. Fall back to mtime (current behavior pre-timeline-view).
+  //  - inPlace: leave capture_time null - the file has no real capture time.
+  //    album_date will still be derived from the folder via the pattern
+  //    engine inside placeFileInCollection, so the timeline grouping
+  //    works fine (capture_time null -> no time stamp shown, item sorted to
+  //    the end of its day).
+  if (!p.capture_time && !inPlace) {
+    p.capture_time = p.file_modify_date;
+    logger.info(`No EXIF date for ${sourceFileName}; falling back to file_modify_date: ${p.capture_time}`);
+  }
+
+  // Step 2: Place the file (intake = move to its computed folder; inPlace =
+  // just inspect the folder and split into album_date/album_name).
   try{
-    var f = await fileOps.placeFileInCollection(collection, sourceFileName, p.file_date, inPlace);
+    var f = await fileOps.placeFileInCollection(collection, sourceFileName, p.capture_time, inPlace);
   } catch(error){
     throw `ERROR during placeFileInCollection for file: ${sourceFileName}: ${error}`;
   }
-  
-  // Step 3: Generate uuid, and make metadata current
+
+  // Step 3: Generate uuid, and make metadata current. f provides
+  // {album_date, album_name, filename}; merging onto p gives the full row.
   try{
     p = {...p, ...f, uuid: uuid ? uuid : uuidv4(), collection_id: collection.collection_id}
   } catch(error){
     throw `ERROR during Generate uuid for file: ${sourceFileName}: ${error}`;
   }
-  
+
   // Step 4: Video thumbnail extraction
   if(p.mediatype == "video" || p.mediatype == "image"){
 
@@ -83,7 +97,7 @@ export async function indexFile(collection, sourceFileName, uuid, inPlace){
         const baseName = path.basename(sourceFileName, path.extname(sourceFileName));
         const sourceDir = path.dirname(sourceFileName);
         const preCompressedWebm = path.join(sourceDir, `${baseName}_compressed_video.webm`);
-        
+
         if(fs.existsSync(preCompressedWebm)){
           // Move pre-compressed webm to thumbnail directory
           const thumbsDir = path.join(
@@ -115,7 +129,7 @@ export async function indexFile(collection, sourceFileName, uuid, inPlace){
 
   // save xmpregion before DB insert mutates it to a JSON string
   let xmpregionRaw = p.xmpregion;
-  
+
   // Step 8: Make an entry in db
   await db.insertMetadataRow(p);
 

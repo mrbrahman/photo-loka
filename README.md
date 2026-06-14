@@ -21,7 +21,7 @@ Also, many things are rough around the edges, simply because I'm the sole user &
 
 # Key Terms
 1. **Item**: The individual media item (photo / video / audio)
-2. **Album**: A group of related media items. For e.g. "2021-10-01 Trip to SVBF"
+2. **Album**: A group of related media items, identified by a date and a descriptive name. For e.g. (`2021-10-01`, `Trip to SVBF`). On disk, these become folders like `2021/2021-10-01 Trip to SVBF` (configurable via the collection's folder pattern).
 3. **Collection**: A set of related albums. For e.g. "My family pics", "My small-business pics" etc.
 4. **Indexing**: The process of reading media and cataloging metadata to help with search. Also thumbnail generation.
 
@@ -57,29 +57,29 @@ Also, many things are rough around the edges, simply because I'm the sole user &
     * Rename a known face or reassign a cluster to a different person
 
 ## UI features
-- Display photos and videos on a responsive, progressive, scrollable grid
+- Timeline gallery: a Google-Photos-style day-grouped view with sticky day and album sub-headers, items in reverse chronological order. Album names are editable in place; albums whose name matches the collection's placeholder text (e.g. `TBD`) render in a distinct color so you can find unsorted folders.
 - Cluster photos on a map
 - Slideshow
 - Item info panel - view camera, dates, location (with map), recognized faces, and keywords. Edit filename and description
 - View Trash and empty/restore
 - Search photos based on their metadata, using SQLite FTS5
     1. Github *like* search features (key value pairs)
-       e.g. `album:trip camera:samsung type:video`
+       e.g. `album_name:trip camera:samsung type:video` (`album:` is also accepted as an alias for `album_name:`)
     2. When multiple conditions are prsent, by default they are "AND"ed.
-        e.g. `album:trip camera:samsung type:video`
+        e.g. `album_name:trip camera:samsung type:video`
         will translate as
-        `{album}: "trip"* AND {camera}: "samsung"* AND {type}: "video"*`
+        `{album_name}: "trip"* AND {camera}: "samsung"* AND {type}: "video"*`
     3. This can be overwritten using the "logical" or "l" input. E.g. `l:or`
     4. The input from "logical" keyword applies to all conditions
-        e.g. `album:trip camera:samsung type:video l:or`
+        e.g. `album_name:trip camera:samsung type:video l:or`
         will translate as
-        `{album}: "trip"* OR {camera}: "samsung"* OR {type}: "video"*`
+        `{album_name}: "trip"* OR {camera}: "samsung"* OR {type}: "video"*`
     5. Any un-prefixed condition will be applied to/restricted to all [search-enabled columns](server/app/core/search/search-db.mjs#L3)
-    6. For advanced needs (including querying non restricted columns - for e.g. `file_date`), use the "raw"
+    6. For advanced needs (including querying non restricted columns - for e.g. `capture_time`), use the "raw"
        input using SQLite FTS syntax. Thich will be used as-is in the filter.
-        e.g. 
-          - `raw:"metadata match '{album}: (states* AND trip*)'"`
-          - `raw:"strftime('%W',file_date)=strftime('%W',date()) and strftime('%Y',file_date) != strftime('%Y',date())"` (all 'past' photos of current week)
+        e.g.
+          - `raw:"metadata match '{album_name}: (states* AND trip*)'"`
+          - `raw:"strftime('%W',capture_time)=strftime('%W',date()) and strftime('%Y',capture_time) != strftime('%Y',date())"` (all 'past' photos of current week)
     7. "raw" can be clubbled with other filters, if needed
     8. AI-powered semantic search using image embeddings
        e.g. `ai:"sunset on a beach"` to find visually similar photos
@@ -192,7 +192,8 @@ TODO - sync timestamps on +2 level folders
   Navigate to the Admin > Collections page in the UI and click "New Collection". Fill in:
   - **Collection Name** and **Collection Path** (must be an existing directory)
   - **Album Type**: FOLDER_ALBUM (files organized in date folders) or VIRTUAL_ALBUM
-  - **Folder Pattern**: dateformat-compatible pattern (e.g. `yyyy/yyyy-mm-dd`)
+  - **Folder Pattern**: moustache-style format with tokens `{{yyyy}}`, `{{mm}}`, `{{dd}}`, and `{{album}}` (must be the last token). Example: `{{yyyy}}/{{yyyy}}-{{mm}}-{{dd}} {{album}}` produces folders like `2021/2021-01-01 New Year`.
+  - **Placeholder Album Name**: text to use as the album name when intake creates a new folder for files with no obvious album (e.g. `TBD`). Albums matching this text are highlighted in the gallery as needing review. Empty disables the placeholder.
   - **Intake Paths**: one or more paths where new files arrive, with a method:
     - *Immediate* - watches the folder in real-time (chokidar)
     - *Scheduled* - runs on a cron schedule for files that are N days stale
@@ -224,7 +225,8 @@ TODO - sync timestamps on +2 level folders
         }
       }
     ],
-    "apply_folder_pattern":"yyyy/yyyy-mm-dd",
+    "apply_folder_pattern":"{{yyyy}}/{{yyyy}}-{{mm}}-{{dd}} {{album}}",
+    "placeholder_album_text":"TBD",
     "default_collection":1
   }
   ```
@@ -245,7 +247,8 @@ TODO - sync timestamps on +2 level folders
         }
       }
     ],
-    "apply_folder_pattern":"yyyy/yyyy-mm-dd",
+    "apply_folder_pattern":"{{yyyy}}/{{yyyy}}-{{mm}}-{{dd}} {{album}}",
+    "placeholder_album_text":"TBD",
     "default_collection":1
   }
   ```
@@ -273,7 +276,8 @@ TODO - sync timestamps on +2 level folders
         }
       }
     ],
-    "apply_folder_pattern":"yyyy/yyyy-mm-dd",
+    "apply_folder_pattern":"{{yyyy}}/{{yyyy}}-{{mm}}-{{dd}} {{album}}",
+    "placeholder_album_text":"TBD",
     "default_collection":1
   }
   ```

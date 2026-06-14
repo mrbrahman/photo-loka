@@ -195,6 +195,15 @@ class PlAppShell extends HTMLElement {
     this.#initServiceWorker();
   }
 
+  /**
+   * Look up the active collection's placeholder_album_text from the cached
+   * collections summary. Returns '' when no match (e.g. before fetch settles).
+   */
+  #getPlaceholderForCurrentCollection() {
+    const col = this.#state.collections.find(c => c.collection_id === this.#state.collection_id);
+    return col?.placeholder_album_text || '';
+  }
+
   async #fetchCollections() {
     try {
       const collections = await getCollections();
@@ -451,6 +460,7 @@ class PlAppShell extends HTMLElement {
         this.#mainContent.appendChild(Object.assign(document.createElement('pl-gallery'), {
           mode: 'default',
           query: { collectionId: this.#state.collection_id },
+          placeholderText: this.#getPlaceholderForCurrentCollection(),
           slideshowItemId
         }));
         break;
@@ -463,6 +473,7 @@ class PlAppShell extends HTMLElement {
         this.#mainContent.appendChild(Object.assign(document.createElement('pl-gallery'), {
           mode: 'search',
           query: { collectionId: this.#state.collection_id, searchText },
+          placeholderText: this.#getPlaceholderForCurrentCollection(),
           slideshowItemId
         }));
         break;
@@ -474,6 +485,7 @@ class PlAppShell extends HTMLElement {
         this.#mainContent.appendChild(Object.assign(document.createElement('pl-gallery'), {
           mode: 'trash',
           query: { collectionId: this.#state.collection_id },
+          placeholderText: this.#getPlaceholderForCurrentCollection(),
           slideshowItemId
         }));
         break;
@@ -483,7 +495,8 @@ class PlAppShell extends HTMLElement {
         this.#mainContent.innerHTML = '';
         this.#mainContent.style.overflowY = 'hidden';
         this.#mainContent.appendChild(Object.assign(document.createElement('pl-map'), {
-          collectionId: this.#state.collection_id
+          collectionId: this.#state.collection_id,
+          placeholderText: this.#getPlaceholderForCurrentCollection()
         }));
         break;
 

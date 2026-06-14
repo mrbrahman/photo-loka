@@ -12,6 +12,10 @@
   --bg-tag: #f0f0f0;
   --bg-thumb: whitesmoke;
   --bg-thumb-img: darkgrey;
+  /* Translucent variant of bg-page for sticky headers that should let photos
+     show through behind them. ~70% opacity reads as a subtle tint without
+     making header text hard to read. */
+  --bg-page-alpha: rgba(255, 255, 255, 0.7);
 
   /* Text */
   --text-primary: #333;
@@ -66,6 +70,7 @@
   --bg-tag: #313244;
   --bg-thumb: #2a2a3e;
   --bg-thumb-img: #444;
+  --bg-page-alpha: rgba(30, 30, 46, 0.7);
 
   /* Text */
   --text-primary: #cdd6f4;

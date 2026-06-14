@@ -2,12 +2,19 @@
 // <pl-album album_name='Album 1' width=1000 gutterspace=4 paintlayout width=500 data="[{id: 1, ar:1}, {id:2, ar: 1.33}, {id:5, ar:0.82}]"></pl-album>
 
 import { notify, showConfirmDialog } from '../utils.mjs';
+import { formatTimeWindow } from '../album-path.mjs';
 
 import sheet from "./styles/pl-album.css" with { type: "css" };
 
 class PlAlbum extends HTMLElement {
   
-  #width; #paint_layout = false; #gutterspace = 4; #data; #album_name; #album_name_height = 45; #album_height; #readOnly = false; #collectionId = null;
+  #width; #paint_layout = false; #gutterspace = 4; #data; #album_name;
+  #album_date = '';
+  // Fixed in CSS (pl-album-name.css :host { height: 36px }). Keep this in
+  // sync with that value - it's used in layout math to leave room for the
+  // sticky header above the thumbs.
+  #album_name_height = 36; #album_height; #readOnly = false; #collectionId = null;
+  #placeholderText = '';
 
   static template = document.createElement('template');
   static {
@@ -150,9 +157,15 @@ class PlAlbum extends HTMLElement {
     let item = this.data[itemIdx];
 
     if(item.elem && item.elem.isConnected){
-      item.elem.style.transform += " scale(0)";
+      // Capture elem in a local before the setTimeout fires. The move flow
+      // in pl-gallery clears item.elem to undefined synchronously after
+      // deleteSelectedItems returns (so target-album rendering creates a
+      // fresh element), which would otherwise leave the timeout reading
+      // 'remove' on undefined.
+      let elemToRemove = item.elem;
+      elemToRemove.style.transform += " scale(0)";
       setTimeout(() => {
-        item.elem.remove();
+        elemToRemove.remove();
       }, 100);
     }
 
@@ -181,6 +194,9 @@ class PlAlbum extends HTMLElement {
     } else {
       // painting of layout will selectively happen from the wrapper, so not doing anything here
     }
+
+    // recompute time window since min/max items may have changed
+    this.#refreshTimeWindow();
 
     // if there is any height change resulting from this delete, fire an event, so 
     // the wrapper pl-gallery can paint as needed
@@ -242,6 +258,27 @@ class PlAlbum extends HTMLElement {
       this.#updateAlbumSelect();
     }
 
+    this.#performLayoutChangesIfNeeded();
+  }
+
+  // Delete items whose data.id is in the given Set, regardless of selection
+  // state. Used by the gallery's per-day move flow where some items moved
+  // successfully and others failed - we only remove the successful ones.
+  deleteItemsByIds(idSet){
+    if (!idSet || idSet.size === 0) return;
+    let deletedCnt = 0;
+
+    let i = this.data.length;
+    while(i--){
+      if (idSet.has(this.data[i].data.id)){
+        this.#deleteItem(i);
+        deletedCnt++;
+      }
+    }
+
+    if (deletedCnt > 0){
+      this.#updateAlbumSelect();
+    }
     this.#performLayoutChangesIfNeeded();
   }
 
@@ -423,12 +460,21 @@ class PlAlbum extends HTMLElement {
   #paintName(){
     let a = document.createElement('pl-album-name');
     a.albumName = this.album_name;
+    a.albumDate = this.#album_date;
     a.readOnly = this.readOnly;
     a.collectionId = this.#collectionId;
+    a.placeholderText = this.#placeholderText;
+    a.timeWindow = formatTimeWindow(this.data || []);
     a.style.height = this.album_name_height + 'px';
     a.addEventListener('pl-rename-dir-not-empty', this.#handleDirNotEmptyDuringRename)
 
     this.shadowRoot.getElementById('container').appendChild(a);
+  }
+
+  // Recompute and repaint the time window after items are added/removed.
+  #refreshTimeWindow() {
+    let nameEl = this.shadowRoot.querySelector('pl-album-name');
+    if (nameEl) nameEl.timeWindow = formatTimeWindow(this.data || []);
   }
 
   #handleDirNotEmptyDuringRename = async (evt)=>{ 
@@ -485,14 +531,25 @@ class PlAlbum extends HTMLElement {
 
   // this method is exposed
   addNewItems = (items)=>{
-    // TODO: sort the items (need ts from db)
     this.data.push(...items);
+
+    // Re-sort to keep the album in time-DESC order. Items with a real
+    // capture time come first (newest first); no-time items go at the end
+    // sorted alphabetically by id (stable fallback when t is identical).
+    this.data.sort((a, b) => {
+      let ah = a.data?.hasTime ? 1 : 0;
+      let bh = b.data?.hasTime ? 1 : 0;
+      if (ah !== bh) return bh - ah;          // hasTime first
+      if (ah === 1) return (b.data.t || 0) - (a.data.t || 0); // newest first
+      return String(a.data?.id || '').localeCompare(String(b.data?.id || ''));
+    });
 
     this.#doLayout();
     if(this.#paint_layout){
       this.#paintLayout()
     }
     this.#updateAlbumSelect();
+    this.#refreshTimeWindow();
   }
 
   get album_name_height(){
@@ -514,6 +571,12 @@ class PlAlbum extends HTMLElement {
 
   get collectionId() { return this.#collectionId; }
   set collectionId(_) { this.#collectionId = _ || null; }
+
+  get placeholderText() { return this.#placeholderText; }
+  set placeholderText(_) { this.#placeholderText = _ || ''; }
+
+  get album_date() { return this.#album_date; }
+  set album_date(_) { this.#album_date = _ || ''; }
   
 }
 

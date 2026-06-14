@@ -1,15 +1,30 @@
-import {notify, throttle} from '../utils.mjs';
+import { notify, throttle } from '../utils.mjs';
 import { updateAlbumName, searchForExistingAlbums } from '../api/albums-api.mjs';
+import { isPlaceholder } from '../album-path.mjs';
 
 import sheet from "./styles/pl-album-name.css" with { type: "css" };
 
-// Design note: Save is always explicit (save button or Enter key), never on blur.
-// Renaming an album moves physical files on disk, so accidental renames from
-// stray blur events (especially on mobile) must be avoided.
+// Design notes:
+// - Save is always explicit (save button or Enter key), never on blur. Renaming
+//   an album moves physical files on disk, so accidental renames from stray
+//   blur events (especially on mobile) must be avoided.
+// - The descriptive name is what the user sees and edits. Date is in the day
+//   header. The component carries the album_date too because the rename API
+//   needs it as part of the (date, name) identity.
+// - When albumName matches the collection's placeholder text (e.g. 'TBD'),
+//   the label renders in a distinct color as a visual cue that the album
+//   needs review. Clearing the name on save shrinks the folder back to just
+//   the date prefix, which is allowed.
 
 class PlAlbumName extends HTMLElement {
 
-  #albumName; #albumSelectedValue='none'; #readOnly = false; #collectionId = null;
+  #albumName = '';        // descriptive name only (e.g. 'New Year' or 'New Year/WhatsApp Images')
+  #albumDate = '';        // 'YYYY-MM-DD' - identifies which day's bucket this is
+  #albumSelectedValue = 'none';
+  #readOnly = false;
+  #collectionId = null;
+  #timeWindow = '';
+  #placeholderText = '';
   #closeWatcher = null;
 
   static template = document.createElement('template');
@@ -21,6 +36,7 @@ class PlAlbumName extends HTMLElement {
         <sl-icon id="select-all" class="select-none" name="check-circle"></sl-icon>
       <!-- </sl-tooltip> -->
 
+      <span id="time-window"></span>
       <span id="album-label"></span>
 
       <input id="album-input" list="album-suggestions" autocomplete="off" spellcheck="false" hidden />
@@ -41,11 +57,12 @@ class PlAlbumName extends HTMLElement {
   connectedCallback() {
     this.shadowRoot.appendChild(this.constructor.template.content.cloneNode(true));
 
+    this.#paintTimeWindow();
     this.#paintAlbumName();
 
     this.shadowRoot.getElementById("select-all").addEventListener('click', this.#handleSelectAll);
     this.shadowRoot.getElementById("album-label").addEventListener('click', this.#handleLabelClick);
-    this.shadowRoot.getElementById("album-input").addEventListener('focus', this.#handleFocus);
+    this.shadowRoot.getElementById("time-window").addEventListener('click', this.#handleLabelClick);
     this.shadowRoot.getElementById("album-input").addEventListener('keydown', this.#handleKey);
     this.shadowRoot.getElementById("album-input").addEventListener('input', this.#handleInput);
     this.shadowRoot.getElementById("save").addEventListener('click', this.#handleSave);
@@ -71,11 +88,14 @@ class PlAlbumName extends HTMLElement {
     input.hidden = false;
     input.value = this.#albumName || '';
     input.focus();
+    input.select();
 
     this.shadowRoot.getElementById('edit-controls').style.visibility = 'visible';
 
     this.#closeWatcher = new CloseWatcher();
     this.#closeWatcher.onclose = () => this.#handleCancel();
+
+    this.#suggestForCurrentInput();
   }
 
   #exitEditMode() {
@@ -103,20 +123,24 @@ class PlAlbumName extends HTMLElement {
 
   #handleSave = async () => {
     let input = this.shadowRoot.getElementById('album-input');
-    if (input.value === this.albumName) {
+    let newAlbumName = input.value.trim();
+
+    if (newAlbumName === this.#albumName) {
       this.#exitEditMode();
       return;
     }
 
     try {
-      await updateAlbumName(this.#collectionId, this.#albumName, input.value);
-      this.albumName = input.value;
+      await updateAlbumName(this.#collectionId, this.#albumDate, this.#albumName, newAlbumName);
+      this.albumName = newAlbumName;
       this.#exitEditMode();
       notify('Album name updated successfully', 'success');
     } catch(err) {
       if (err.error?.code === "FOLDER_EXISTS") {
+        // Bubble up the descriptive name only. Gallery's move flow takes
+        // a descriptive name and reconstructs the per-day target itself.
         this.dispatchEvent(new CustomEvent('pl-rename-dir-not-empty', {
-          detail: { newAlbumName: input.value }
+          detail: { newAlbumName }
         }));
       } else {
         notify(`<strong>Error</strong>:</br>${err.error?.code || err.code}`, 'error', -1);
@@ -128,20 +152,14 @@ class PlAlbumName extends HTMLElement {
     this.#exitEditMode();
   }
 
-  #handleFocus = async () => {
-    // position cursor to enable easy editing
-    let input = this.shadowRoot.getElementById('album-input');
-    let tbd = this.albumName.search(/(Sush Phone |Shreyas Phone )?TBD/g);
-
-    if (tbd > 0) {
-      // Select from TBD onwards for easy replacement
-      input.setSelectionRange(tbd, this.albumName.length);
-
-      let searchStr = this.albumName.substring(0, 15);
+  // When opening edit mode for a placeholder album, run a suggestion lookup
+  // to surface similar albums in the datalist.
+  #suggestForCurrentInput = async () => {
+    if (isPlaceholder(this.#albumName, this.#placeholderText)) {
       try {
-        let output = await searchForExistingAlbums(searchStr, true, this.#collectionId);
+        let output = await searchForExistingAlbums(this.#albumName, true, this.#collectionId);
         if (output.length > 0) {
-          this.#populateSuggestions(output, searchStr);
+          this.#populateSuggestions(output);
         }
       } catch(err) {
         notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
@@ -151,21 +169,17 @@ class PlAlbumName extends HTMLElement {
 
   #throttledLookup = throttle(() => {
     let input = this.shadowRoot.getElementById('album-input');
-    let txt = input.value;
-    // Need at least some characters beyond the date prefix to perform lookup
-    // TODO: remove hardcoding
-    if (!txt.includes('TBD') && txt.trim().length > 16) {
-      this.#suggestAlbumNames(txt);
-    }
+    let txt = input.value.trim();
+    if (txt.length < 2) return;
+    if (this.#placeholderText && txt === this.#placeholderText) return;
+    this.#suggestAlbumNames(txt);
   }, 1000)
 
   #suggestAlbumNames = async (txt) => {
-    let prefix = txt.substring(0, 15);
-    let searchPart = txt.substring(15).trim();
     try {
-      let output = await searchForExistingAlbums(searchPart, false, this.#collectionId);
+      let output = await searchForExistingAlbums(txt, false, this.#collectionId);
       if (output.length > 0) {
-        this.#populateSuggestions(output, prefix);
+        this.#populateSuggestions(output);
       } else {
         this.#clearSuggestions();
       }
@@ -175,14 +189,9 @@ class PlAlbumName extends HTMLElement {
   }
 
   #handleInput = () => {
-    // When user selects a suggestion from the datalist, the browser sets the input
-    // value and fires an 'input' event. Detect this by checking if the new value
-    // matches a datalist option. If so, clear suggestions (closes the dropdown)
-    // and skip further lookups - the user has made their choice.
     let input = this.shadowRoot.getElementById('album-input');
     let datalist = this.shadowRoot.getElementById('album-suggestions');
-    let options = datalist.querySelectorAll('option');
-    for (let opt of options) {
+    for (let opt of datalist.querySelectorAll('option')) {
       if (opt.value === input.value) {
         this.#clearSuggestions();
         return;
@@ -198,12 +207,12 @@ class PlAlbumName extends HTMLElement {
     }
   }
 
-  #populateSuggestions(output, prefix) {
+  #populateSuggestions(output) {
     let datalist = this.shadowRoot.getElementById('album-suggestions');
     datalist.innerHTML = '';
     for (let d of output) {
       let opt = document.createElement('option');
-      opt.value = `${prefix} ${d.similar}`;
+      opt.value = d.similar;
       datalist.appendChild(opt);
     }
   }
@@ -212,22 +221,18 @@ class PlAlbumName extends HTMLElement {
     this.shadowRoot.getElementById('album-suggestions').innerHTML = '';
   }
 
-  disconnectedCallback() {
-    //implementation
-  }
-
-  attributeChangedCallback() {
-    //implementation
-  }
-
-  adoptedCallback() {
-    //implementation
+  #paintTimeWindow() {
+    let el = this.shadowRoot.getElementById('time-window');
+    if (!el) return;
+    el.textContent = this.#timeWindow || '';
   }
 
   #paintAlbumName() {
     let label = this.shadowRoot.getElementById('album-label');
     if (!label) return;
-    label.textContent = this.#albumName || '';
+    label.textContent = this.#albumName;
+    label.classList.toggle('placeholder', isPlaceholder(this.#albumName, this.#placeholderText));
+    label.hidden = !this.#albumName;
   }
 
   #paintSelectAllCheckbox() {
@@ -253,24 +258,19 @@ class PlAlbumName extends HTMLElement {
     }
   }
 
-  get albumName() {
-    return this.#albumName;
-  }
+  get albumName() { return this.#albumName; }
   set albumName(_) {
-    this.#albumName = _;
-    if (this.isConnected) {
-      this.#paintAlbumName();
-    }
+    this.#albumName = _ || '';
+    if (this.isConnected) this.#paintAlbumName();
   }
 
-  get albumSelectedValue() {
-    return this.#albumSelectedValue;
-  }
+  get albumDate() { return this.#albumDate; }
+  set albumDate(_) { this.#albumDate = _ || ''; }
+
+  get albumSelectedValue() { return this.#albumSelectedValue; }
   set albumSelectedValue(_) {
     this.#albumSelectedValue = _;
-    if (this.isConnected) {
-      this.#paintSelectAllCheckbox();
-    }
+    if (this.isConnected) this.#paintSelectAllCheckbox();
   }
 
   get readOnly() { return this.#readOnly; }
@@ -279,6 +279,17 @@ class PlAlbumName extends HTMLElement {
   get collectionId() { return this.#collectionId; }
   set collectionId(_) { this.#collectionId = _ || null; }
 
+  get timeWindow() { return this.#timeWindow; }
+  set timeWindow(_) {
+    this.#timeWindow = _ || '';
+    if (this.isConnected) this.#paintTimeWindow();
+  }
+
+  get placeholderText() { return this.#placeholderText; }
+  set placeholderText(_) {
+    this.#placeholderText = _ || '';
+    if (this.isConnected) this.#paintAlbumName();
+  }
 }
 
 window.customElements.define('pl-album-name', PlAlbumName);

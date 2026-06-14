@@ -6,6 +6,7 @@ import { notify } from '../utils.mjs';
 class PlMap extends HTMLElement {
 
   #collectionId = 1;
+  #placeholderText = '';
 
   static template = document.createElement('template');
   static {
@@ -261,7 +262,8 @@ class PlMap extends HTMLElement {
 
     const gallery = Object.assign(document.createElement('pl-gallery'), {
       mode: 'geo',
-      query: { collectionId: this.#collectionId, bounds }
+      query: { collectionId: this.#collectionId, bounds },
+      placeholderText: this.#placeholderText
     });
 
     if (isFirstOpen) {
@@ -349,6 +351,9 @@ class PlMap extends HTMLElement {
   }
   get collectionId() { return this.#collectionId; }
   set collectionId(_) { this.#collectionId = _ || 1; }
+
+  get placeholderText() { return this.#placeholderText; }
+  set placeholderText(_) { this.#placeholderText = _ || ''; }
 }
 
 customElements.define('pl-map', PlMap);

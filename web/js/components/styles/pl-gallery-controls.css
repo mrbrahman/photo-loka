@@ -3,7 +3,12 @@
   top: 2px;
   left: 5px;
   right: 5px;
-  z-index: 1;
+  /* Sits above sticky day/album headers (z=2) and day-nav-btns (z=10) so
+     its modal dialog isn't trapped beneath them. The host creates a
+     stacking context, which means Shoelace's internal --sl-z-index-dialog
+     (700) is interpreted relative to this context. From outside, the
+     entire component (controls bar + dialog when open) layers at z=20. */
+  z-index: 20;
 }
 
 #container {

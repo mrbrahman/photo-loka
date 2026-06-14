@@ -63,6 +63,18 @@ if(currentVersion < 6){
   db.pragma("user_version = 6");
 }
 
+if(currentVersion < 7){
+  addPlaceholderAlbumTextColumn();
+  currentVersion = 7;
+  db.pragma("user_version = 7");
+}
+
+if(currentVersion < 8){
+  addAlbumSplitAndCaptureTime(currentVersion);
+  currentVersion = 8;
+  db.pragma("user_version = 8");
+}
+
 // define a json_patch_agg SQL aggregate function, which is similar to the SQLite provided
 // json_patch function, however this is an aggregate function
 // this is used in merging all exif updates required to be done on a file in 'exif_updates' table
@@ -85,7 +97,11 @@ function initialDbSetup() {
       collection_path text NOT NULL UNIQUE,
       album_type text,
       intake_configs text,      -- stored as an array of objects (JSON) with path, method, config
-      apply_folder_pattern,     -- need to be 'dateformat' package compatible format
+      apply_folder_pattern,     -- moustache-style format string with tokens
+                                -- {{yyyy}}, {{mm}}, {{dd}} (and optional {{album}}
+                                -- which must be the last token). Used by the
+                                -- pattern engine in #utils/folder-pattern.mjs
+                                -- to format/parse on-disk folder paths.
       trash_days integer DEFAULT 30,
 
       check (album_type in ('FOLDER_ALBUM', 'VIRTUAL_ALBUM'))
@@ -316,6 +332,43 @@ function addCompressVideosColumn() {
   logger.info("adding compress_videos column to collections table ...");
   // 1 = compress, 0 or null = do not compress
   db.prepare(`ALTER TABLE collections ADD COLUMN compress_videos INTEGER`).run();
+}
+
+function addPlaceholderAlbumTextColumn() {
+  logger.info("adding placeholder_album_text column to collections table ...");
+  // Used by intake to suffix new date folders (e.g. '2026-04-20 TBD') and by the
+  // frontend to highlight albums that still need naming. Empty/null = no placeholder.
+  db.prepare(`ALTER TABLE collections ADD COLUMN placeholder_album_text TEXT DEFAULT 'TBD'`).run();
+}
+
+function addAlbumSplitAndCaptureTime(version) {
+  // Phase 3: split `album` into (album_date, album_name) and rename file_date
+  // semantically to capture_time. Old columns are kept alongside the new ones for
+  // back-compat and as a safety net; a future migration can drop them.
+  //
+  // The new columns are populated with NULL during the rebuild. The user runs
+  // server/scripts/migrate-album-split.sql to populate them from the old
+  // album/file_date values, and to convert apply_folder_pattern to moustache
+  // syntax.
+  logger.info("rebuilding metadata table to add album_date, album_name, capture_time columns ...");
+  rebuildMetadataTable(version, `
+    collection_id UNINDEXED, uuid UNINDEXED,
+    album, album_date, album_name,
+    filename,
+    description, filesize UNINDEXED, ext UNINDEXED, mimetype, mediatype,
+    keywords, xmpregion, faces, objects, rating UNINDEXED,
+    image_width UNINDEXED, image_height UNINDEXED, aspectratio UNINDEXED,
+    make, model, orientation UNINDEXED, duration UNINDEXED,
+    gps_lat UNINDEXED, gps_long UNINDEXED, gps_alt UNINDEXED,
+    geolocation_api_json UNINDEXED,
+    geonames_rev_address_json UNINDEXED, geonames_encoding_status UNINDEXED, geonames_db_matched_uuid UNINDEXED,
+    geo_address,
+    datetime_original UNINDEXED, create_date UNINDEXED, file_modify_date UNINDEXED,
+    file_date UNINDEXED, capture_time UNINDEXED,
+    trashed, trashed_dt,
+    private UNINDEXED,
+    indexed_dt, updated_dt
+  `, ['album_date', 'album_name', 'capture_time']);
 }
 
 function addPrivateColumn(version) {

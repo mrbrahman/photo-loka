@@ -1,23 +1,26 @@
 // many web component practices adapted from: https://dev.to/dannyengelman/web-component-102-the-5-lessons-after-learning-web-components-101-h9p
 
-// some functional (logic) concepts adapted from https://github.com/schlosser/pig.js/ and further expanded for multiple albums
+// some functional (logic) concepts adapted from https://github.com/schlosser/pig.js/ and further expanded for multiple albums and a timeline view
 
 // e.g. TBD
 // <pl-gallery ></pl-gallery>
 
-// The basic design is:
+// Timeline-view design:
 //
-// 1. Gallery is responsibile for creating albums
-// 2. When any item is selected/de-selected, gallery is also responsible for 
-//    the creation and removal of gallery controls
-// 3. Gallery controls is a dummy component which is mainly used for user interaction only
-// 4. Since item selection can happen from multiple albums, gallery will own all backend changes
-//    related to selected items
-// 5. Album will only be responsible for paiting of UI
-// 6. The only exception is 'album name' component, which can also update the backend. But
-//    that is fine, since the album name update does not span multiple albums
+// 1. Server returns [{day: 'YYYY-MM-DD', items: [...]}], items already
+//    ordered by datetime DESC within day, with no-time items clustered at
+//    the end (by album + filename).
+// 2. Gallery creates one pl-day-section per day. Each day-section internally
+//    creates pl-album children by walking its items and grouping consecutive
+//    same-album entries (or all same-album entries in 'folder' mode).
+// 3. Selection state is tracked at the gallery level (across all days/albums).
+//    Gallery owns the controls bar, move/delete orchestration, and slideshow.
+// 4. Per-album event listeners are attached every time the day-section
+//    rebuilds its album children (mode toggle changes the list).
+// 5. Slideshow continues to receive a flat [{album, items[]}] shape; we
+//    flatten the day-sections' albums when opening it.
 
-import {debounce, throttle, notify, showConfirmDialog, showProgress, hideProgress} from '../utils.mjs';
+import { throttle, notify, showConfirmDialog, showProgress, hideProgress } from '../utils.mjs';
 import { searchItems, getTrashedItems, searchByGpsCoordinates, getAllItems } from '../api/search-api.mjs';
 import { updateRating, trashItems, togglePrivate, restoreFromTrash, cleanupTrash, emptyTrash, moveItems } from '../api/media-api.mjs';
 
@@ -25,10 +28,18 @@ import sheet from "./styles/pl-gallery.css" with { type: "css" };
 
 class PlGallery extends HTMLElement {
 
-  // internal variables
-  #albums = []; #albumsInBuffer = {}; #albumsSelectedCnt = {}; #itemsSelected = [];
-  // variables that can be get/set
-  #data; #mode = 'default'; #query = {}; #slideshowItemId = null;
+  // internal state
+  #data = [];                  // [{day, items: [{album, data:{...}, day}]}]
+  #daySections = [];           // pl-day-section elements (one per day)
+  #albumsInBuffer = {};        // album.id -> 'full' | 'partial' | 'buffer-overflow'
+  #albumsSelectedCnt = {};     // album_name -> count
+  #itemsSelected = [];         // selected items across all albums
+
+  // public properties
+  #mode = 'default';
+  #query = {};
+  #slideshowItemId = null;
+  #placeholderText = '';
 
   static template = document.createElement('template');
   static {
@@ -42,29 +53,42 @@ class PlGallery extends HTMLElement {
         </sl-button>
       </div>
       <div id="gallery"></div>
-      <div id="album-nav-btns">
-        <sl-icon-button id="prev-album-btn" name="chevron-up" label="Previous album"></sl-icon-button>
-        <sl-icon-button id="next-album-btn" name="chevron-down" label="Next album"></sl-icon-button>
+      <div id="day-nav-btns">
+        <sl-icon-button id="prev-day-btn" name="chevron-up" label="Previous day"></sl-icon-button>
+        <sl-icon-button id="next-day-btn" name="chevron-down" label="Next day"></sl-icon-button>
       </div>
     `;
   }
 
   constructor() {
-    super().attachShadow({mode: 'open'}); // sets "this" and "this.shadowRoot"
+    super().attachShadow({mode: 'open'});
     this.shadowRoot.adoptedStyleSheets = [sheet];
   }
 
   async connectedCallback() {
-
     this.shadowRoot.appendChild(this.constructor.template.content.cloneNode(true));
 
-    // Fetch data based on mode
     const data = await this.#fetchData();
-    if (!data) return; // error already notified
-    if (!this.isConnected) return; // component removed during fetch
+    if (!data) return;
+    if (!this.isConnected) return;
 
-    this.#data = data;
+    this.#data = this.#decorateItemsWithDay(data);
     this.#renderGallery();
+  }
+
+  // Tag each item with its day key so move/add operations can locate the
+  // right day-section without re-deriving from the server's payload. With
+  // the phase-3 model, day === albumDate, so we mirror that field.
+  #decorateItemsWithDay(data) {
+    for (let dayGroup of data) {
+      for (let item of dayGroup.items) {
+        item.day = dayGroup.day;
+        // Server already sends albumDate per item, but be defensive in case
+        // a row had a NULL album_date (e.g. before the SQL migration).
+        if (!item.albumDate) item.albumDate = dayGroup.day;
+      }
+    }
+    return data;
   }
 
   async #fetchData() {
@@ -92,147 +116,144 @@ class PlGallery extends HTMLElement {
       return;
     }
 
-    const totalItems = this.#data.map(x => x.items.length).reduce((a, c) => a + c, 0);
-    notify(`Found ${this.#data.length.toLocaleString()} albums containing ${totalItems.toLocaleString()} items`);
+    const totalItems = this.#data.reduce((sum, d) => sum + d.items.length, 0);
+    notify(`Found ${this.#data.length.toLocaleString()} days containing ${totalItems.toLocaleString()} items`);
 
-    this.#albums = this.#data.map(d=>{
+    let galleryEl = this.shadowRoot.getElementById('gallery');
 
-      let album = Object.assign(document.createElement('pl-album'), {
-        id: d.id,
-        album_name: d.album,
-        data: d.items,
-        width: this.shadowRoot.getElementById('gallery').clientWidth,
+    this.#daySections = this.#data.map(d => {
+      let section = Object.assign(document.createElement('pl-day-section'), {
+        day: d.day,
+        width: galleryEl.clientWidth,
         readOnly: this.#mode === 'trash',
-        collectionId: this.#query.collectionId
+        collectionId: this.#query.collectionId,
+        placeholderText: this.#placeholderText,
+        items: d.items
       });
-
-      // TODO: Can we have gallery listen to these events rather than individual albums?
-      this.#addAlbumEventListeners(album);
-    
-      return album;
+      return section;
     });
 
-    this.shadowRoot.getElementById('gallery').append(...this.#albums);
-    this.#reAssignAlbumPositions();
-    
-    // Reset scroll position
-    this.shadowRoot.getElementById('gallery').scrollTop = 0;
-    
-    // Wait for next frame to ensure dimensions are calculated.
-    // When gallery is nested inside other web components (e.g. pl-app-shell),
-    // the browser hasn't finished calculating layout for the nested shadow DOM structure
-    // when connectedCallback runs. clientWidth/clientHeight might return 0 or incorrect values.
-    // requestAnimationFrame defers painting until after the browser completes the layout pass,
-    // ensuring all dimensions are properly calculated before we paint thumbnails.
+    galleryEl.append(...this.#daySections);
+
+    // Attach listeners to existing album children, and re-attach when a
+    // day-section rebuilds its albums (mode toggle).
+    this.#attachAllAlbumListeners();
+    galleryEl.addEventListener('pl-day-section-albums-changed', this.#handleSectionAlbumsChanged);
+
+    // Reset scroll
+    galleryEl.scrollTop = 0;
+
+    // Wait for next frame so flex/flow layout settles before measuring
+    // offsetTop and painting thumbs.
     requestAnimationFrame(() => {
       this.#selectivelyPaintAlbums();
       this.#updateNavBtnState();
     });
 
-    // Trash bar
-    if(this.#mode === 'trash'){
+    if (this.#mode === 'trash') {
       let trashBar = this.shadowRoot.getElementById('trash-bar');
       trashBar.style.display = '';
       this.#updateTrashCount();
       this.shadowRoot.getElementById('empty-trash-btn').addEventListener('click', this.#handleEmptyTrash);
     }
 
-  // DESIGN: The slideshow is a "view mode" of the gallery, not a separate page.
-  // pl-gallery owns the slideshow lifecycle: creates it as a child in its shadow DOM,
-  // listens to its events, and removes it on close. This keeps the gallery's scroll
-  // position and DOM intact while the slideshow is open, enabling incremental scroll
-  // sync as the user navigates slides.
-
-  // DESIGN: pl-slideshow-item-changed bubbles up from the child slideshow on every
-  // next/prev navigation. Gallery intercepts it to:
-  //   1. Scroll the gallery to the current item (invisible to user, since slideshow
-  //      covers the viewport via position:fixed). This ensures the gallery is already
-  //      scrolled to the right place when the slideshow closes.
-  //   2. Re-dispatch as pl-gallery-slideshow-changed for app-shell to update the URL.
-
-  // DESIGN: pl-slideshow-closed bubbles up when user presses Escape or the close button.
-  // Gallery intercepts it to remove the slideshow and restore nav buttons.
-  // The pl-gallery-slideshow-closed event then bubbles to app-shell for URL cleanup.
-
-    this.addEventListener('pl-gallery-item-clicked', (evt)=>{
+    // Slideshow plumbing - same design as before, just flattened source data.
+    this.addEventListener('pl-gallery-item-clicked', (evt) => {
       evt.stopPropagation();
       this.openSlideshow(evt.detail.id);
-    })
+    });
 
-    this.addEventListener('pl-slideshow-item-changed', (evt)=>{
+    this.addEventListener('pl-slideshow-item-changed', (evt) => {
       evt.stopPropagation();
       this.#scrollToItem(evt.detail.currentItemId);
       this.dispatchEvent(new CustomEvent('pl-gallery-slideshow-changed', {
         composed: true, bubbles: true,
         detail: { currentItemId: evt.detail.currentItemId }
       }));
-    })
+    });
 
-    this.addEventListener('pl-slideshow-closed', (evt)=>{
+    this.addEventListener('pl-slideshow-closed', (evt) => {
       evt.stopPropagation();
       this.closeSlideshow(evt.detail.currentItemId);
-    })
+    });
 
-    this.shadowRoot.getElementById('gallery')
-      .addEventListener('scroll', this.#throttleHandleScroll)
-    ;
-    this.shadowRoot.getElementById('gallery')
-      .addEventListener('scrollend', this.#updateNavBtnState)
-    ;
-    
-    this.shadowRoot.getElementById('next-album-btn')
-      .addEventListener('click', this.#scrollToNextAlbum)
-    ;
-    this.shadowRoot.getElementById('prev-album-btn')
-      .addEventListener('click', this.#scrollToPrevAlbum)
-    ;
+    galleryEl.addEventListener('scroll', this.#throttleHandleScroll);
+    galleryEl.addEventListener('scrollend', this.#updateNavBtnState);
+    this.shadowRoot.getElementById('next-day-btn').addEventListener('click', this.#scrollToNextDay);
+    this.shadowRoot.getElementById('prev-day-btn').addEventListener('click', this.#scrollToPrevDay);
+    window.addEventListener('resize', this.#throttleHandleResize);
 
-    window.addEventListener('resize', this.#throttleHandleResize)
-    ;
-
-    // Open slideshow if requested via property (e.g. direct URL visit)
     if (this.#slideshowItemId) {
       requestAnimationFrame(() => this.openSlideshow(this.#slideshowItemId));
     }
   }
 
-  // TODO: can we add only one set of listeners to all albums?
-  #addAlbumEventListeners = (album)=>{
+  // Greatest item.data.t in the album (0 if none have hasTime). Used to
+  // position newly created albums within their day-section so the order
+  // tracks time DESC, matching how items are ordered everywhere else.
+  #albumMaxT(album) {
+    if (!album.data?.length) return 0;
+    let max = 0;
+    for (let item of album.data) {
+      if (item.data?.hasTime && (item.data.t || 0) > max) max = item.data.t;
+    }
+    return max;
+  }
+
+  // Walk all day-sections to get the flat album list. Used for selective
+  // painting and any cross-album operation.
+  #allAlbums() {
+    return this.#daySections.flatMap(s => s.albums);
+  }
+
+  #attachAllAlbumListeners() {
+    for (let album of this.#allAlbums()) this.#attachAlbumListeners(album);
+  }
+
+  #attachAlbumListeners(album) {
+    if (album.dataset.listenersAttached) return;
+    album.dataset.listenersAttached = '1';
     album.addEventListener('pl-album-height-changed', this.#handleAlbumHeightChange);
     album.addEventListener('pl-album-empty', this.#removeAlbum);
     album.addEventListener('pl-album-item-selected', this.#handleItemsSelected);
-    album.addEventListener('pl-album-move-selected-items', (evt)=>{
-      this.#createOrMoveSelectedItems(evt.detail.newAlbumName.trim())
+    album.addEventListener('pl-album-move-selected-items', (evt) => {
+      this.#createOrMoveSelectedItems(evt.detail.newAlbumName.trim());
     });
   }
 
-  #handleItemsSelected = (evt)=>{
-    let {selectAlbum, selected, selectedItems} = evt.detail;
+  #handleSectionAlbumsChanged = () => {
+    // Day-section toggled mode and rebuilt its albums. Selection state from
+    // before is no longer valid (item element references are stale); clear
+    // selection and re-attach listeners.
+    if (this.#itemsSelected.length > 0) {
+      this.#removeGalleryControls();
+    }
+    this.#attachAllAlbumListeners();
+    requestAnimationFrame(() => {
+      this.#selectivelyPaintAlbums();
+      this.#updateNavBtnState();
+    });
+  }
 
-    // update the list with the ones selected/de-selected
-    if(selected){
-      // TODO: edge case - if the album is first selected, then the album name is changed, that changed 
-      // album name is not going to be reflected in here. Need to think of a different design
-      
-      this.#albumsSelectedCnt[selectAlbum] =  this.#albumsSelectedCnt[selectAlbum] || 0 + selectedItems.length;
+  #handleItemsSelected = (evt) => {
+    let { selectAlbum, selected, selectedItems } = evt.detail;
+
+    if (selected) {
+      this.#albumsSelectedCnt[selectAlbum] = (this.#albumsSelectedCnt[selectAlbum] || 0) + selectedItems.length;
       this.#itemsSelected.push(...selectedItems);
     } else {
       this.#albumsSelectedCnt[selectAlbum] -= selectedItems.length;
-      // remove selectedItems from this.#itemsSelected
-      // https://stackoverflow.com/a/47017949/8098748
-      this.#itemsSelected = this.#itemsSelected.filter(function(a) {
-        return !selectedItems.find(function(b) {
-          return a.data.id === b.data.id
-        })
-      })
+      this.#itemsSelected = this.#itemsSelected.filter(a =>
+        !selectedItems.find(b => a.data.id === b.data.id)
+      );
     }
 
-    if(this.#itemsSelected.length > 0){
-      
-      if(!this.shadowRoot.querySelector('pl-gallery-controls')){
+    if (this.#itemsSelected.length > 0) {
+      if (!this.shadowRoot.querySelector('pl-gallery-controls')) {
         let c = document.createElement('pl-gallery-controls');
         c.mode = this.#mode;
         c.collectionId = this.#query.collectionId;
+        c.placeholderText = this.#placeholderText;
         this.shadowRoot.append(c);
 
         c.addEventListener('pl-gallery-controls-closed', this.#handleGalleryControlsClosed);
@@ -241,8 +262,8 @@ class PlGallery extends HTMLElement {
         c.addEventListener('pl-gallery-controls-delete-pressed', this.#handleGalleryControlsDeletePressed);
         c.addEventListener('pl-gallery-controls-restore-pressed', this.#handleGalleryControlsRestorePressed);
         c.addEventListener('pl-gallery-controls-cleanup-pressed', this.#handleGalleryControlsCleanupPressed);
-        c.addEventListener('pl-gallery-controls-dialog-save', (evt)=>{
-          this.#createOrMoveSelectedItems(evt.detail.trim())
+        c.addEventListener('pl-gallery-controls-dialog-save', (evt) => {
+          this.#createOrMoveSelectedItems(evt.detail.trim());
         });
       }
 
@@ -250,203 +271,228 @@ class PlGallery extends HTMLElement {
       c.ctr = this.#itemsSelected.length;
       c.selectedAlbums = this.#albumsSelectedCnt;
 
-      let distinctRatings = [... new Set(this.#itemsSelected.map(x=>x.data.rating))]
+      let distinctRatings = [...new Set(this.#itemsSelected.map(x => x.data.rating))];
+      c.rating = distinctRatings.length === 1 ? distinctRatings[0] : 0;
+      c.allPrivate = this.#itemsSelected.every(x => x.data.private);
 
-      // if all selected items have the same rating, then set the value to that rating.
-      // otherwise don't set the rating
-      if (distinctRatings.length == 1){
-        c.rating = distinctRatings[0]
-      } else {
-        c.rating = 0
-      }
-
-      let allPrivate = this.#itemsSelected.every(x => x.data.private);
-      c.allPrivate = allPrivate;
-
-      
-    } else if(this.#itemsSelected.length == 0){
+    } else {
       this.#removeGalleryControls();
     }
   }
 
-  #createOrMoveSelectedItems = async (targetAlbumName)=>{
-    let allAlbumNames = this.#albums.map(x=>x.album_name);
-  
-    try {
-      await moveItems(1, this.#itemsSelected.map(x=>x.data.id), targetAlbumName);
+  // Move selected items to a target album (descriptive name only - the
+  // server constructs the per-day folder path itself). When the selection
+  // spans multiple days, each day gets its own folder so items stay
+  // aligned with their own day in the timeline.
+  //
+  // Per-day moves run in parallel. Failures are reported per day; only the
+  // items in successfully moved days are removed from their source albums
+  // (Option A: partial success preserves the rest of the UI state).
+  #createOrMoveSelectedItems = async (descName) => {
+    descName = (descName || '').trim();
+    let collectionId = this.#query.collectionId;
 
-      // now update UI
-      // TODO: Find if the item is already in the targetAlbum, and if yes, ignore
+    let movedItems = this.#itemsSelected.slice();
 
-      // first delete selected items from current album(s)
-      // this only deletes the references to the selected items from the source albums
-      // the selected items are also in the selectedItems list
-      this.#albums.forEach(album=>album.deleteSelectedItems());
+    // Group items by their original day. day === albumDate for the timeline.
+    let byDay = new Map();
+    for (let item of movedItems) {
+      const day = item.day || item.albumDate;
+      if (!byDay.has(day)) byDay.set(day, []);
+      byDay.get(day).push(item);
+    }
 
-      // Clean up stale element references and selection state from moved items.
-      // The source album's deleteSelectedItems applies a scale(0) animation to the
-      // old elem, so we must discard it so addNewItems creates fresh elements
-      // with correct transforms in the target album.
-      // Why not just reset scale to 1? Because the old elem's entire style.transform
-      // is wrong -- it has translate(x,y) values for its position in the SOURCE album.
-      // After doLayout runs in addNewItems, the item gets new layout.trX/trY for the
-      // target album, but #paintItem's !isConnected branch only re-appends without
-      // updating transform/dimensions. Discarding elem forces the undefined path in
-      // #paintItem, which creates a fresh element with correct position, size, and no
-      // leftover animation state.
-      for (let item of this.#itemsSelected) {
+    // Build per-day plan: target (date, name) + items + uuid list for the API.
+    let plan = [...byDay.entries()].map(([day, items]) => ({
+      day,
+      items,
+      targetAlbumDate: day,
+      targetAlbumName: descName,
+      uuids: items.map(i => i.data.id)
+    }));
+
+    let results = await Promise.allSettled(
+      plan.map(p => moveItems(collectionId, p.uuids, p.targetAlbumDate, p.targetAlbumName))
+    );
+
+    let okPlan = [];
+    let failures = [];
+    results.forEach((r, i) => {
+      if (r.status === 'fulfilled') okPlan.push(plan[i]);
+      else failures.push({ day: plan[i].day, count: plan[i].items.length, err: r.reason });
+    });
+
+    if (failures.length) {
+      let total = failures.reduce((s, f) => s + f.count, 0);
+      let msg = failures.map(f => `${f.day}: ${f.err?.error?.message || f.err?.message || 'failed'}`).join('<br>');
+      notify(`<strong>${total} item${total > 1 ? 's' : ''} failed to move</strong><br>${msg}`, 'error', -1);
+    }
+
+    if (okPlan.length === 0) {
+      this.#handleGalleryControlsClosed();
+      return;
+    }
+
+    let successIds = new Set();
+    for (let p of okPlan) {
+      for (let item of p.items) successIds.add(item.data.id);
+    }
+
+    for (let album of this.#allAlbums()) album.deleteItemsByIds(successIds);
+
+    for (let p of okPlan) {
+      for (let item of p.items) {
         item.elem = undefined;
         if (item.layout) item.layout.selected = false;
       }
-
-      // now add them to the target album
-      if(allAlbumNames.includes(targetAlbumName)){
-        // album exists, just move the items there
-        let targetAlbum = this.#albums.find(x=>x.album_name == targetAlbumName);
-        targetAlbum.addNewItems(this.#itemsSelected);
-
-      } else {
-        // create new album
-        let newAlbum = Object.assign(document.createElement('pl-album'), {
-          id: targetAlbumName.replaceAll(/[\s/]/gi, '_'),
-          album_name: targetAlbumName,
-          data: this.#itemsSelected,
-          width: this.shadowRoot.getElementById('gallery').clientWidth,
-          collectionId: this.#query.collectionId
-        });
-
-        this.#addAlbumEventListeners(newAlbum);
-
-        // find where to insert the new album element
-        allAlbumNames.push(targetAlbumName);
-        allAlbumNames.sort().reverse();
-        // before ['a', 'b', 'c', 'd']   now insert in position 2
-        // after ['a', 'b', 'b-new', 'c', 'd']
-        let i = allAlbumNames.indexOf(targetAlbumName);
-        if(i==this.#albums.length){
-          // insert at the end of the current album list, and make DOM changes
-          this.#albums.push(newAlbum);
-          this.shadowRoot.getElementById('gallery').appendChild(newAlbum);
-        } else {
-          // need to insert in the middle
-          this.#albums.splice(i, 0, newAlbum);
-          let el = this.shadowRoot.getElementById('gallery').querySelector(`:nth-child(${i+1})`); // css index starts with 1
-          el.insertAdjacentElement('beforebegin', newAlbum);
-
-        }
-      }
-
-      this.#reAssignAlbumPositions();
-      // Defer selective painting to the next frame to ensure album offsetTop values
-      // are settled after position reassignment (layout reflow).
-      requestAnimationFrame(() => this.#selectivelyPaintAlbums());
-
-      notify(`${this.#itemsSelected.length} item${this.#itemsSelected.length > 1 ? 's' : ''} moved`, 'success');
-
-      // We don't want to keep the items selected, hence force gallery controls close
-      this.#handleGalleryControlsClosed();
-
-
-
-    } catch (err) {
-      notify(`<strong>Error</strong>:</br>${err.error?.message || err.message || err}`, 'error', -1);
     }
 
+    for (let p of okPlan) {
+      let section = this.#daySections.find(s => s.day === p.day);
+      if (!section) continue;
+
+      // Update each item's albumName to the new value so future operations
+      // see it correctly.
+      for (let item of p.items) item.albumName = p.targetAlbumName;
+
+      let existingAlbum = section.albums.find(a => a.album_name === p.targetAlbumName);
+      if (existingAlbum) {
+        existingAlbum.addNewItems(p.items.map(i => ({
+          data: i.data, layout: {}, day: p.day,
+          albumDate: p.day, albumName: p.targetAlbumName
+        })));
+      } else {
+        let newAlbumMaxT = Math.max(0, ...p.items
+          .filter(i => i.data?.hasTime)
+          .map(i => i.data.t || 0));
+
+        let insertBefore = section.albums.find(a => this.#albumMaxT(a) < newAlbumMaxT);
+
+        let newAlbum = Object.assign(document.createElement('pl-album'), {
+          id: `${p.day}-${(p.targetAlbumName || '').replaceAll(/[\s/&]/gi, '_') || 'unnamed'}`,
+          album_name: p.targetAlbumName,
+          album_date: p.day,
+          data: p.items.map(i => ({
+            data: i.data, layout: {}, day: p.day,
+            albumDate: p.day, albumName: p.targetAlbumName
+          })),
+          width: this.shadowRoot.getElementById('gallery').clientWidth,
+          collectionId,
+          placeholderText: this.#placeholderText
+        });
+        this.#attachAlbumListeners(newAlbum);
+
+        let albumsContainer = section.shadowRoot.getElementById('albums');
+        if (insertBefore) {
+          albumsContainer.insertBefore(newAlbum, insertBefore);
+          let idx = section.albums.indexOf(insertBefore);
+          section.albums.splice(idx, 0, newAlbum);
+        } else {
+          albumsContainer.appendChild(newAlbum);
+          section.albums.push(newAlbum);
+        }
+      }
+    }
+
+    requestAnimationFrame(() => this.#selectivelyPaintAlbums());
+
+    let movedCnt = okPlan.reduce((s, p) => s + p.items.length, 0);
+    notify(`${movedCnt} item${movedCnt > 1 ? 's' : ''} moved`, 'success');
+
+    if (failures.length === 0) {
+      this.#handleGalleryControlsClosed();
+    }
   }
 
-  #handleGalleryControlsClosed = ()=>{
-    this.#albums.forEach(album=>{
-      album.unselectSelectedItems();
-    });
-    
+  #handleGalleryControlsClosed = () => {
+    for (let album of this.#allAlbums()) album.unselectSelectedItems();
     this.#removeGalleryControls();
   }
   
-  #removeGalleryControls = ()=>{
-    this.#itemsSelected = []; this.#albumsSelectedCnt = {};
-
+  #removeGalleryControls = () => {
+    this.#itemsSelected = [];
+    this.#albumsSelectedCnt = {};
     let c = this.shadowRoot.querySelector('pl-gallery-controls');
-    c.remove();
+    if (c) c.remove();
   }
 
-  #handleGalleryControlsRatingChanged = async (evt)=>{
+  #handleGalleryControlsRatingChanged = async (evt) => {
     try {
-      await updateRating(this.#itemsSelected.map(x=>x.data.id), evt.detail.newRating);
-      this.#albums.forEach(album=>{
-        album.changeRatingSelectedItems(evt.detail.newRating);
-      });
-      notify(`Updated rating for ${this.#itemsSelected.length} item${this.#itemsSelected.length > 1 ? 's' : ''}`, 'success');
+      await updateRating(this.#itemsSelected.map(x => x.data.id), evt.detail.newRating);
+      for (let album of this.#allAlbums()) album.changeRatingSelectedItems(evt.detail.newRating);
+      let n = this.#itemsSelected.length;
+      notify(`Updated rating for ${n} item${n > 1 ? 's' : ''}`, 'success');
     } catch(err) {
       notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
     }
   }
 
-  #handleGalleryControlsDeletePressed = async ()=>{
+  #handleGalleryControlsDeletePressed = async () => {
     try {
-      await trashItems(1, this.#itemsSelected.map(x=>x.data.id));
-      this.#albums.forEach(album=>album.deleteSelectedItems());
-      let trashedCnt = this.#itemsSelected.length;
+      await trashItems(1, this.#itemsSelected.map(x => x.data.id));
+      for (let album of this.#allAlbums()) album.deleteSelectedItems();
+      let n = this.#itemsSelected.length;
       this.#removeGalleryControls();
-      notify(`${trashedCnt} item${trashedCnt > 1 ? 's' : ''} moved to trash`, 'success');
+      notify(`${n} item${n > 1 ? 's' : ''} moved to trash`, 'success');
     } catch(err) {
       notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
     }
   }
 
-  #handleGalleryControlsPrivateToggled = async (evt)=>{
-    let {makePrivate} = evt.detail;
+  #handleGalleryControlsPrivateToggled = async (evt) => {
+    let { makePrivate } = evt.detail;
     try {
-      await togglePrivate(1, this.#itemsSelected.map(x=>x.data.id), makePrivate);
-      let cnt = this.#itemsSelected.length;
-      this.#albums.forEach(album=>album.deleteSelectedItems());
+      await togglePrivate(1, this.#itemsSelected.map(x => x.data.id), makePrivate);
+      let n = this.#itemsSelected.length;
+      for (let album of this.#allAlbums()) album.deleteSelectedItems();
       this.#removeGalleryControls();
-      notify(`${cnt} item${cnt > 1 ? 's' : ''} ${makePrivate ? 'marked private' : 'unmarked private'}`, 'success');
+      notify(`${n} item${n > 1 ? 's' : ''} ${makePrivate ? 'marked private' : 'unmarked private'}`, 'success');
     } catch(err) {
       notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
     }
   }
 
-  #handleGalleryControlsRestorePressed = async ()=>{
+  #handleGalleryControlsRestorePressed = async () => {
     try {
-      await restoreFromTrash(1, this.#itemsSelected.map(x=>x.data.id));
-      let cnt = this.#itemsSelected.length;
-      this.#albums.forEach(album=>album.deleteSelectedItems());
+      await restoreFromTrash(1, this.#itemsSelected.map(x => x.data.id));
+      let n = this.#itemsSelected.length;
+      for (let album of this.#allAlbums()) album.deleteSelectedItems();
       this.#removeGalleryControls();
-      notify(`${cnt} item${cnt > 1 ? 's' : ''} restored from trash`, 'success');
-      if(this.#mode === 'trash') this.#updateTrashCount();
+      notify(`${n} item${n > 1 ? 's' : ''} restored from trash`, 'success');
+      if (this.#mode === 'trash') this.#updateTrashCount();
     } catch(err) {
       notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
     }
   }
 
-  #handleGalleryControlsCleanupPressed = async ()=>{
+  #handleGalleryControlsCleanupPressed = async () => {
     try {
-      await cleanupTrash(1, this.#itemsSelected.map(x=>x.data.id));
-      let cnt = this.#itemsSelected.length;
-      this.#albums.forEach(album=>album.deleteSelectedItems());
+      await cleanupTrash(1, this.#itemsSelected.map(x => x.data.id));
+      let n = this.#itemsSelected.length;
+      for (let album of this.#allAlbums()) album.deleteSelectedItems();
       this.#removeGalleryControls();
-      notify(`${cnt} item${cnt > 1 ? 's' : ''} permanently deleted`, 'success');
-      if(this.#mode === 'trash') this.#updateTrashCount();
+      notify(`${n} item${n > 1 ? 's' : ''} permanently deleted`, 'success');
+      if (this.#mode === 'trash') this.#updateTrashCount();
     } catch(err) {
       notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
     }
   }
 
-  #handleEmptyTrash = async ()=>{
+  #handleEmptyTrash = async () => {
     let result = await showConfirmDialog(
       'Empty Trash',
       'This will permanently delete all items in trash. This cannot be undone.',
       'Empty Trash',
       'Cancel'
     );
-    if(result !== 1) return;
+    if (result !== 1) return;
 
     try {
       let allUuids = this.#data.flatMap(d => d.items.map(i => i.data.id));
       await emptyTrash(1, allUuids);
-      // remove all albums from gallery
-      this.#albums.forEach(a => a.remove());
-      this.#albums = [];
+      // remove all day sections
+      for (let s of this.#daySections) s.remove();
+      this.#daySections = [];
       this.#albumsInBuffer = {};
       this.#updateTrashCount();
       notify('Trash emptied', 'success');
@@ -455,220 +501,166 @@ class PlGallery extends HTMLElement {
     }
   }
 
-  #updateTrashCount = ()=>{
-    let totalItems = this.#albums.reduce((sum, a) => sum + a.data.length, 0);
+  #updateTrashCount = () => {
+    let totalItems = this.#allAlbums().reduce((sum, a) => sum + a.data.length, 0);
     this.shadowRoot.getElementById('trash-info').textContent = `${totalItems} item${totalItems !== 1 ? 's' : ''} in trash`;
     this.shadowRoot.getElementById('empty-trash-btn').disabled = totalItems === 0;
   }
 
-  #reAssignAlbumPositions(){
-    let cumHeight = 0;
-    this.#albums.forEach(album=>{
-      album.style.top = cumHeight+'px';
-      album.style.left = '0px';
-
-      cumHeight += album.album_height; //+ 40; // px between albums
-    });
-  }
-  
   #handleAlbumHeightChange = () => {
-    // apply "style: top" changes to all albums
-    this.#reAssignAlbumPositions();
-
-    // paint albums twice for better user experience
-    // painting only once after timeout causes an unnecessary delay 
-    // in resizing last row when items are deleted at the bottom of the album
+    // With normal flow (flex column) for day-sections + albums, the browser
+    // recomputes layout after a child height change. We just need to repaint
+    // visible thumbs.
     this.#selectivelyPaintAlbums();
-    
-    // bring more items to the buffer, or remove items from buffer as necessary
-    // need to wait for the album height animation to complete, before doing this
-    // so that 'offsetTop' value is properly obtained
-    setTimeout(() => {
-      this.#selectivelyPaintAlbums();
-    }, 300);
+    setTimeout(() => this.#selectivelyPaintAlbums(), 300);
   }
 
   #removeAlbum = (evt) => {
-    let deletedAlbumId = evt.composedPath()[0].id;
+    let albumEl = evt.composedPath().find(el => el.tagName?.toLowerCase() === 'pl-album');
+    if (!albumEl) return;
 
-    let idx = this.#albums.findIndex(x=>x.id == deletedAlbumId);
+    // Find which day-section owns this album and remove it from there
+    for (let section of this.#daySections) {
+      let idx = section.albums.indexOf(albumEl);
+      if (idx !== -1) {
+        albumEl.remove();
+        section.albums.splice(idx, 1);
+        delete this.#albumsInBuffer[albumEl.id];
 
-    // remove the album from DOM as well as reference in array
-    this.shadowRoot.getElementById(deletedAlbumId).remove();
-    this.#albums.splice(idx, 1);
-    delete(this.#albumsInBuffer[deletedAlbumId]);
+        // If the day-section is now empty, remove it too
+        if (section.albums.length === 0) {
+          let sIdx = this.#daySections.indexOf(section);
+          if (sIdx !== -1) {
+            section.remove();
+            this.#daySections.splice(sIdx, 1);
+          }
+        }
+        break;
+      }
+    }
 
     this.#handleAlbumHeightChange();
-
   }
 
   #selectivelyPaintAlbums(forceRepaint = true) {
-    
-    //   --------------------------------------- bufferTop (-ve value)
-    //
-    //
-    //
-    //   --------------------------------------- 0px
-    //                    ^
-    //                    |
-    //                    |
-    //                 Viewport
-    //                    |
-    //                    |
-    //                    v
-    //   ---------------------------------------
-    //
-    //
-    //
-    //   --------------------------------------- bufferBottom
-    
-    // to be able to do math, we convert scroll to a -ve number
-    
-    let scrollTop = -this.shadowRoot.getElementById('gallery').scrollTop;
-    
-    // we make the buffers on each side 6 times the size of the screen
+    let galleryEl = this.shadowRoot.getElementById('gallery');
+    let scrollTop = -galleryEl.scrollTop;
+    let viewportHeight = galleryEl.clientHeight;
+    let bufferTop = viewportHeight * -6;
+    let bufferBottom = viewportHeight * (1 + 6);
 
-    // bufferTop: px above the top of the viewport
-    // bufferBottom: px below the bottom of the viewport
-    let viewportHeight = this.shadowRoot.getElementById('gallery').clientHeight,
-      bufferTop = viewportHeight * -6, 
-      bufferBottom = viewportHeight * (1+6);
-    
-    this.#albums.forEach(album=>{
-      let albumTop = album.offsetTop + scrollTop, albumBottom = albumTop + album.album_height;
+    for (let section of this.#daySections) {
+      let sectionTop = section.offsetTop + scrollTop;
+      let sectionBottom = sectionTop + section.offsetHeight;
 
-      let albumBottomInBuffer = () => (albumBottom >= bufferTop && albumBottom <= bufferBottom);
-      let albumTopInBuffer    = () => (albumTop    >= bufferTop && albumTop    <= bufferBottom);
-      let albumEncompassesBuffer = () => (albumTop <= bufferTop && albumBottom >= bufferBottom);
+      let intersectsBuffer =
+        (sectionBottom >= bufferTop && sectionBottom <= bufferBottom) ||
+        (sectionTop >= bufferTop && sectionTop <= bufferBottom) ||
+        (sectionTop <= bufferTop && sectionBottom >= bufferBottom);
 
-      // in case the full album was already loaded in the buffer, and the entire album continues to exist,
-      // take a shortcut and no need to adjust anything, unless explicitly set during the function call.
-      
-      // for e.g. scroll doesn't need to repaint everything, however, a delete or album height change will
-      // need to repaint even though the entire album may have already been loaded and contines to exist in the buffer
-      if (
-        !forceRepaint &&
-        this.#albumsInBuffer[album.id] && this.#albumsInBuffer[album.id] == 'full' && // full album is loaded
-        albumBottomInBuffer() && albumTopInBuffer()
-      ) {
-        // don't need to do anything
-        // console.log(`not doing ${album.id}`);
-        return;
-      }
+      if (intersectsBuffer) {
+        // Day-section partially or fully visible. Drill into albums.
+        for (let album of section.albums) {
+          let albumTop = section.offsetTop + album.offsetTop + scrollTop;
+          let albumBottom = albumTop + album.album_height;
 
-      if (albumEncompassesBuffer()){
-        this.#albumsInBuffer[album.id] = 'buffer-overflow';
-        album.selectivelyPaintLayout(bufferTop, bufferBottom, albumTop);
-      }
-      // if albumTop is within the buffer or albumBottom is within the buffer, we need to show
-      // (at least part of) the album
-      else if (albumBottomInBuffer() || albumTopInBuffer()) {
-        album.selectivelyPaintLayout(bufferTop, bufferBottom, albumTop);
-        
-        if (albumBottomInBuffer() && albumTopInBuffer()){
-          this.#albumsInBuffer[album.id] = 'full';
+          let albumBottomInBuffer = albumBottom >= bufferTop && albumBottom <= bufferBottom;
+          let albumTopInBuffer = albumTop >= bufferTop && albumTop <= bufferBottom;
+          let albumEncompassesBuffer = albumTop <= bufferTop && albumBottom >= bufferBottom;
 
-        } else {
-          this.#albumsInBuffer[album.id] = 'partial';
+          // Shortcut: don't repaint if already fully loaded and unchanged
+          // (only matters during scroll, not for forced repaints).
+          if (
+            !forceRepaint &&
+            this.#albumsInBuffer[album.id] === 'full' &&
+            albumBottomInBuffer && albumTopInBuffer
+          ) {
+            continue;
+          }
+
+          if (albumEncompassesBuffer) {
+            this.#albumsInBuffer[album.id] = 'buffer-overflow';
+            album.selectivelyPaintLayout(bufferTop, bufferBottom, albumTop);
+          } else if (albumBottomInBuffer || albumTopInBuffer) {
+            album.selectivelyPaintLayout(bufferTop, bufferBottom, albumTop);
+            this.#albumsInBuffer[album.id] =
+              (albumBottomInBuffer && albumTopInBuffer) ? 'full' : 'partial';
+          } else {
+            if (this.#albumsInBuffer[album.id]) {
+              album.selectivelyPaintLayout(bufferTop, bufferBottom, albumTop);
+              delete this.#albumsInBuffer[album.id];
+            }
+          }
         }
-        
       } else {
-        // the album is not within the buffered area
-        
-        if(this.#albumsInBuffer[album.id]){
-          // if the album was in the buffered area before, selectively paint layout once more,
-          // so any visible thumbs can be removed
-          album.selectivelyPaintLayout(bufferTop, bufferBottom, albumTop);
-          delete this.#albumsInBuffer[album.id];
+        // Day-section out of buffer entirely. Unpaint any of its albums
+        // that were previously painted.
+        for (let album of section.albums) {
+          if (this.#albumsInBuffer[album.id]) {
+            let albumTop = section.offsetTop + album.offsetTop + scrollTop;
+            album.selectivelyPaintLayout(bufferTop, bufferBottom, albumTop);
+            delete this.#albumsInBuffer[album.id];
+          }
         }
       }
-    });
-
-    console.log(this.#albumsInBuffer)
-  }
-
-  #scrollToNextAlbum = () => {
-    let gallery = this.shadowRoot.getElementById('gallery');
-    let scrollTop = gallery.scrollTop;
-    let nextAlbum = this.#albums.find(a => a.offsetTop > scrollTop + 1);
-    if (nextAlbum) {
-      gallery.scrollTo({ top: nextAlbum.offsetTop, behavior: 'smooth' });
     }
   }
 
-  #scrollToPrevAlbum = () => {
+  #scrollToNextDay = () => {
     let gallery = this.shadowRoot.getElementById('gallery');
     let scrollTop = gallery.scrollTop;
-    let prevAlbum = this.#albums.findLast(a => a.offsetTop < scrollTop - 1);
-    if (prevAlbum) {
-      gallery.scrollTo({ top: prevAlbum.offsetTop, behavior: 'smooth' });
-    }
+    let next = this.#daySections.find(s => s.offsetTop > scrollTop + 1);
+    if (next) gallery.scrollTo({ top: next.offsetTop, behavior: 'smooth' });
+  }
+
+  #scrollToPrevDay = () => {
+    let gallery = this.shadowRoot.getElementById('gallery');
+    let scrollTop = gallery.scrollTop;
+    let prev = this.#daySections.findLast(s => s.offsetTop < scrollTop - 1);
+    if (prev) gallery.scrollTo({ top: prev.offsetTop, behavior: 'smooth' });
   }
 
   #updateNavBtnState = () => {
     let gallery = this.shadowRoot.getElementById('gallery');
     let scrollTop = gallery.scrollTop;
     let maxScroll = gallery.scrollHeight - gallery.clientHeight;
-    let currentIdx = this.#albums.findLastIndex(a => a.offsetTop <= scrollTop + 1);
-    this.shadowRoot.getElementById('prev-album-btn').disabled = currentIdx <= 0;
-    this.shadowRoot.getElementById('next-album-btn').disabled = currentIdx >= this.#albums.length - 1 || scrollTop >= maxScroll - 1;
+    let currentIdx = this.#daySections.findLastIndex(s => s.offsetTop <= scrollTop + 1);
+    this.shadowRoot.getElementById('prev-day-btn').disabled = currentIdx <= 0;
+    this.shadowRoot.getElementById('next-day-btn').disabled =
+      currentIdx >= this.#daySections.length - 1 || scrollTop >= maxScroll - 1;
   }
 
-  #throttleHandleScroll = throttle(()=>{ this.#selectivelyPaintAlbums(false); this.#updateNavBtnState(); }, 100);
+  #throttleHandleScroll = throttle(() => {
+    this.#selectivelyPaintAlbums(false);
+    this.#updateNavBtnState();
+  }, 100);
 
   #handleResize() {
-    // apply the new width to all albums
-    this.#reAssignAlbumWidths();
-    // re-assign album positions, and selectively paint
-    this.#handleAlbumHeightChange();
-  }
-  
-  #reAssignAlbumWidths(){
-    this.#albums.forEach(album=>{
-      album.width = this.shadowRoot.getElementById('gallery').clientWidth;
-      album.redoLayout();
-    });
+    for (let section of this.#daySections) {
+      section.width = this.shadowRoot.getElementById('gallery').clientWidth;
+      section.redoLayout();
+    }
+    this.#selectivelyPaintAlbums();
   }
 
-  //debounceHandleResize = debounce(()=>this.#handleResize(), 300);
-  #throttleHandleResize = throttle(()=>this.#handleResize(), 100);
+  #throttleHandleResize = throttle(() => this.#handleResize(), 100);
 
   disconnectedCallback() {
-    this.shadowRoot.getElementById('gallery')
-      .removeEventListener('scroll', this.#throttleHandleScroll)
-    ;
-    this.shadowRoot.getElementById('gallery')
-      .removeEventListener('scrollend', this.#updateNavBtnState)
-    ;
-    this.shadowRoot.getElementById('next-album-btn')
-      .removeEventListener('click', this.#scrollToNextAlbum)
-    ;
-    this.shadowRoot.getElementById('prev-album-btn')
-      .removeEventListener('click', this.#scrollToPrevAlbum)
-    ;
-    window
-      .removeEventListener('resize', this.#throttleHandleResize)
-    ;
+    let galleryEl = this.shadowRoot.getElementById('gallery');
+    galleryEl?.removeEventListener('scroll', this.#throttleHandleScroll);
+    galleryEl?.removeEventListener('scrollend', this.#updateNavBtnState);
+    this.shadowRoot.getElementById('next-day-btn')?.removeEventListener('click', this.#scrollToNextDay);
+    this.shadowRoot.getElementById('prev-day-btn')?.removeEventListener('click', this.#scrollToPrevDay);
+    window.removeEventListener('resize', this.#throttleHandleResize);
   }
 
-  attributeChangedCallback(name, oldVal, newVal) {
-    //implementation
-  }
+  attributeChangedCallback() { /* unused */ }
+  adoptedCallback() { /* unused */ }
 
-  adoptedCallback() {
-    console.log('in adoptedCallback')
-  }
+  get mode() { return this.#mode; }
+  set mode(_) { this.#mode = _ || 'default'; }
 
-  get mode(){
-    return this.#mode;
-  }
-  set mode(_){
-    this.#mode = _ || 'default';
-  }
-
-  get query(){
-    return this.#query;
-  }
+  get query() { return this.#query; }
   /**
    * Mode-specific parameters for data fetching.
    * @param {object} _ - Query object, shape depends on mode:
@@ -677,30 +669,30 @@ class PlGallery extends HTMLElement {
    *   mode 'trash':   { collectionId: number }
    *   mode 'geo':     { collectionId: number, bounds: { sw: {lat, lng}, ne: {lat, lng} } }
    */
-  set query(_){
-    this.#query = _ || {};
-  }
+  set query(_) { this.#query = _ || {}; }
 
-  get slideshowItemId(){
-    return this.#slideshowItemId;
-  }
-  set slideshowItemId(_){
-    this.#slideshowItemId = _ || null;
-  }
+  get slideshowItemId() { return this.#slideshowItemId; }
+  set slideshowItemId(_) { this.#slideshowItemId = _ || null; }
+
+  get placeholderText() { return this.#placeholderText; }
+  set placeholderText(_) { this.#placeholderText = _ || ''; }
 
   get isSlideshowOpen() {
     return !!this.shadowRoot.querySelector('pl-slideshow');
   }
 
-  // DESIGN: openSlideshow is public so app-shell can call it for direct URL visits
-  // (e.g. user pastes #/app/slideshow/<uuid> into browser).
+  // DESIGN: openSlideshow is public so app-shell can call it for direct URL
+  // visits. Slideshow data is a flat [{album, items[]}], so we flatten across
+  // all day-sections and their albums.
   openSlideshow(startFromId) {
     if (this.isSlideshowOpen) return;
 
-    let slideshowData = this.#albums.map(x => ({
-      album: x.album_name,
-      items: x.data
-    }));
+    let slideshowData = [];
+    for (let section of this.#daySections) {
+      for (let album of section.albums) {
+        slideshowData.push({ album: album.album_name, items: album.data });
+      }
+    }
 
     let slideshow = Object.assign(document.createElement('pl-slideshow'), {
       data: slideshowData,
@@ -709,7 +701,7 @@ class PlGallery extends HTMLElement {
       mode: this.#mode
     });
 
-    this.shadowRoot.getElementById('album-nav-btns').style.display = 'none';
+    this.shadowRoot.getElementById('day-nav-btns').style.display = 'none';
     this.shadowRoot.appendChild(slideshow);
 
     this.dispatchEvent(new CustomEvent('pl-gallery-slideshow-opened', {
@@ -718,19 +710,10 @@ class PlGallery extends HTMLElement {
     }));
   }
 
-  // DESIGN: closeSlideshow is public so app-shell can call it when the browser back
-  // button triggers a route change (e.g. from /slideshow/<uuid> back to /).
-  // The #showGallery method in app-shell detects the existing gallery and calls this
-  // instead of rebuilding the gallery from scratch, preserving scroll position.
-  //
-  // DESIGN: Animates the slideshow shrinking into the thumbnail's position in the gallery,
-  // giving the visual impression that the photo "goes back" to where it came from.
-  // Uses transform scale + translate (GPU composited) rather than animating dimensions.
   closeSlideshow(currentItemId) {
     let slideshow = this.shadowRoot.querySelector('pl-slideshow');
     if (!slideshow) return;
 
-    // Resolve current item id if not provided (e.g. called from app-shell back button)
     if (!currentItemId) {
       let active = slideshow.shadowRoot?.querySelector('#slides [data-pos="0"]');
       if (active) {
@@ -739,13 +722,9 @@ class PlGallery extends HTMLElement {
       }
     }
 
-    // Restore nav buttons so they are visible as gallery appears
-    this.shadowRoot.getElementById('album-nav-btns').style.display = '';
+    this.shadowRoot.getElementById('day-nav-btns').style.display = '';
 
     let thumbRect = currentItemId ? this.#getThumbRect(currentItemId) : null;
-
-    // prepareForDismiss pauses video, hides chrome, removes black background,
-    // and returns the actual rendered media rect
     let mediaRect = slideshow.prepareForDismiss();
 
     if (!thumbRect || !mediaRect) {
@@ -754,8 +733,6 @@ class PlGallery extends HTMLElement {
       return;
     }
 
-    // Animate: shrink from media's rendered position to thumbnail position.
-    // Both are the same photo so aspect ratio matches -> uniform scale.
     let mediaCenterX = mediaRect.left + mediaRect.width / 2;
     let mediaCenterY = mediaRect.top + mediaRect.height / 2;
     let thumbCenterX = thumbRect.x + thumbRect.w / 2;
@@ -781,43 +758,37 @@ class PlGallery extends HTMLElement {
     });
   }
 
-  // Returns the thumbnail's screen-space rect {x, y, w, h} for the given item id,
-  // or null if not found.
   #getThumbRect(id) {
     let gallery = this.shadowRoot.getElementById('gallery');
     let galleryRect = gallery.getBoundingClientRect();
 
-    for (let album of this.#albums) {
-      let item = album.data.find(x => x.data.id === id);
-      if (item) {
-        return {
-          x: galleryRect.left + parseFloat(item.layout.trX),
-          y: galleryRect.top + album.offsetTop + item.layout.offsetHeight - gallery.scrollTop,
-          w: item.layout.width,
-          h: item.layout.height
-        };
+    for (let section of this.#daySections) {
+      for (let album of section.albums) {
+        let item = album.data.find(x => x.data.id === id);
+        if (item) {
+          return {
+            x: galleryRect.left + parseFloat(item.layout.trX),
+            y: galleryRect.top + section.offsetTop + album.offsetTop + item.layout.offsetHeight - gallery.scrollTop,
+            w: item.layout.width,
+            h: item.layout.height
+          };
+        }
       }
     }
     return null;
   }
 
-  // DESIGN: Scrolls the gallery to the item's position using album.offsetTop (the album's
-  // absolute position in the gallery) + item.layout.offsetHeight (the item's Y offset within
-  // the album, computed during layout). Since the gallery is underneath the slideshow
-  // (covered by position:fixed), this scroll is invisible to the user. The existing
-  // throttled scroll handler takes care of selectively painting thumbnails around the
-  // new scroll position.
   #scrollToItem(id) {
-    for (let album of this.#albums) {
-      let item = album.data.find(x => x.data.id === id);
-      if (item) {
-        let gallery = this.shadowRoot.getElementById('gallery');
-        let targetTop = album.offsetTop + item.layout.offsetHeight;
-        // Center the item's row in the viewport. scrollTo automatically
-        // clamps to valid scroll range, so no manual bounds checking needed.
-        let centered = targetTop - (gallery.clientHeight - item.layout.height) / 2;
-        gallery.scrollTo({ top: centered });
-        break;
+    for (let section of this.#daySections) {
+      for (let album of section.albums) {
+        let item = album.data.find(x => x.data.id === id);
+        if (item) {
+          let gallery = this.shadowRoot.getElementById('gallery');
+          let targetTop = section.offsetTop + album.offsetTop + item.layout.offsetHeight;
+          let centered = targetTop - (gallery.clientHeight - item.layout.height) / 2;
+          gallery.scrollTo({ top: centered });
+          return;
+        }
       }
     }
   }

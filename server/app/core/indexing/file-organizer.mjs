@@ -6,7 +6,7 @@ import { createLogger } from '#utils/logger';
 import { fmtTime } from '#utils/time-format';
 import { AppError } from '#utils/app-error';
 
-import dateformat from 'dateformat';
+import { format as formatPattern, parse as parsePattern } from '#utils/folder-pattern';
 
 import * as db from './indexer-db.mjs';
 import { config } from '#runtime-config';
@@ -26,7 +26,7 @@ export async function listAllFilesForCollection(collection) {
   logger.info(`starting to list all files for collection path: ${collection.collection_path}`);
 
   let files = await lsRecursive(collection.collection_path);
-  
+
   logger.info(`finished listing files in ${fmtTime(performance.now() - start)}`)
 
   return files;
@@ -50,73 +50,161 @@ export async function getFilesMtime(dir) {
   }, {});
 }
 
-export async function placeFileInCollection(collection, filename, file_date, inPlace=false){
-  let album, albumFilename,
-    dir = path.dirname(filename);
+// Convert a date-like string ('YYYY-MM-DD ...' or ISO with timezone) into the
+// {yyyy, mm, dd} fields expected by the moustache pattern engine. Returns null
+// if the input doesn't have a parseable date prefix.
+function dateFieldsFrom(capture_time) {
+  if (!capture_time) return null;
+  const d = new Date(capture_time);
+  if (isNaN(d.getTime())) {
+    // Fallback: parse the leading 'YYYY-MM-DD' if the string starts with one.
+    const m = String(capture_time).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) return null;
+    return { yyyy: m[1], mm: m[2], dd: m[3] };
+  }
+  return {
+    yyyy: String(d.getFullYear()),
+    mm: String(d.getMonth() + 1).padStart(2, '0'),
+    dd: String(d.getDate()).padStart(2, '0')
+  };
+}
 
-  if(inPlace){
-    // In place indexing. To be used for 
-    // 1) first time in-place indexing after setting up collection
-    // 2) collections that don't have specific listen_paths (i.e. new files come and 
-    //    sit directly in the collection_path)
+function dateStringFromFields(fields) {
+  if (!fields) return null;
+  return `${fields.yyyy}-${fields.mm}-${fields.dd}`;
+}
 
-    album = collection.album_type=='FOLDER_ALBUM' ? 
-      // relative folder becomes the album
-      dir.replace(collection.collection_path, "").replace(/^\//, '') : 
-      // album is just the date
-      dateformat(file_date, 'yyyy-mm-dd');  // TODO: timezone?
-  
-    albumFilename = filename;
-    await logChange(collection.collection_id, 'in-place', null, filename);
+/**
+ * Place a file in its collection and determine its album split.
+ *
+ * Returns: { album_date: 'YYYY-MM-DD', album_name: '...', filename: <abs path> }
+ *
+ * In intake mode (inPlace=false): file is moved into the collection at a path
+ * computed forward via the pattern engine using capture_time's date and an empty
+ * album_name (later optionally appended with collection.placeholder_album_text).
+ *
+ * In inPlace mode (inPlace=true): file is already at its target location;
+ * we parse the parent folder against the collection's apply_folder_pattern
+ * to extract album_date and album_name. If the path doesn't match the
+ * pattern (e.g. user placed the file in an unstructured folder), we fall
+ * back to capture_time's date for album_date and an empty album_name.
+ */
+export async function placeFileInCollection(collection, filename, capture_time, inPlace = false) {
+  if (inPlace) {
+    return placeInPlace(collection, filename, capture_time);
+  }
+  return placeViaIntake(collection, filename, capture_time);
+}
+
+async function placeInPlace(collection, filename, capture_time) {
+  let album_date, album_name = '';
+
+  if (collection.album_type === 'FOLDER_ALBUM' && collection.apply_folder_pattern) {
+    const relDir = path.relative(collection.collection_path, path.dirname(filename));
+    const parsed = parsePattern(relDir, collection.apply_folder_pattern);
+    if (parsed && parsed.yyyy && parsed.mm && parsed.dd) {
+      album_date = `${parsed.yyyy}-${parsed.mm}-${parsed.dd}`;
+      album_name = parsed.album || '';
+    } else {
+      // Folder doesn't match the pattern. Fall back to capture_time's date.
+      const f = dateFieldsFrom(capture_time);
+      album_date = dateStringFromFields(f) || '1970-01-01';
+      album_name = '';
+    }
   } else {
-    // i.e. file needs to be moved from listen_path to collection_path
+    // VIRTUAL_ALBUM has no folder structure - album_date comes from capture_time,
+    // album_name is empty.
+    const f = dateFieldsFrom(capture_time);
+    album_date = dateStringFromFields(f) || '1970-01-01';
+    album_name = '';
+  }
 
-    // extract format:
-    // For FOLDER_ALBUM, need to move file to the corresponding folder
-    // based on pattern specified in collection.
-    // For VIRTUAL_ALBUM, files will sit in collection_path, i.e. there
-    // is no sub-folder
-    // TODO: For VIRTUAL_ALBUM, does it make sense to move to similar path like thumbnails?
+  await logChange(collection.collection_id, 'in-place', null, filename);
 
-    let subFolder = collection.album_type=='FOLDER_ALBUM' ? 
-      dateformat(file_date, collection.apply_folder_pattern) : '';
-    
-    let newFolder = path.join(collection.collection_path, subFolder);
-    let newFileName = path.join(newFolder, path.basename(filename));
+  return { album_date, album_name, filename };
+}
+
+async function placeViaIntake(collection, filename, capture_time) {
+  // Intake creates a fresh folder for this file. album_date comes from
+  // capture_time; album_name defaults to the collection's placeholder text
+  // (so the user can later rename it from the gallery).
+  const fields = dateFieldsFrom(capture_time);
+  const album_date = dateStringFromFields(fields) || '1970-01-01';
+  const album_name = collection.placeholder_album_text || '';
+
+  if (collection.album_type === 'FOLDER_ALBUM') {
+    if (!collection.apply_folder_pattern) {
+      throw new Error(`Collection ${collection.collection_id} is FOLDER_ALBUM but has no apply_folder_pattern`);
+    }
+    const subFolder = formatPattern({ ...fields, album: album_name }, collection.apply_folder_pattern);
+    const newFolder = path.join(collection.collection_path, subFolder);
+    const newFileName = path.join(newFolder, path.basename(filename));
 
     await moveItem(collection.collection_id, filename, newFileName);
 
-    album = collection.album_type=='FOLDER_ALBUM' ? 
-      // newly created sub folder becomes the album
-      subFolder : 
-      // album is just the date
-      dateformat(file_date, 'yyyy-mm-dd');  // TODO: timezone?
-    albumFilename = newFileName;
+    return { album_date, album_name, filename: newFileName };
   }
 
-  return {
-    album: album,
-    filename: albumFilename
-  }
+  // VIRTUAL_ALBUM: file goes directly into collection_path. album_name stays
+  // whatever placeholder was set, but there's no actual folder structure.
+  const newFileName = path.join(collection.collection_path, path.basename(filename));
+  await moveItem(collection.collection_id, filename, newFileName);
+  return { album_date, album_name, filename: newFileName };
 }
 
-export async function renameFolder(collection_id, currAlbum, newAlbum){
+/**
+ * Rename the on-disk folder corresponding to (currAlbumDate, currAlbumName)
+ * to one corresponding to (newAlbumDate, newAlbumName), using the
+ * collection's apply_folder_pattern. Both old and new sub-paths are
+ * computed forward via the pattern engine - we never need to reverse-parse.
+ */
+export async function renameAlbumFolder(collection, currAlbumDate, currAlbumName, newAlbumDate, newAlbumName) {
+  if (collection.album_type !== 'FOLDER_ALBUM' || !collection.apply_folder_pattern) {
+    return; // VIRTUAL_ALBUM has no folder to rename.
+  }
+  const currFields = dateFieldsFromString(currAlbumDate);
+  const newFields = dateFieldsFromString(newAlbumDate);
+  const currSub = formatPattern({ ...currFields, album: currAlbumName || '' }, collection.apply_folder_pattern);
+  const newSub  = formatPattern({ ...newFields,  album: newAlbumName  || '' }, collection.apply_folder_pattern);
+
+  const currFolderName = path.join(collection.collection_path, currSub);
+  const newFolderName  = path.join(collection.collection_path, newSub);
+
+  if (currFolderName === newFolderName) return;
+
   try {
-    // Check if destination folder already exists
-    const exists = await fsPromises.access(newAlbum).then(() => true).catch(() => false);
+    const exists = await fsPromises.access(newFolderName).then(() => true).catch(() => false);
     if (exists) {
       throw new AppError('Destination folder already exists', 'ConflictError', 'FOLDER_EXISTS', 409);
     }
-    
-    await fsPromises.rename(currAlbum, newAlbum);
-    await logChange(collection_id, 'move', currAlbum, newAlbum);
+    await fsPromises.rename(currFolderName, newFolderName);
+    await logChange(collection.collection_id, 'move', currFolderName, newFolderName);
   } catch (err) {
-    logger.error(err)
-    if (err instanceof AppError) {
-      throw err;
-    }
+    logger.error(err);
+    if (err instanceof AppError) throw err;
     throw new AppError(err.message, 'FileSystemError', err.code || 'RENAME_FAILED', 500);
   }
+}
+
+function dateFieldsFromString(dateStr) {
+  if (!dateStr) return { yyyy: '1970', mm: '01', dd: '01' };
+  const m = String(dateStr).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return { yyyy: '1970', mm: '01', dd: '01' };
+  return { yyyy: m[1], mm: m[2], dd: m[3] };
+}
+
+/**
+ * Compute the absolute on-disk folder path for an (album_date, album_name)
+ * pair within a collection. Used by the move-items flow to know where to
+ * put files. Empty album_name still yields a valid (date-only) folder.
+ */
+export function albumFolderAbsPath(collection, album_date, album_name) {
+  if (collection.album_type !== 'FOLDER_ALBUM' || !collection.apply_folder_pattern) {
+    return collection.collection_path;
+  }
+  const fields = dateFieldsFromString(album_date);
+  const sub = formatPattern({ ...fields, album: album_name || '' }, collection.apply_folder_pattern);
+  return path.join(collection.collection_path, sub);
 }
 
 export async function moveItem(collection_id, src, dest, silent = false){
@@ -134,7 +222,7 @@ export async function moveItem(collection_id, src, dest, silent = false){
     // fs.renameSync does not work across mountpoints
     // first copy the file and then remove the original file
     // workaround found at https://stackoverflow.com/questions/43206198/what-does-the-exdev-cross-device-link-not-permitted-error-mean
-    
+
     if(err.code !== 'EXDEV'){
       throw new AppError(`Error while move: ${err.code} ${err.message}`, 'FileSystemError', err.code || 'MOVE_FAILED', 500);
     }
@@ -157,7 +245,7 @@ export async function moveFileToTrash(collection_id, uuid_arr){
     let f = await db.getFileName(uuid),
       filename = path.basename(f),
       trashFilename = path.join(path.dirname(f), `.Trash_${filename}`);
-    
+
     await moveItem(collection_id, f, trashFilename);
     await db.trashItem(uuid, trashFilename);
   }

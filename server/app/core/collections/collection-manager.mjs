@@ -1,11 +1,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import dateformat from 'dateformat';
 
 import * as watcher from '#jobs/file-watcher-job';
 import * as cronJobs from '#jobs/scheduled-indexing-job';
 import * as db from './collection-db.mjs';
 import { AppError } from '#utils/app-error';
+import { format as formatPattern } from '#utils/folder-pattern';
 
 export async function createNewCollection(record){
   if(!isValidDir(record.collection_path)){
@@ -27,9 +27,13 @@ export async function createNewCollection(record){
   }
 
   let id = await db.createNewCollection(record);
-  watcher.startWatcherForCollection({collection_id: id, ...record});
-  cronJobs.scheduleCronJobsForCollection({collection_id: id, ...record});
-  
+  // Re-fetch the full collection from DB so the watcher/cron closures get
+  // every column (including ones the API caller didn't send, like
+  // placeholder_album_text which has a server-side default).
+  const fullCollection = await db.getCollection(id);
+  watcher.startWatcherForCollection(fullCollection);
+  cronJobs.scheduleCronJobsForCollection(fullCollection);
+
   return id;
 } 
 
@@ -54,11 +58,13 @@ export async function updateCollection(collection_id, record){
 
   await db.updateCollection(collection_id, record);
 
-  // Restart watchers and cron jobs with updated config
+  // Re-fetch full collection so watcher/cron get every column (incl.
+  // placeholder_album_text and any other server-defaulted fields).
+  const fullCollection = await db.getCollection(collection_id);
   watcher.stopWatcherForCollection(collection_id);
   cronJobs.stopCronJobsForCollection(collection_id);
-  watcher.startWatcherForCollection({collection_id, ...record});
-  cronJobs.scheduleCronJobsForCollection({collection_id, ...record});
+  watcher.startWatcherForCollection(fullCollection);
+  cronJobs.scheduleCronJobsForCollection(fullCollection);
 }
 
 export async function getAllCollections(){
@@ -107,8 +113,15 @@ function lsCnt(dir){
 }
 
 export function validateFolderPattern(pattern){
+  // Phase 3: patterns are moustache-style. The pattern engine handles its
+  // own structural rules ({{album}} must be last if present, unknown tokens
+  // pass through as literals). We don't enforce that any specific date
+  // token is present - album_date is sourced from capture_time in the DB and is
+  // not derived from the folder pattern. The pattern only governs on-disk
+  // file organization, so a year-only or month-only pattern is valid for
+  // a user who wants flatter folders.
   try {
-    let example = dateformat(new Date(), pattern);
+    const example = formatPattern({ yyyy: 2026, mm: '04', dd: '20', album: 'My Album' }, pattern);
     return { valid: true, example };
   } catch(e) {
     return { valid: false, error: e.message };

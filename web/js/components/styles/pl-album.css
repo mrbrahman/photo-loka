@@ -1,12 +1,10 @@
-#container {
-  position: relative;
+:host {
+  display: block;
+  width: 100%;
 }
 
-pl-album-name {
-  margin: 0 0 0 4px;
-  /* make it stick to the top as long as album is visible */
-  position: sticky;
-  top: 0px;
+#container {
+  position: relative;
 }
 
 pl-thumb {
