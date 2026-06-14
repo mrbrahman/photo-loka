@@ -53,9 +53,9 @@ class PlGallery extends HTMLElement {
         </sl-button>
       </div>
       <div id="gallery"></div>
-      <div id="day-nav-btns">
-        <sl-icon-button id="prev-day-btn" name="chevron-up" label="Previous day"></sl-icon-button>
-        <sl-icon-button id="next-day-btn" name="chevron-down" label="Next day"></sl-icon-button>
+      <div id="nav-btns">
+        <sl-icon-button id="prev-album-btn" name="chevron-up" label="Previous album"></sl-icon-button>
+        <sl-icon-button id="next-album-btn" name="chevron-down" label="Next album"></sl-icon-button>
       </div>
     `;
   }
@@ -179,8 +179,8 @@ class PlGallery extends HTMLElement {
 
     galleryEl.addEventListener('scroll', this.#throttleHandleScroll);
     galleryEl.addEventListener('scrollend', this.#updateNavBtnState);
-    this.shadowRoot.getElementById('next-day-btn').addEventListener('click', this.#scrollToNextDay);
-    this.shadowRoot.getElementById('prev-day-btn').addEventListener('click', this.#scrollToPrevDay);
+    this.shadowRoot.getElementById('next-album-btn').addEventListener('click', this.#scrollToNextAlbum);
+    this.shadowRoot.getElementById('prev-album-btn').addEventListener('click', this.#scrollToPrevAlbum);
     window.addEventListener('resize', this.#throttleHandleResize);
 
     if (this.#slideshowItemId) {
@@ -606,28 +606,51 @@ class PlGallery extends HTMLElement {
     }
   }
 
-  #scrollToNextDay = () => {
+  #scrollToNextAlbum = () => {
     let gallery = this.shadowRoot.getElementById('gallery');
     let scrollTop = gallery.scrollTop;
-    let next = this.#daySections.find(s => s.offsetTop > scrollTop + 1);
-    if (next) gallery.scrollTo({ top: next.offsetTop, behavior: 'smooth' });
+    for (let section of this.#daySections) {
+      for (let album of section.albums) {
+        let albumTop = section.offsetTop + album.offsetTop;
+        if (albumTop > scrollTop + 1) {
+          gallery.scrollTo({ top: albumTop, behavior: 'smooth' });
+          return;
+        }
+      }
+    }
   }
 
-  #scrollToPrevDay = () => {
+  #scrollToPrevAlbum = () => {
     let gallery = this.shadowRoot.getElementById('gallery');
     let scrollTop = gallery.scrollTop;
-    let prev = this.#daySections.findLast(s => s.offsetTop < scrollTop - 1);
-    if (prev) gallery.scrollTo({ top: prev.offsetTop, behavior: 'smooth' });
+    let target = null;
+    for (let section of this.#daySections) {
+      for (let album of section.albums) {
+        let albumTop = section.offsetTop + album.offsetTop;
+        if (albumTop < scrollTop - 1) target = albumTop;
+        else break;
+      }
+    }
+    if (target !== null) gallery.scrollTo({ top: target, behavior: 'smooth' });
   }
 
   #updateNavBtnState = () => {
     let gallery = this.shadowRoot.getElementById('gallery');
     let scrollTop = gallery.scrollTop;
     let maxScroll = gallery.scrollHeight - gallery.clientHeight;
-    let currentIdx = this.#daySections.findLastIndex(s => s.offsetTop <= scrollTop + 1);
-    this.shadowRoot.getElementById('prev-day-btn').disabled = currentIdx <= 0;
-    this.shadowRoot.getElementById('next-day-btn').disabled =
-      currentIdx >= this.#daySections.length - 1 || scrollTop >= maxScroll - 1;
+    let albums = this.#allAlbums();
+    let firstAlbumTop = albums.length > 0
+      ? this.#daySections[0].offsetTop + albums[0].offsetTop
+      : 0;
+    let lastSection = this.#daySections[this.#daySections.length - 1];
+    let lastAlbum = albums[albums.length - 1];
+    let lastAlbumTop = (lastSection && lastAlbum)
+      ? lastSection.offsetTop + lastAlbum.offsetTop
+      : 0;
+    this.shadowRoot.getElementById('prev-album-btn').disabled =
+      scrollTop <= firstAlbumTop + 1;
+    this.shadowRoot.getElementById('next-album-btn').disabled =
+      scrollTop >= lastAlbumTop - 1 || scrollTop >= maxScroll - 1;
   }
 
   #throttleHandleScroll = throttle(() => {
@@ -649,8 +672,8 @@ class PlGallery extends HTMLElement {
     let galleryEl = this.shadowRoot.getElementById('gallery');
     galleryEl?.removeEventListener('scroll', this.#throttleHandleScroll);
     galleryEl?.removeEventListener('scrollend', this.#updateNavBtnState);
-    this.shadowRoot.getElementById('next-day-btn')?.removeEventListener('click', this.#scrollToNextDay);
-    this.shadowRoot.getElementById('prev-day-btn')?.removeEventListener('click', this.#scrollToPrevDay);
+    this.shadowRoot.getElementById('next-album-btn')?.removeEventListener('click', this.#scrollToNextAlbum);
+    this.shadowRoot.getElementById('prev-album-btn')?.removeEventListener('click', this.#scrollToPrevAlbum);
     window.removeEventListener('resize', this.#throttleHandleResize);
   }
 
@@ -701,7 +724,7 @@ class PlGallery extends HTMLElement {
       mode: this.#mode
     });
 
-    this.shadowRoot.getElementById('day-nav-btns').style.display = 'none';
+    this.shadowRoot.getElementById('nav-btns').style.display = 'none';
     this.shadowRoot.appendChild(slideshow);
 
     this.dispatchEvent(new CustomEvent('pl-gallery-slideshow-opened', {
@@ -722,7 +745,7 @@ class PlGallery extends HTMLElement {
       }
     }
 
-    this.shadowRoot.getElementById('day-nav-btns').style.display = '';
+    this.shadowRoot.getElementById('nav-btns').style.display = '';
 
     let thumbRect = currentItemId ? this.#getThumbRect(currentItemId) : null;
     let mediaRect = slideshow.prepareForDismiss();

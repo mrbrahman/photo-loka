@@ -1,3 +1,4 @@
+
 #trash-bar {
   display: flex;
   align-items: center;
@@ -28,7 +29,7 @@ pl-day-section {
   height: 100%;
 }
 
-#day-nav-btns {
+#nav-btns {
   position: fixed;
   bottom: 3vh;
   right: 30px;
@@ -37,7 +38,7 @@ pl-day-section {
   z-index: 10;
 }
 
-#day-nav-btns sl-icon-button {
+#nav-btns sl-icon-button {
   font-size: 1.5rem;
   background: rgba(0, 0, 0, 0.5);
   color: white;
@@ -45,20 +46,20 @@ pl-day-section {
   transition: opacity 0.2s;
 }
 
-#day-nav-btns sl-icon-button:first-child {
+#nav-btns sl-icon-button:first-child {
   border-radius: 50% 50% 0 0;
 }
 
-#day-nav-btns sl-icon-button:last-child {
+#nav-btns sl-icon-button:last-child {
   border-radius: 0 0 50% 50%;
 }
 
-#day-nav-btns sl-icon-button:hover {
+#nav-btns sl-icon-button:hover {
   opacity: 1;
 }
 
 @media (max-width: 640px) {
-  #day-nav-btns {
+  #nav-btns {
     bottom: 2vh;
     right: 10px;
   }

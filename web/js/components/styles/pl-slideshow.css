@@ -7,7 +7,7 @@
    Global z-index layering (see index.html for toast):
        1 - pl-album-name (sticky album sub-header)
        2 - pl-day-section #day-header (sticky day header)
-      10 - pl-gallery #day-nav-btns
+      10 - pl-gallery #nav-btns
       20 - pl-gallery-controls (above headers/nav so its modal dialog isn't
            trapped behind them)
      100 - sidebar backdrop
