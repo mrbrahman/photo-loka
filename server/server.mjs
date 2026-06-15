@@ -35,7 +35,11 @@ const app = express();
 
 app.use(express.json());
 app.use(cookieParser());
-app.use(express.static(path.join(import.meta.dirname, '../web')));
+app.use(express.static(path.join(import.meta.dirname, '../web'), {
+  setHeaders: (res) => {
+    res.setHeader('Cache-Control', 'no-cache');
+  }
+}));
 
 morgan.token('query', (req) => JSON.stringify(req.query));
 morgan.token('body', (req) => JSON.stringify(req.body));
