@@ -241,6 +241,7 @@ class PlThumb extends HTMLElement {
   }
   set hasDesc(_){
     this.#hasDesc = +_;
+    this.#paintInfoIcons();
   }
 
   get hasTags(){
