@@ -32,6 +32,10 @@
     content: '\00b7';
     margin: 0 8px;
   }
+
+  #albumname:empty::before {
+    content: none;
+  }
 }
 
 #media {

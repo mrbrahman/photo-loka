@@ -47,7 +47,9 @@ class PlSlideMedia extends HTMLElement {
 
     this.shadowRoot.getElementById('albumdate').innerText = this.item?.albumDate
       ? formatDayHeader(this.item.albumDate) : '';
-    this.shadowRoot.getElementById('albumname').innerText = this.albumname || '';
+    if (this.albumname) {
+      this.shadowRoot.getElementById('albumname').innerText = this.albumname;
+    }
     this.shadowRoot.getElementById('rating').setAttribute('value', this.item?.data?.rating || 0);
 
     this.shadowRoot.getElementById('rating').addEventListener('sl-change', this.#handleRatingChanged);
