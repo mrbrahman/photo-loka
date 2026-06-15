@@ -20,7 +20,7 @@
   /* Subtle tint over photos. Theme-aware via --bg-page-alpha. */
   background-color: var(--bg-page-alpha);
   font-weight: 600;
-  font-size: 1rem;
+  font-size: 1.2rem;
 }
 
 #day-text {

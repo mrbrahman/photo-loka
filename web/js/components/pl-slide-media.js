@@ -1,5 +1,6 @@
 import {notify} from '../utils.mjs';
 import { updateRating } from '../api/media-api.mjs';
+import { formatDayHeader } from '../album-path.mjs';
 
 import sheet from "./styles/pl-slide-media.css" with { type: "css" };
 
@@ -14,7 +15,10 @@ class PlSlideMedia extends HTMLElement {
     `
       <div id="container">
         <div id="media"></div>
-        <div id="albumname"></div>
+        <div id="overlay">
+          <div id="albumdate"></div>
+          <div id="albumname"></div>
+        </div>
         <div id="zoom-controls">
           <sl-icon-button id="zoom-in" name="plus-lg"></sl-icon-button>
           <sl-icon-button id="zoom-out" name="dash-lg"></sl-icon-button>
@@ -41,6 +45,8 @@ class PlSlideMedia extends HTMLElement {
   connectedCallback() {
     this.shadowRoot.appendChild(this.constructor.template.content.cloneNode(true));
 
+    this.shadowRoot.getElementById('albumdate').innerText = this.item?.albumDate
+      ? formatDayHeader(this.item.albumDate) : '';
     this.shadowRoot.getElementById('albumname').innerText = this.albumname || '';
     this.shadowRoot.getElementById('rating').setAttribute('value', this.item?.data?.rating || 0);
 
