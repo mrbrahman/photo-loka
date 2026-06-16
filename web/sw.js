@@ -40,7 +40,7 @@
 
 // Bump this version whenever you deploy frontend changes.
 // The browser compares sw.js byte-for-byte; a changed VERSION triggers an update.
-const VERSION = '3.1.6';
+const VERSION = '3.1.7';
 
 const CACHE_NAME = `photo-loka-${VERSION}`;
 
@@ -103,8 +103,9 @@ self.addEventListener('fetch', event => {
 
   // Everything else: network-first, no caching.
   // The app needs the server for all functionality anyway.
+  // Use cache:'no-store' to bypass the browser's HTTP cache on mobile.
   event.respondWith(
-    fetch(event.request).catch(() => {
+    fetch(event.request, { cache: 'no-store' }).catch(() => {
       // Offline fallback for navigation requests: serve the cached icon page or nothing
       if (event.request.destination === 'document') {
         return caches.match('/assets/icon-454.png');
