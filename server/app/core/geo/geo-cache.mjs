@@ -10,16 +10,16 @@ const geonamesProcessor = ParallelProcesses.simple();
 
 geonamesProcessor.pauseConditionFn = checkGeonamesRateLimit;
 
-export async function performReverseGeoEncoding(uuid, gps_lat, gps_long) {
-  logger.info(`Starting reverse geo-encoding for ${uuid} at ${gps_lat}, ${gps_long}`);
+export async function performReverseGeoEncoding(uuid, gps_lat, gps_lng) {
+  logger.info(`Starting reverse geo-encoding for ${uuid} at ${gps_lat}, ${gps_lng}`);
   
   // First try exact match up to 4 decimal places
-  const exactMatch = await findExactGeoMatch(gps_lat, gps_long);
+  const exactMatch = await findExactGeoMatch(gps_lat, gps_lng);
 
   if (exactMatch) {
     logger.info(`Found exact match for ${uuid}`);
     // Parse geonames JSON and extract address
-    const geonamesData = JSON.parse(exactMatch.geonames_rev_address_json);
+    const geonamesData = JSON.parse(exactMatch.geonames_json);
     const geo_address = [
       geonamesData.address.streetNumber,
       geonamesData.address.street,
@@ -35,12 +35,12 @@ export async function performReverseGeoEncoding(uuid, gps_lat, gps_long) {
   }
 
   // If no exact match, try proximity match (within reasonable distance)
-  const proximityMatch = await findProximityGeoMatch(gps_lat, gps_long);
+  const proximityMatch = await findProximityGeoMatch(gps_lat, gps_lng);
 
   if (proximityMatch) {
     logger.info(`Found proximity match for ${uuid}`);
     // Parse geonames JSON and extract address
-    const geonamesData = JSON.parse(proximityMatch.geonames_rev_address_json);
+    const geonamesData = JSON.parse(proximityMatch.geonames_json);
     const geo_address = [
       geonamesData.address.streetNumber,
       geonamesData.address.street,
@@ -58,12 +58,12 @@ export async function performReverseGeoEncoding(uuid, gps_lat, gps_long) {
   // No match found, queue geonames lookup
   logger.info(`No DB match for ${uuid}, queuing API lookup`);
   await updateGeoEncodingStatus(uuid, 'QUEUED_FOR_API');
-  geonamesProcessor.enqueue(lookupGeonames, [uuid, gps_lat, gps_long]);
+  geonamesProcessor.enqueue(lookupGeonames, [uuid, gps_lat, gps_lng]);
   return null;
 }
 
-async function lookupGeonames(uuid, gps_lat, gps_long) {
-  const url = `http://api.geonames.org/findNearestAddressJSON?lat=${gps_lat}&lng=${gps_long}&username=${startupConfig.geonamesUsername}`;
+async function lookupGeonames(uuid, gps_lat, gps_lng) {
+  const url = `http://api.geonames.org/findNearestAddressJSON?lat=${gps_lat}&lng=${gps_lng}&username=${startupConfig.geonamesUsername}`;
   logger.info(`API lookup for ${uuid}: ${url}`);
   
   try {
@@ -85,7 +85,7 @@ async function lookupGeonames(uuid, gps_lat, gps_long) {
       // Increment counters after successful API call
       incrementCounters();
       
-      // Update both geonames_rev_address_json and geo_address
+      // Update both geonames_json and geo_address
       await updateGeonamesData(uuid, JSON.stringify(data), geo_address);
       
       return { uuid, geo_address, geonames_data: data };

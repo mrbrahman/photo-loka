@@ -8,9 +8,9 @@ router.get('/getReverseGeoEncodingStatus', function(req,res){
 });
 
 router.post('/enqueueReverseGeoEncoding', function(req,res){
-  let {uuid, gps_lat, gps_long} = req.body;
-  if (uuid && gps_lat && gps_long){
-    s.geoEncoder.enqueue(uuid, gps_lat, gps_long);
+  let {uuid, gps_lat, gps_lng} = req.body;
+  if (uuid && gps_lat && gps_lng){
+    s.geoEncoder.enqueue(uuid, gps_lat, gps_lng);
   }
   res.sendStatus(200);
 });

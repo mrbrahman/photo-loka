@@ -33,23 +33,23 @@ export async function indexFile(collection, sourceFileName, uuid, inPlace){
     throw `ERROR during getMetadata for file: ${sourceFileName}: ${error}`;
   }
 
-  // Step 1b: Fall back for capture_time if EXIF didn't yield a valid one.
+  // Step 1b: Fall back for captured_at if EXIF didn't yield a valid one.
   //  - intake: file isn't placed yet; we need *some* value to drive folder
   //    placement. Fall back to mtime (current behavior pre-timeline-view).
-  //  - inPlace: leave capture_time null - the file has no real capture time.
+  //  - inPlace: leave captured_at null - the file has no real capture time.
   //    album_date will still be derived from the folder via the pattern
   //    engine inside placeFileInCollection, so the timeline grouping
-  //    works fine (capture_time null -> no time stamp shown, item sorted to
+  //    works fine (captured_at null -> no time stamp shown, item sorted to
   //    the end of its day).
-  if (!p.capture_time && !inPlace) {
-    p.capture_time = p.file_modify_date;
-    logger.info(`No EXIF date for ${sourceFileName}; falling back to file_modify_date: ${p.capture_time}`);
+  if (!p.captured_at && !inPlace) {
+    p.captured_at = p.file_modified_at;
+    logger.info(`No EXIF date for ${sourceFileName}; falling back to file_modified_at: ${p.captured_at}`);
   }
 
   // Step 2: Place the file (intake = move to its computed folder; inPlace =
   // just inspect the folder and split into album_date/album_name).
   try{
-    var f = await fileOps.placeFileInCollection(collection, sourceFileName, p.capture_time, inPlace);
+    var f = await fileOps.placeFileInCollection(collection, sourceFileName, p.captured_at, inPlace);
   } catch(error){
     throw `ERROR during placeFileInCollection for file: ${sourceFileName}: ${error}`;
   }
@@ -125,7 +125,7 @@ export async function indexFile(collection, sourceFileName, uuid, inPlace){
   }
 
   // grab the country code before sending to DB (as DB converts it to JSON string)
-  let countryCode = p.geolocation_api_json?.GeolocationCountryCode
+  let countryCode = p.exiftool_geo_json?.GeolocationCountryCode
 
   // save xmpregion before DB insert mutates it to a JSON string
   let xmpregionRaw = p.xmpregion;
@@ -137,8 +137,8 @@ export async function indexFile(collection, sourceFileName, uuid, inPlace){
   // Enrichments
   // -------------------------
   // Step 7: Queue reverse geo encoding if GPS coordinates are available and location is in US
-  if (p.gps_lat && p.gps_long && countryCode === 'US') {
-    enqueueReverseGeoEncoding(p.uuid, p.gps_lat, p.gps_long);
+  if (p.gps_lat && p.gps_lng && countryCode === 'US') {
+    enqueueReverseGeoEncoding(p.uuid, p.gps_lat, p.gps_lng);
   }
 
   // Step 9: Queue face recognition for images

@@ -215,44 +215,42 @@ class PlItemInfo extends HTMLElement {
     else fileIcon.name = 'image-fill';
 
     // Dates
-    this.shadowRoot.getElementById('date-header').textContent = d.file_date ? this.#formatDate(d.file_date) : '';
+    this.shadowRoot.getElementById('date-header').textContent = d.captured_at ? this.#formatDate(d.captured_at) : '';
 
     let datesList = this.shadowRoot.getElementById('dates-list');
     datesList.innerHTML = '';
     let allDates = [
-      ['Indexed Date', d.indexed_dt],
-      ['Datetime Original', d.datetime_original],
-      ['Create Date', d.create_date],
-      ['File Modify Date', d.file_modify_date],
-      ['Trashed Date', d.trashed_dt],
+      ['Indexed', d.indexed_at],
+      ['File Modified', d.file_modified_at],
+      ['Trashed', d.trashed_at],
     ].filter(([, v]) => v);
 
     for (let i = 0; i < allDates.length; i++) {
-      if (i === 1 && allDates[0][0] === 'Indexed Date') {
+      if (i === 1 && allDates[0][0] === 'Indexed') {
         let spacer = document.createElement('div');
         spacer.style.height = '6px';
         datesList.appendChild(spacer);
       }
       let row = document.createElement('div');
-      row.className = allDates[i][0] === 'Indexed Date' ? 'date-row' : 'date-row date-row-minor';
+      row.className = allDates[i][0] === 'Indexed' ? 'date-row' : 'date-row date-row-minor';
       row.innerHTML = `<span class="date-label">${allDates[i][0]}</span><span class="date-value">${this.#formatDate(allDates[i][1])}</span>`;
       datesList.appendChild(row);
     }
 
     // Location
     let locSection = this.shadowRoot.getElementById('location-row');
-    if (d.gps_lat && d.gps_long) {
+    if (d.gps_lat && d.gps_lng) {
       locSection.hidden = false;
       let addrEl = this.shadowRoot.getElementById('geo-address');
-      addrEl.textContent = d.geo_address || `${d.gps_lat.toFixed(4)}, ${d.gps_long.toFixed(4)}`;
+      addrEl.textContent = d.geo_address || `${d.gps_lat.toFixed(4)}, ${d.gps_lng.toFixed(4)}`;
 
       let mapDiv = this.shadowRoot.getElementById('map-container');
       requestAnimationFrame(() => {
         if (!mapDiv.isConnected) return;
         this.#map = L.map(mapDiv, { zoomControl: false, attributionControl: false })
-          .setView([d.gps_lat, d.gps_long], 16);
+          .setView([d.gps_lat, d.gps_lng], 16);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(this.#map);
-        L.marker([d.gps_lat, d.gps_long]).addTo(this.#map);
+        L.marker([d.gps_lat, d.gps_lng]).addTo(this.#map);
         setTimeout(() => this.#map?.invalidateSize(), 100);
       });
     } else {

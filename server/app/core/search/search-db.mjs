@@ -3,7 +3,14 @@ import { createLogger } from '#utils/logger';
 
 const logger = createLogger(import.meta.url);
 
-export const restrictSearchCols = ['album_date', 'album_name', 'filename', 'description', 'keywords', 'faces', 'objects', 'mediatype', 'make', 'model', 'geo_address'];
+// Columns indexed in the porter FTS table (stemmed, NLP-style search)
+const textCols = ['album_name', 'description', 'keywords'];
+
+// Columns indexed in the unicode FTS table (exact token match)
+const metaCols = ['filename', 'mimetype', 'mediatype', 'faces', 'make', 'model', 'geo_address', 'album_date'];
+
+// All FTS-searchable columns (union of both tables)
+export const restrictSearchCols = [...textCols, ...metaCols];
 
 // aliases: the right side (realCol) can also be known by the left side (alias)
 export const aliases = {
@@ -18,29 +25,48 @@ export const aliases = {
   type: 'mediatype',
   desc: 'description',
   album: 'album_name',  // legacy 'album:' search prefix maps to album_name
+  date: 'album_date',
   l: 'logical'
+}
+
+// The search view name and its FTS MATCH handles
+// (View dropped - using subquery pattern instead for simpler explain plans)
+
+// FTS table names (used for subquery pattern)
+const FTS_PORTER_TABLE = 'metadata_fts_porter';
+const FTS_UNICODE_TABLE = 'metadata_fts_unicode';
+
+function getColTable(col) {
+  if (textCols.includes(col)) return 'text';
+  if (metaCols.includes(col)) return 'meta';
+  return null;
 }
 
 function converToFilterStr(searchStr){
   /*
     Features:
-    1. When multiple conditions are prsent, by default they are "AND"ed.
+    1. When multiple conditions are present, by default they are "AND"ed.
         e.g. album_name:trip camera:samsung type:video
         will translate as
-        {album_name}: "trip"* AND {camera}: "samsung"* AND {type}: "video"*
+        rowid IN (SELECT rowid FROM metadata_fts_porter WHERE ... MATCH '{album_name} : ("trip")')
+        AND rowid IN (SELECT rowid FROM metadata_fts_unicode WHERE ... MATCH '{make} : ("samsung"*) AND {mediatype} : ("video"*)')
     2. This can be overwritten using the "logical" or "l" input. E.g. l:or
-    3. The input from "logical" keyword applies to all conditions
+    3. The input from "logical" keyword applies to all conditions.
         e.g. album_name:trip camera:samsung type:video l:or
         will translate as
-        {album_name}: "trip"* OR {camera}: "samsung"* OR {type}: "video"*
+        rowid IN (SELECT rowid FROM metadata_fts_porter WHERE ... MATCH '{album_name} : ("trip")')
+        OR rowid IN (SELECT rowid FROM metadata_fts_unicode WHERE ... MATCH '{make} : ("samsung"*) OR {mediatype} : ("video"*)')
     4. Any un-prefixed condition will be applied to all search-enabled columns
-       in the restrictSearchCols array
-    5. For advanced needs (including querying non restricted columns - for e.g. capture_time), use the "raw"
-       input using SQLite FTS syntax. Thich will be used as-is in the filter.
+       across both FTS tables (OR across tables).
+        e.g. hike
+        will translate as
+        (rowid IN (SELECT rowid FROM metadata_fts_porter WHERE ... MATCH '"hike"')
+         OR rowid IN (SELECT rowid FROM metadata_fts_unicode WHERE ... MATCH '"hike"*'))
+    5. For advanced needs, use the "raw" input. This will be used as-is in the filter.
         e.g. 
-          raw:"metadata match '{album_name}: (states* AND trip*)'"
-          raw:"strftime('%W',capture_time)=strftime('%W',date()) and strftime('%Y',capture_time) != strftime('%Y',date())" --> all 'past' photos of current week
-    6. "raw" can be clubbled with other filters, if needed
+          raw:"strftime('%W',captured_at)=strftime('%W',date()) and strftime('%Y',captured_at) != strftime('%Y',date())"
+          --> all 'past' photos of current week
+    6. "raw" can be combined with other filters, if needed.
   
     TODO: implement faces (array columns) OR, AND and ONLY conditions
   */
@@ -59,16 +85,16 @@ function converToFilterStr(searchStr){
   });
 
   let strip = (s) => s.replace(/(^"|"$)/g, '');
-  
 
-  let logical='AND', ftsFilters=[], otherFilters=[];
+  let logical='AND', textFilters=[], metaFilters=[], broadFilters=[], otherFilters=[];
   for (let f of filterKeyVal) {
     let col = (aliases[f[0]] || f[0]).toLowerCase();
     let filterStr = (f[1] && strip(f[1])) || null;
     
     if (f.length == 1){
-      // search across all allowed columns
-      ftsFilters.push(`{${restrictSearchCols.join(' ')}} : ( "${strip(f[0])}"* )`);
+      // Un-prefixed: search across all columns in both FTS tables (OR across tables)
+      let term = strip(f[0]);
+      broadFilters.push(term);
     }
     else if(col == 'logical'){
       logical = filterStr.toUpperCase();
@@ -77,7 +103,7 @@ function converToFilterStr(searchStr){
       otherFilters.push(`rating = ${f[1]}`)
     }
     else if(col == 'private'){
-      otherFilters.push(`coalesce(private, 0) = ${filterStr.toLowerCase() === 'true' ? 1 : 0}`)
+      otherFilters.push(`coalesce(is_private, 0) = ${filterStr.toLowerCase() === 'true' ? 1 : 0}`)
     }
     else if(col == 'uuid'){
       otherFilters.push(`uuid = '${filterStr}'`)
@@ -86,35 +112,69 @@ function converToFilterStr(searchStr){
       otherFilters.push(filterStr);
     }
     else if(restrictSearchCols.includes(col)){
-      // TODO: handle , (and) | (or) & (only)
-      // "only" is appliable only for array data
-      
-      ftsFilters.push(`{${col}} : ( "${filterStr}"* )`)
+      // Route to the correct FTS bucket
+      let table = getColTable(col);
+      if (table === 'text') {
+        textFilters.push(`{${col}} : ( "${filterStr}" )`);
+      } else if (table === 'meta') {
+        metaFilters.push(`{${col}} : ( "${filterStr}"* )`);
+      }
     }
     else {
       // ignore everything else
     }
   }
 
-  let allFtsFilters = ftsFilters.length > 0 ? `metadata match '${ftsFilters.join(` ${logical} `)}'` : '';
-  let allOtherFilters = otherFilters.join(` ${logical} `)
+  // Build the FTS filter clause(s)
+  let ftsClause = buildFtsClause(textFilters, metaFilters, broadFilters, logical);
+  let allOtherFilters = otherFilters.join(` ${logical} `);
 
-  let allFilters = [allFtsFilters, allOtherFilters].filter(x=>x);
-
+  let allFilters = [ftsClause, allOtherFilters].filter(x=>x);
   let final = allFilters.length > 0 ? `( ${allFilters.join(` ${logical} `)} )` : '';
   return final;
+}
 
+function buildFtsClause(textFilters, metaFilters, broadFilters, logical) {
+  // broadFilters: un-prefixed terms that should match in EITHER FTS table (OR across tables)
+  // textFilters: column-prefixed terms routed to porter FTS
+  // metaFilters: column-prefixed terms routed to unicode FTS
+
+  let parts = [];
+
+  // Handle broad (un-prefixed) terms: always OR across both tables
+  if (broadFilters.length > 0) {
+    let porterExpr = broadFilters.map(t => `"${t}"`).join(` ${logical} `);
+    let unicodeExpr = broadFilters.map(t => `"${t}"*`).join(` ${logical} `);
+    let textMatch = `rowid IN (SELECT rowid FROM ${FTS_PORTER_TABLE} WHERE ${FTS_PORTER_TABLE} MATCH '${porterExpr}')`;
+    let metaMatch = `rowid IN (SELECT rowid FROM ${FTS_UNICODE_TABLE} WHERE ${FTS_UNICODE_TABLE} MATCH '${unicodeExpr}')`;
+    parts.push(`(${textMatch} OR ${metaMatch})`);
+  }
+
+  // Handle column-prefixed terms routed to porter FTS
+  if (textFilters.length > 0) {
+    let matchExpr = textFilters.join(` ${logical} `);
+    parts.push(`rowid IN (SELECT rowid FROM ${FTS_PORTER_TABLE} WHERE ${FTS_PORTER_TABLE} MATCH '${matchExpr}')`);
+  }
+
+  // Handle column-prefixed terms routed to unicode FTS
+  if (metaFilters.length > 0) {
+    let matchExpr = metaFilters.join(` ${logical} `);
+    parts.push(`rowid IN (SELECT rowid FROM ${FTS_UNICODE_TABLE} WHERE ${FTS_UNICODE_TABLE} MATCH '${matchExpr}')`);
+  }
+
+  if (parts.length === 0) return '';
+  return parts.join(` ${logical} `);
 }
 
 function orderByClause(inp) {
   // Used for the flat (non-grouped) path, e.g. frame manager. Day-grouped
-  // queries override this with their own ordering. capture_time is the per-item
+  // queries override this with their own ordering. captured_at is the per-item
   // capture time; coalesce-to-0 puts no-time items at the end of any sort.
-  const defaultClause = 'order by album_date desc, datetime(capture_time) desc';
+  const defaultClause = 'order by album_date desc, datetime(captured_at) desc';
   if(!inp) return defaultClause;
 
-  if(inp.toLowerCase() === 'asc') return 'order by datetime(capture_time) asc';
-  if(inp.toLowerCase() === 'desc') return 'order by datetime(capture_time) desc';
+  if(inp.toLowerCase() === 'asc') return 'order by datetime(captured_at) asc';
+  if(inp.toLowerCase() === 'desc') return 'order by datetime(captured_at) desc';
   if(inp.toLowerCase() === 'random') return 'order by random()';
 
   return defaultClause;
@@ -123,12 +183,12 @@ function orderByClause(inp) {
 export async function runSearch(collection_id, searchStr, trashed = false, isPrivate = false, groupByDay = true, orderBy = null, dateRange = null){
   let filters = [], limit = false;
   
-  filters.push(`coalesce(trashed, false) = ${trashed}`);
+  filters.push(`coalesce(is_trashed, 0) = ${trashed ? 1 : 0}`);
 
   // only apply default private filter if not explicitly searching for private items
   let hasExplicitPrivateFilter = searchStr && /(?:^|\s)private:/i.test(searchStr);
   if (!hasExplicitPrivateFilter) {
-    filters.push(`coalesce(private, false) = ${isPrivate}`);
+    filters.push(`coalesce(is_private, 0) = ${isPrivate ? 1 : 0}`);
   }
 
   if(collection_id)
@@ -154,15 +214,14 @@ export async function runSearch(collection_id, searchStr, trashed = false, isPri
   if (dateRange?.toDate) {
     filters.push(`album_date <= '${dateRange.toDate}'`);
   }
-  // logger.debug(filters)
 
   // Item JSON shape (used by both grouped and flat paths):
   //   { albumDate, albumName, data: { ar, id, type, rating, dur, hasGps,
   //     hasDesc, hasTags, private, t, hasTime } }
   // - albumDate: YYYY-MM-DD; the day this item belongs to in the timeline.
   // - albumName: descriptive part only (e.g. 'New Year' or 'New Year/Subfolder').
-  // - t: unix epoch seconds derived from capture_time, or 0 when null.
-  // - hasTime: 1 if capture_time is non-null (real EXIF capture time), 0 if it
+  // - t: unix epoch seconds derived from captured_at, or 0 when null.
+  // - hasTime: 1 if captured_at is non-null (real EXIF capture time), 0 if it
   //   was a fallback (mtime / null). No-time items render at end of day.
   const itemSelect = `
     json_object(
@@ -183,9 +242,9 @@ export async function runSearch(collection_id, searchStr, trashed = false, isPri
         'hasGps', case when gps_lat is not null then 1 else 0 end,
         'hasDesc', case when trim(coalesce(description,'')) not in ('', 'null') then 1 else 0 end,
         'hasTags', case when trim(coalesce(keywords,'')) not in ('', 'null', '[null]') then 1 else 0 end,
-        'private', case when coalesce(private, 0) = 1 then 1 else 0 end,
-        't', coalesce(unixepoch(capture_time), 0),
-        'hasTime', case when capture_time is not null then 1 else 0 end
+        'private', case when coalesce(is_private, 0) = 1 then 1 else 0 end,
+        't', coalesce(unixepoch(captured_at), 0),
+        'hasTime', case when captured_at is not null then 1 else 0 end
       )
     )
   `;
@@ -193,7 +252,7 @@ export async function runSearch(collection_id, searchStr, trashed = false, isPri
   let sql;
   if (groupByDay) {
     // Day grouping: items within a day are ordered by datetime DESC of
-    // capture_time (timed items first newest -> oldest; null capture_time coalesces
+    // captured_at (timed items first newest -> oldest; null captured_at coalesces
     // to 0 and falls to the end). album_name + filename used as
     // tiebreakers and to cluster no-time items by album.
     sql = `
@@ -205,7 +264,7 @@ export async function runSearch(collection_id, searchStr, trashed = false, isPri
         where ${filters.join(' and ')}
         and mediatype in ('image', 'video')
         order by album_date desc,
-                 coalesce(unixepoch(capture_time), 0) desc,
+                 coalesce(unixepoch(captured_at), 0) desc,
                  album_name asc, filename asc
       )
       select day, json_group_array(json(item)) as items
@@ -225,7 +284,7 @@ export async function runSearch(collection_id, searchStr, trashed = false, isPri
     `;
   }
 
-  logger.debug(sql)
+  logger.info(sql)
   
   let results = await asyncAll(sql);
   return groupByDay ? transformDayGrouped(results) : transformFlat(results);
@@ -250,12 +309,12 @@ export async function getItemInfo(uuid){
     select 
       uuid, album_date, album_name, filename,
       description, filesize, ext, mimetype, mediatype,
-      keywords, faces, objects, rating,
+      keywords, faces, rating,
       image_width, image_height, duration,
       make, model,
-      gps_lat, gps_long, gps_alt, geo_address,
-      datetime_original, create_date, file_modify_date, capture_time,
-      indexed_dt, trashed_dt,
+      gps_lat, gps_lng, gps_alt, geo_address,
+      captured_at, file_modified_at,
+      indexed_at, trashed_at,
       (select json_group_array(json_object(
         'face_idx', fr.face_idx,
         'cluster_id', fr.cluster_id,
@@ -276,13 +335,13 @@ export async function getGpsCoordinates(collection_id){
   let sql = `
     select 
       round(gps_lat, 4) as lat,
-      round(gps_long, 4) as lng,
+      round(gps_lng, 4) as lng,
       count(*) as count
     from metadata
     where gps_lat is not null 
-    and gps_long is not null
-    and coalesce(trashed, false) = false
-    and coalesce(private, false) = false
+    and gps_lng is not null
+    and coalesce(is_trashed, 0) = 0
+    and coalesce(is_private, 0) = 0
     and mediatype in ('image', 'video')
     ${collection_id ? `and collection_id = ${collection_id}` : ''}
     group by 1, 2
@@ -292,7 +351,6 @@ export async function getGpsCoordinates(collection_id){
 }
 
 export async function searchByGpsCoordinates(collection_id, bounds, trashed = false) {
-  let searchStr = `raw:"round(gps_lat, 4) between ${bounds.sw.lat} and ${bounds.ne.lat} and round(gps_long, 4) between ${bounds.sw.lng} and ${bounds.ne.lng}"`;
+  let searchStr = `raw:"round(gps_lat, 4) between ${bounds.sw.lat} and ${bounds.ne.lat} and round(gps_lng, 4) between ${bounds.sw.lng} and ${bounds.ne.lng}"`;
   return await runSearch(collection_id, searchStr, trashed, false, true);
 }
-

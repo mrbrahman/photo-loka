@@ -64,7 +64,6 @@ export async function getMetadata(file){
     keywords: tags.Keywords ? ((typeof(tags.Keywords) == "string") ?  [tags.Keywords] : tags.Keywords) : null,
     xmpregion: tags.RegionInfo,
     faces: tags.RegionInfo ? tags.RegionInfo.RegionList.filter(d=>d.Type='Face').map(d=>d.Name) : null,
-    objects: tags.RegionInfo ? tags.RegionInfo.RegionList.filter(d=>d.Type!='Face').map(d=>d.Name) : null,
     rating: tags.Rating||0,
     image_width: tags.ImageWidth||null,
     image_height: tags.ImageHeight||null,
@@ -77,10 +76,10 @@ export async function getMetadata(file){
         tags.Orientation : 
         fileType=='video' && typeof(tags.Rotation!=='undefined') ? tags.Rotation : null, 
     gps_lat: tags.GPSLatitude||null,
-    gps_long: tags.GPSLongitude||null,
+    gps_lng: tags.GPSLongitude||null,
     gps_alt: tags.GPSAltitude||null,
     gpsposition: tags.GPSPosition||null,
-    geolocation_api_json: {
+    exiftool_geo_json: {
       GeolocationCity: tags.GeolocationCity || null,
       GeolocationRegion: tags.GeolocationRegion || null,
       GeolocationSubregion: tags.GeolocationSubregion || null,
@@ -104,11 +103,13 @@ export async function getMetadata(file){
     duration: tags.Duration||null,
     datetime_original: validExifDate(tags.DateTimeOriginal),
     create_date: validExifDate(tags.CreateDate),
-    file_modify_date: tags.FileModifyDate ? tags.FileModifyDate.toString() : null,
-    // capture_time is the capture time (or best fallback). file-indexer fills the
+    file_modified_at: tags.FileModifyDate ? tags.FileModifyDate.toString() : null,
+    // captured_at is the capture time (or best fallback). file-indexer fills the
     // gap from folder path (in-place) or mtime (intake) when both EXIF
     // dates are invalid/missing.
-    capture_time: validExifDate(tags.DateTimeOriginal) || validExifDate(tags.CreateDate) || null
+    captured_at: validExifDate(tags.DateTimeOriginal) || validExifDate(tags.CreateDate) || null,
+    exif_datetime_original_ref: validExifDate(tags.DateTimeOriginal),
+    exif_create_date_ref: validExifDate(tags.CreateDate)
   }
 
 }

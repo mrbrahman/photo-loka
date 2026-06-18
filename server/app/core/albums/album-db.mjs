@@ -16,7 +16,7 @@ export async function searchForExistingAlbums(searchStr, wantFullName, collectio
   const sql = `
     select album_name as similar, count(*) cnt
     from metadata
-    where metadata match '{album_name} : ("${searchStr}"*)'
+    where rowid IN (SELECT rowid FROM metadata_fts_porter WHERE metadata_fts_porter MATCH '{album_name} : ("${searchStr}"*)')
     ${placeholderClause}
     ${collection_id ? `and collection_id = ${collection_id}` : ''}
     and trim(coalesce(album_name, '')) != ''

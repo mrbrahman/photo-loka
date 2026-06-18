@@ -116,7 +116,7 @@ export function validateFolderPattern(pattern){
   // Phase 3: patterns are moustache-style. The pattern engine handles its
   // own structural rules ({{album}} must be last if present, unknown tokens
   // pass through as literals). We don't enforce that any specific date
-  // token is present - album_date is sourced from capture_time in the DB and is
+  // token is present - album_date is sourced from captured_at in the DB and is
   // not derived from the folder pattern. The pattern only governs on-disk
   // file organization, so a year-only or month-only pattern is valid for
   // a user who wants flatter folders.

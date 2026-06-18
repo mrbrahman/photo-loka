@@ -15,22 +15,24 @@ insert into metadata
 (
   collection_id, uuid, album_date, album_name, filename,
   description, filesize, ext, mimetype, mediatype,
-  keywords, xmpregion, faces, objects, rating, 
+  keywords, xmpregion, faces, rating, 
   image_width, image_height, aspectratio,
   make, model, orientation, duration, 
-  gps_lat, gps_long, gps_alt, geolocation_api_json, geo_address,
-  datetime_original, create_date, file_modify_date, capture_time,
-  indexed_dt
+  gps_lat, gps_lng, gps_alt, exiftool_geo_json, geo_address,
+  file_modified_at, captured_at,
+  exif_datetime_original_ref, exif_create_date_ref,
+  indexed_at
 )
 values
 (
   @collection_id, @uuid, @album_date, @album_name, @filename,
   @description, @filesize, @ext, @mimetype, @mediatype,
-  @keywords, @xmpregion, @faces, @objects, @rating, 
+  @keywords, @xmpregion, @faces, @rating, 
   @image_width, @image_height, @aspectratio,
   @make, @model, @orientation, @duration, 
-  @gps_lat, @gps_long, @gps_alt, @geolocation_api_json, @geo_address,
-  @datetime_original, @create_date, @file_modify_date, @capture_time,
+  @gps_lat, @gps_lng, @gps_alt, @exiftool_geo_json, @geo_address,
+  @file_modified_at, @captured_at,
+  @exif_datetime_original_ref, @exif_create_date_ref,
   datetime('now','localtime')
 )
 `;
@@ -50,7 +52,6 @@ const updateMetadataStatement = `
     keywords = @keywords,
     xmpregion = @xmpregion,
     faces = @faces,
-    objects = @objects,
     rating = @rating,
     image_width = @image_width,
     image_height = @image_height,
@@ -60,14 +61,12 @@ const updateMetadataStatement = `
     orientation = @orientation,
     duration = @duration,
     gps_lat = @gps_lat,
-    gps_long = @gps_long,
+    gps_lng = @gps_lng,
     gps_alt = @gps_alt,
-    geolocation_api_json = @geolocation_api_json,
+    exiftool_geo_json = @exiftool_geo_json,
     geo_address = @geo_address,
-    datetime_original = @datetime_original,
-    create_date = @create_date,
-    file_modify_date = @file_modify_date,
-    capture_time = @capture_time
+    file_modified_at = @file_modified_at,
+    captured_at = @captured_at
   where uuid = @uuid
 `;
 
@@ -105,7 +104,7 @@ const insertIntoExifUpdatesStatement = `
 const updateDescriptionStatement = `
   update metadata
   set description = @description,
-    file_modify_date = @fileModifyDate
+    file_modified_at = @fileModifyDate
   where uuid = @uuid
 `;
 
@@ -118,33 +117,33 @@ const updateFilenameStatement = `
 const updateRatingStatement = `
   update metadata
   set rating = @newRating,
-    file_modify_date = @fileModifyDate
+    file_modified_at = @fileModifyDate
   where uuid = @uuid
 `;
 
 const updateToTrashStatement = `
   update metadata
   set filename = @trashFilename,
-    trashed = 1, trashed_dt = datetime('now','localtime')
+    is_trashed = 1, trashed_at = datetime('now','localtime')
   where uuid = @uuid
 `;
 
 const untrashItemStatement = `
   update metadata
   set filename = @restoredFilename,
-    trashed = 0, trashed_dt = null
+    is_trashed = 0, trashed_at = null
   where uuid = @uuid
 `;
 
 const markPrivateStatement = `
   update metadata
-  set filename = @newFilename, "private" = 1
+  set filename = @newFilename, is_private = 1
   where uuid = @uuid
 `;
 
 const unmarkPrivateStatement = `
   update metadata
-  set filename = @newFilename, "private" = 0
+  set filename = @newFilename, is_private = 0
   where uuid = @uuid
 `;
 
@@ -182,7 +181,7 @@ const updateFilenameInDb = db.prepare(updateFilenameStatement);
 const fileAuditInDb = db.prepare(fileAuditStatement);
 
 function transformDataToMetadataRow(row){
-  ['faces','objects','keywords','xmpregion','geolocation_api_json'].forEach(c=>{
+  ['faces','keywords','xmpregion','exiftool_geo_json'].forEach(c=>{
     row[c] = row[c] != null ? JSON.stringify(row[c]) : null
   });
 
@@ -202,7 +201,7 @@ export async function deleteMetadataRow(uuid){
 // async function, so it can be run in background
 export async function getIndexedFilesModifyTime(collection_id){
   return await asyncAll(`
-    select filename, uuid, file_modify_date
+    select filename, uuid, file_modified_at
     from metadata
     where collection_id = ?
   `, collection_id);
@@ -297,7 +296,7 @@ export function fileAuditBatch(collection_id, entries){
 
 // TODO: will be used for scheduled trash cleanup
 export async function getTrashedUuids(collection_id){
-  let rows = await asyncAll(`select uuid from metadata where collection_id = ? and coalesce(trashed, 0) = 1`, collection_id);
+  let rows = await asyncAll(`select uuid from metadata where collection_id = ? and coalesce(is_trashed, 0) = 1`, collection_id);
   return rows.map(r => r.uuid);
 }
 

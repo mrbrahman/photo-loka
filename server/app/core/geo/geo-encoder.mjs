@@ -3,12 +3,12 @@ import { performReverseGeoEncoding } from './geo-cache.mjs';
 
 const processor = new ParallelProcesses();
 
-export function enqueue(uuid, gps_lat, gps_long) {
-  processor.enqueue(performReverseGeoEncoding, [uuid, gps_lat, gps_long]);
+export function enqueue(uuid, gps_lat, gps_lng) {
+  processor.enqueue(performReverseGeoEncoding, [uuid, gps_lat, gps_lng]);
 }
 
 export function enqueueMany(entries) {
-  const tasks = entries.map(({uuid, gps_lat, gps_long}) => [performReverseGeoEncoding, [uuid, gps_lat, gps_long]]);
+  const tasks = entries.map(({uuid, gps_lat, gps_lng}) => [performReverseGeoEncoding, [uuid, gps_lat, gps_lng]]);
   processor.enqueueMany(tasks);
 }
 

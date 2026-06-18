@@ -76,7 +76,7 @@ async function listDeltaFilesForCollection(collection) {
   let databaseEntries = databaseEntriesArr.reduce(function(acc,curr){
       acc[curr.filename]={
         uuid: curr.uuid, 
-        mtime: Math.floor( (new Date(curr.file_modify_date).getTime()) / 1000)  // Unix Epoch
+        mtime: Math.floor( (new Date(curr.file_modified_at).getTime()) / 1000)  // Unix Epoch
       }; 
       return acc;
     }, {})
