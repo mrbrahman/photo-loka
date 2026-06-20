@@ -9,6 +9,27 @@ const rateLimitFile = path.join(path.dirname(startupConfig.dbFile), 'rate_limit_
 // Cache lookups (metadata table)
 // ---------------------------------------------------------------------------
 
+// Get GPS coordinates and country code for a uuid (used when finalizeGeo is
+// called without optional fields)
+export async function getGeoContext(uuid) {
+  return await asyncGet(`
+    SELECT m.gps_lat, m.gps_lng,
+      json_extract(gl.response_json, '$.GeolocationCountryCode') AS country_code
+    FROM metadata m
+    LEFT JOIN geo_lookups gl ON gl.uuid = m.uuid AND gl.api_name = 'geolocation'
+    WHERE m.uuid = ?
+  `, uuid);
+}
+
+// Get the exiftool geolocation lookup for a uuid
+export async function getExiftoolGeoLookup(uuid) {
+  return await asyncGet(`
+    SELECT response_json
+    FROM geo_lookups
+    WHERE uuid = ? AND api_name = 'geolocation'
+  `, uuid);
+}
+
 // Find a previously resolved geo match for coordinates within 4 decimal
 // places (~11m precision)
 export async function findExactGeoMatch(gps_lat, gps_lng) {

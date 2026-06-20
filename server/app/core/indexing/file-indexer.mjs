@@ -12,7 +12,7 @@ import * as fileOps from './file-organizer.mjs';
 import { addToIndexQueue } from './queue-manager.mjs';
 
 import * as db from './indexer-db.mjs';
-import { enqueue as enqueueReverseGeoEncoding } from '#geo/geo-queue-manager';
+import { enqueue as enqueueGeoFinalize } from '#geo/geo-queue-manager';
 import { insertGeoLookup } from '#geo/geo-encoding-db';
 import { processFaceRecognition } from '#ml/ml-manager';
 import {config} from '#runtime-config';
@@ -129,37 +129,8 @@ export async function indexFile(collection, sourceFileName, uuid, inPlace){
   let exiftoolGeoJson = p.exiftool_geo_json;
   let countryCode = exiftoolGeoJson?.GeolocationCountryCode;
 
-  // For non-US items, populate geo fields from exiftool data at insert time.
-  // For US items, these will be overwritten by geonames after API calls complete.
-  if (countryCode && countryCode !== 'US') {
-    p.geo_city = exiftoolGeoJson.GeolocationCity || null;
-    p.geo_region = exiftoolGeoJson.GeolocationRegion || null;
-    p.geo_country = exiftoolGeoJson.GeolocationCountry || null;
-    p.geo_country_code = countryCode;
-    p.geo_address = [
-      exiftoolGeoJson.GeolocationCity,
-      exiftoolGeoJson.GeolocationSubregion,
-      exiftoolGeoJson.GeolocationRegion,
-      exiftoolGeoJson.GeolocationCountryCode,
-      exiftoolGeoJson.GeolocationCountry
-    ].filter(x => x).join(', ') || null;
-  } else if (countryCode === 'US') {
-    // For US items: store country info from exiftool, but city/region/address
-    // will be populated by geonames after API calls complete
-    p.geo_country = exiftoolGeoJson.GeolocationCountry || null;
-    p.geo_country_code = countryCode;
-    p.geo_city = null;
-    p.geo_region = null;
-    p.geo_address = null;
-  } else {
-    p.geo_city = null;
-    p.geo_region = null;
-    p.geo_country = null;
-    p.geo_country_code = null;
-    p.geo_address = null;
-  }
-
-  // Remove exiftool_geo_json from the row object (no longer a metadata column)
+  // Remove exiftool_geo_json from the row object (not a metadata column)
+  // geo_ fields are left null -- they are populated by the geo finalizer
   delete p.exiftool_geo_json;
 
   // save xmpregion before DB insert mutates it to a JSON string
@@ -176,9 +147,9 @@ export async function indexFile(collection, sourceFileName, uuid, inPlace){
   // -------------------------
   // Enrichments
   // -------------------------
-  // Step 7: Queue reverse geo encoding if GPS coordinates are available and location is in US
-  if (p.gps_lat && p.gps_lng && countryCode === 'US') {
-    enqueueReverseGeoEncoding(p.uuid, p.gps_lat, p.gps_lng);
+  // Step 7: Queue geo finalization if GPS coordinates are available
+  if (p.gps_lat && p.gps_lng) {
+    enqueueGeoFinalize(p.uuid, { gps_lat: p.gps_lat, gps_lng: p.gps_lng, country_code: countryCode });
   }
 
   // Step 9: Queue face recognition for images

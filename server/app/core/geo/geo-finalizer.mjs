@@ -1,31 +1,92 @@
-import { ParallelProcesses } from '#utils/parallel-processes';
-import {
-  findExactGeoMatch,
-  findProximityGeoMatch,
-  findPostalCodeMatch,
-  insertGeoLookup,
-  updateGeoFields,
-  updateGeoEncodingStatus
-} from './geo-encoding-db.mjs';
-import { checkGeonamesRateLimit, incrementCounters } from './rate-limiter.mjs';
+import * as db from './geo-encoding-db.mjs';
+import { incrementCounters } from './rate-limiter.mjs';
 import { createLogger } from '#utils/logger';
 import { startupConfig } from '#startup-config';
 
 const logger = createLogger(import.meta.url);
 
-const geonamesProcessor = ParallelProcesses.simple();
+// ---------------------------------------------------------------------------
+// finalizeGeo: single entry point for resolving geo_ fields on a metadata row.
+//
+// uuid is required. Optional fields (gps_lat, gps_lng, country_code) are used
+// when available (e.g. from indexer). When not provided, they are derived from
+// metadata + geo_lookups.
+//
+// Logic:
+//   - No GPS -> nothing to do
+//   - Non-US -> populate from exiftool geolocation in geo_lookups
+//   - US -> cache check -> geonames API -> postal code if needed -> update
+// ---------------------------------------------------------------------------
+export async function finalizeGeo(uuid, { gps_lat, gps_lng, country_code } = {}) {
+  // Derive missing fields from DB if not provided
+  if (!gps_lat || !gps_lng || !country_code) {
+    const ctx = await db.getGeoContext(uuid);
+    if (!ctx) {
+      logger.warn(`No metadata row found for ${uuid}, skipping geo finalization`);
+      return;
+    }
+    gps_lat = gps_lat || ctx.gps_lat;
+    gps_lng = gps_lng || ctx.gps_lng;
+    country_code = country_code || ctx.country_code;
+  }
 
-geonamesProcessor.pauseConditionFn = checkGeonamesRateLimit;
+  // No GPS = nothing to do
+  if (!gps_lat || !gps_lng) {
+    logger.info(`No GPS coordinates for ${uuid}, skipping geo finalization`);
+    return;
+  }
 
-export async function performReverseGeoEncoding(uuid, gps_lat, gps_lng) {
-  logger.info(`Starting reverse geo-encoding for ${uuid} at ${gps_lat}, ${gps_lng}`);
+  if (country_code === 'US') {
+    await finalizeUS(uuid, gps_lat, gps_lng);
+  } else {
+    await finalizeNonUS(uuid);
+  }
+}
 
-  // First try exact match up to 4 decimal places
-  const exactMatch = await findExactGeoMatch(gps_lat, gps_lng);
+// ---------------------------------------------------------------------------
+// Non-US: populate geo_ fields from exiftool geolocation data in geo_lookups
+// ---------------------------------------------------------------------------
+async function finalizeNonUS(uuid) {
+  const lookup = await db.getExiftoolGeoLookup(uuid);
+  if (!lookup) {
+    logger.info(`No exiftool geolocation data for ${uuid}`);
+    return;
+  }
 
+  const geo = JSON.parse(lookup.response_json);
+
+  const geo_address = [
+    geo.GeolocationCity,
+    geo.GeolocationSubregion,
+    geo.GeolocationRegion,
+    geo.GeolocationCountryCode,
+    geo.GeolocationCountry
+  ].filter(x => x).join(', ') || null;
+
+  await db.updateGeoFields(uuid, {
+    geo_address,
+    geo_city: geo.GeolocationCity || null,
+    geo_region: geo.GeolocationRegion || null,
+    geo_country: geo.GeolocationCountry || null,
+    geo_country_code: geo.GeolocationCountryCode || null,
+    geo_status: 'RESOLVED_FROM_EXIFTOOL',
+    geo_matched_uuid: null
+  });
+
+  logger.info(`Finalized geo for non-US ${uuid}: ${geo_address}`);
+}
+
+// ---------------------------------------------------------------------------
+// US: check cache, call geonames API if needed, resolve city via postal code
+// ---------------------------------------------------------------------------
+async function finalizeUS(uuid, gps_lat, gps_lng) {
+  logger.info(`Finalizing geo for US ${uuid} at ${gps_lat}, ${gps_lng}`);
+
+  // Try exact match
+  const exactMatch = await db.findExactGeoMatch(gps_lat, gps_lng);
   if (exactMatch) {
     logger.info(`Found exact match for ${uuid} via ${exactMatch.uuid}`);
-    await updateGeoFields(uuid, {
+    await db.updateGeoFields(uuid, {
       geo_address: exactMatch.geo_address,
       geo_city: exactMatch.geo_city,
       geo_region: exactMatch.geo_region,
@@ -37,12 +98,11 @@ export async function performReverseGeoEncoding(uuid, gps_lat, gps_lng) {
     return;
   }
 
-  // If no exact match, try proximity match (within ~10m)
-  const proximityMatch = await findProximityGeoMatch(gps_lat, gps_lng);
-
+  // Try proximity match
+  const proximityMatch = await db.findProximityGeoMatch(gps_lat, gps_lng);
   if (proximityMatch) {
     logger.info(`Found proximity match for ${uuid} via ${proximityMatch.uuid}`);
-    await updateGeoFields(uuid, {
+    await db.updateGeoFields(uuid, {
       geo_address: proximityMatch.geo_address,
       geo_city: proximityMatch.geo_city,
       geo_region: proximityMatch.geo_region,
@@ -54,12 +114,14 @@ export async function performReverseGeoEncoding(uuid, gps_lat, gps_lng) {
     return;
   }
 
-  // No match found, queue geonames lookup
-  logger.info(`No DB match for ${uuid}, queuing API lookup`);
-  await updateGeoEncodingStatus(uuid, 'QUEUED_FOR_API');
-  geonamesProcessor.enqueue(lookupGeonames, [uuid, gps_lat, gps_lng]);
+  // No cache hit -- call geonames API
+  await db.updateGeoEncodingStatus(uuid, 'QUEUED_FOR_API');
+  await lookupGeonames(uuid, gps_lat, gps_lng);
 }
 
+// ---------------------------------------------------------------------------
+// Geonames findNearestAddress API call
+// ---------------------------------------------------------------------------
 async function lookupGeonames(uuid, gps_lat, gps_lng) {
   const url = `http://api.geonames.org/findNearestAddressJSON?lat=${gps_lat}&lng=${gps_lng}&username=${startupConfig.geonamesUsername}`;
   logger.info(`API lookup for ${uuid}: ${url}`);
@@ -71,38 +133,35 @@ async function lookupGeonames(uuid, gps_lat, gps_lng) {
     if (data.address) {
       logger.info(`API success for ${uuid}: ${data.address.placename || '(no placename)'}, ${data.address.adminName1}`);
 
-      // Increment counters after successful API call
       incrementCounters();
 
       // Store in geo_lookups
       const requestParams = JSON.stringify({ lat: gps_lat, lng: gps_lng });
-      await insertGeoLookup(uuid, 'geonames', 'findNearestAddress', requestParams, JSON.stringify(data));
+      await db.insertGeoLookup(uuid, 'geonames', 'findNearestAddress', requestParams, JSON.stringify(data));
 
-      // Resolve all geo fields (may trigger postal code lookup if placename is empty)
-      await resolveGeoFields(uuid, data, 'FOUND_VIA_API', null);
+      // Resolve geo fields from the address response
+      await resolveFromAddress(uuid, data, 'FOUND_VIA_API', null);
 
     } else if (Object.keys(data).length > 0) {
-      // Non-empty response without address indicates an error
       logger.error(`API error for ${uuid}: ${JSON.stringify(data)}`);
-      await updateGeoEncodingStatus(uuid, 'API_ERROR');
+      await db.updateGeoEncodingStatus(uuid, 'API_ERROR');
       throw new Error(`Geonames API error response: ${JSON.stringify(data)}`);
     } else {
-      // Empty response - no address found
       logger.warn(`No address found for ${uuid}`);
-      await updateGeoEncodingStatus(uuid, 'NO_ADDRESS_FOUND');
+      await db.updateGeoEncodingStatus(uuid, 'NO_ADDRESS_FOUND');
     }
   } catch (error) {
     if (error.message?.startsWith('Geonames API error response')) throw error;
     logger.error('Geonames API error:', error);
-    await updateGeoEncodingStatus(uuid, 'API_ERROR');
+    await db.updateGeoEncodingStatus(uuid, 'API_ERROR');
   }
 }
 
 // ---------------------------------------------------------------------------
-// Resolve geo fields: after findNearestAddress data is available, determine
-// city (possibly via postalCodeLookup) and write all fields to metadata.
+// Derive geo_ fields from a findNearestAddress response. Calls postal code
+// lookup if placename is empty.
 // ---------------------------------------------------------------------------
-async function resolveGeoFields(uuid, findNearestAddressData, status, matchedUuid) {
+async function resolveFromAddress(uuid, findNearestAddressData, status, matchedUuid) {
   const addr = findNearestAddressData.address;
 
   let city = addr.placename || null;
@@ -120,7 +179,7 @@ async function resolveGeoFields(uuid, findNearestAddressData, status, matchedUui
     addr.countryCode
   ].filter(x => x).join(', ');
 
-  await updateGeoFields(uuid, {
+  await db.updateGeoFields(uuid, {
     geo_address,
     geo_city: city,
     geo_region: addr.adminName1 || null,
@@ -137,7 +196,7 @@ async function resolveGeoFields(uuid, findNearestAddressData, status, matchedUui
 // ---------------------------------------------------------------------------
 async function resolveCity(uuid, postalcode, country) {
   // Check cache
-  const cached = await findPostalCodeMatch(postalcode, country);
+  const cached = await db.findPostalCodeMatch(postalcode, country);
   if (cached) {
     const data = JSON.parse(cached.response_json);
     if (data.postalcodes && data.postalcodes.length > 0) {
@@ -159,7 +218,7 @@ async function resolveCity(uuid, postalcode, country) {
 
     // Store in geo_lookups
     const requestParams = JSON.stringify({ postalcode, country });
-    await insertGeoLookup(uuid, 'geonames', 'postalCodeLookup', requestParams, JSON.stringify(data));
+    await db.insertGeoLookup(uuid, 'geonames', 'postalCodeLookup', requestParams, JSON.stringify(data));
 
     if (data.postalcodes && data.postalcodes.length > 0) {
       logger.info(`Postal code lookup success: ${data.postalcodes[0].placeName}`);

@@ -19,7 +19,6 @@ insert into metadata
   image_width, image_height, aspectratio,
   make, model, orientation, duration, 
   gps_lat, gps_lng, gps_alt, geo_address,
-  geo_city, geo_region, geo_country, geo_country_code,
   file_modified_at, captured_at,
   exif_datetime_original_ref, exif_create_date_ref,
   indexed_at
@@ -32,7 +31,6 @@ values
   @image_width, @image_height, @aspectratio,
   @make, @model, @orientation, @duration, 
   @gps_lat, @gps_lng, @gps_alt, @geo_address,
-  @geo_city, @geo_region, @geo_country, @geo_country_code,
   @file_modified_at, @captured_at,
   @exif_datetime_original_ref, @exif_create_date_ref,
   datetime('now','localtime')
@@ -66,10 +64,6 @@ const updateMetadataStatement = `
     gps_lng = @gps_lng,
     gps_alt = @gps_alt,
     geo_address = @geo_address,
-    geo_city = @geo_city,
-    geo_region = @geo_region,
-    geo_country = @geo_country,
-    geo_country_code = @geo_country_code,
     file_modified_at = @file_modified_at,
     captured_at = @captured_at
   where uuid = @uuid
