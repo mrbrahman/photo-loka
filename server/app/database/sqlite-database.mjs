@@ -29,26 +29,31 @@ const schemaDir = import.meta.dirname;
 
 let currentVersion = db.pragma("user_version", {simple: true});
 
-if (currentVersion < 1) {
+if (currentVersion < 10) {
   logger.info("Fresh install: creating database schema ...");
-  const sql = fs.readFileSync(path.join(schemaDir, '001-initial-schema.sql'), 'utf8');
+  const sql = fs.readFileSync(path.join(schemaDir, '010-initial-schema.sql'), 'utf8');
   db.transaction(() => {
     db.exec(sql);
   })();
-  currentVersion = 1;
-  db.pragma("user_version = 1");
+  currentVersion = 10;
+  db.pragma("user_version = 10");
 }
 
-// Future migrations go here:
-// if (currentVersion < 2) {
-//   logger.info("Running migration 002 ...");
-//   const sql = fs.readFileSync(path.join(schemaDir, '002-something.sql'), 'utf8');
-//   db.transaction(() => {
-//     db.exec(sql);
-//   })();
-//   currentVersion = 2;
-//   db.pragma("user_version = 2");
-// }
+if (currentVersion < 11) {
+  logger.info("Running migration 011: geo_lookups table ...");
+  const sql2 = fs.readFileSync(path.join(schemaDir, '011-geo-lookups.sql'), 'utf8');
+  db.transaction(() => {
+    db.exec(sql2);
+  })();
+  currentVersion = 11;
+  db.pragma("user_version = 11");
+}
+
+// TODO: v12 - DROP these deprecated columns from metadata (manual, after verification):
+//   - exif_datetime_original_ref
+//   - exif_create_date_ref
+//   - exiftool_geo_json
+//   - geonames_json
 
 // ---------------------------------------------------------------------------
 // Custom aggregate functions

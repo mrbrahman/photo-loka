@@ -12,7 +12,8 @@ import * as fileOps from './file-organizer.mjs';
 import { addToIndexQueue } from './queue-manager.mjs';
 
 import * as db from './indexer-db.mjs';
-import { enqueue as enqueueReverseGeoEncoding } from '#geo/geo-encoder';
+import { enqueue as enqueueReverseGeoEncoding } from '#geo/geo-queue-manager';
+import { insertGeoLookup } from '#geo/geo-encoding-db';
 import { processFaceRecognition } from '#ml/ml-manager';
 import {config} from '#runtime-config';
 import {startupConfig} from '#startup-config';
@@ -124,14 +125,53 @@ export async function indexFile(collection, sourceFileName, uuid, inPlace){
     // Step 6: face region extraction - skipped, now handled by ML face recognition (Step 9)
   }
 
-  // grab the country code before sending to DB (as DB converts it to JSON string)
-  let countryCode = p.exiftool_geo_json?.GeolocationCountryCode
+  // grab the exiftool geo data before sending to DB (it's no longer stored in metadata)
+  let exiftoolGeoJson = p.exiftool_geo_json;
+  let countryCode = exiftoolGeoJson?.GeolocationCountryCode;
+
+  // For non-US items, populate geo fields from exiftool data at insert time.
+  // For US items, these will be overwritten by geonames after API calls complete.
+  if (countryCode && countryCode !== 'US') {
+    p.geo_city = exiftoolGeoJson.GeolocationCity || null;
+    p.geo_region = exiftoolGeoJson.GeolocationRegion || null;
+    p.geo_country = exiftoolGeoJson.GeolocationCountry || null;
+    p.geo_country_code = countryCode;
+    p.geo_address = [
+      exiftoolGeoJson.GeolocationCity,
+      exiftoolGeoJson.GeolocationSubregion,
+      exiftoolGeoJson.GeolocationRegion,
+      exiftoolGeoJson.GeolocationCountryCode,
+      exiftoolGeoJson.GeolocationCountry
+    ].filter(x => x).join(', ') || null;
+  } else if (countryCode === 'US') {
+    // For US items: store country info from exiftool, but city/region/address
+    // will be populated by geonames after API calls complete
+    p.geo_country = exiftoolGeoJson.GeolocationCountry || null;
+    p.geo_country_code = countryCode;
+    p.geo_city = null;
+    p.geo_region = null;
+    p.geo_address = null;
+  } else {
+    p.geo_city = null;
+    p.geo_region = null;
+    p.geo_country = null;
+    p.geo_country_code = null;
+    p.geo_address = null;
+  }
+
+  // Remove exiftool_geo_json from the row object (no longer a metadata column)
+  delete p.exiftool_geo_json;
 
   // save xmpregion before DB insert mutates it to a JSON string
   let xmpregionRaw = p.xmpregion;
 
   // Step 8: Make an entry in db
   await db.insertMetadataRow(p);
+
+  // Store exiftool geo data in geo_lookups table
+  if (exiftoolGeoJson && Object.values(exiftoolGeoJson).some(v => v != null)) {
+    await insertGeoLookup(p.uuid, 'exiftool', 'geolocation', null, JSON.stringify(exiftoolGeoJson));
+  }
 
   // -------------------------
   // Enrichments

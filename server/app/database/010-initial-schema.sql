@@ -1,5 +1,5 @@
 -- =============================================================================
--- 001-schema.sql - Consolidated fresh install schema
+-- 010-schema.sql - Consolidated fresh install schema
 --
 -- All tables, indexes, triggers, and views for a fresh database.
 -- Replaces all prior migrations (v1 through v8).

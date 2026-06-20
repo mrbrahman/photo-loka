@@ -14,7 +14,7 @@ export * as videos      from '#media/video-processor';
 export * as exif        from '#media/exif-manager';
 export * as fileOps     from '#indexing/file-organizer';
 
-export * as geoEncoder  from '#geo/geo-encoder';
+export * as geoEncoder  from '#geo/geo-queue-manager';
 
 export * as frame        from '#frame/frame-manager';
 
