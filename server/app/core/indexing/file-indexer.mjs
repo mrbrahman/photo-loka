@@ -72,7 +72,7 @@ export async function indexFile(collection, sourceFileName, uuid, inPlace){
   if (p.captureDateTime) {
     const cdt = p.captureDateTime;
     p.capture_date = `${String(cdt.year).padStart(4, '0')}-${String(cdt.month).padStart(2, '0')}-${String(cdt.day).padStart(2, '0')}`;
-    p.capture_time = `${String(cdt.hour).padStart(2, '0')}:${String(cdt.minute).padStart(2, '0')}`;
+    p.capture_time = `${String(cdt.hour).padStart(2, '0')}:${String(cdt.minute).padStart(2, '0')}:${String(cdt.second).padStart(2, '0')}`;
     if (cdt.tzOffsetMinutes != null) {
       const sign = cdt.tzOffsetMinutes >= 0 ? '+' : '-';
       const abs = Math.abs(cdt.tzOffsetMinutes);
