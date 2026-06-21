@@ -21,7 +21,7 @@
 UPDATE metadata
 SET
   capture_date = substr(captured_at, 1, 10),
-  capture_time = substr(captured_at, 12, 5),
+  capture_time = substr(captured_at, 12, 8),
   capture_tz_offset = CASE
     WHEN captured_at LIKE '%Z' THEN '+00:00'
     WHEN length(captured_at) = 25 THEN substr(captured_at, 20, 6)
@@ -35,5 +35,5 @@ SET
       AND gl.source = 'exiftool'
       AND gl.api_name = 'geolocation'
   )
-WHERE captured_at IS NOT NULL
+WHERE (exif_datetime_original_ref is not null OR exif_create_date_ref is not null)
   AND capture_date IS NULL;
