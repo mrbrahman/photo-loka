@@ -34,23 +34,14 @@ export async function indexFile(collection, sourceFileName, uuid, inPlace){
     throw `ERROR during getMetadata for file: ${sourceFileName}: ${error}`;
   }
 
-  // Step 1b: Fall back for captured_at if EXIF didn't yield a valid one.
-  //  - intake: file isn't placed yet; we need *some* value to drive folder
-  //    placement. Fall back to mtime (current behavior pre-timeline-view).
-  //    NOTE: Intake without EXIF dates is unexpected -- files without EXIF
-  //    should be placed directly in the collection, not via intake.
-  //  - inPlace: leave captured_at null - the file has no real capture time.
-  //    album_date will still be derived from the folder via the pattern
-  //    engine inside placeFileInCollection, so the timeline grouping
-  //    works fine (captured_at null -> no time stamp shown, item sorted to
-  //    the end of its day).
-  if (!p.captured_at && !inPlace) {
-    p.captured_at = p.file_modified_at;
-    logger.info(`No EXIF date for ${sourceFileName}; falling back to file_modified_at: ${p.captured_at}`);
-  }
-
   // Step 2: Place the file (intake = move to its computed folder; inPlace =
   // just inspect the folder and split into album_date/album_name).
+  //
+  // captureDateTime is the actual camera capture time from EXIF (null when
+  // no EXIF date is available). For in-place, album_date is derived from the
+  // folder via the pattern engine regardless. For intake, files without EXIF
+  // dates should not be present (intake relies on EXIF dates for folder
+  // placement); if it happens, album_date defaults to '1970-01-01' as a sentinel.
   try{
     var f = await fileOps.placeFileInCollection(collection, sourceFileName, p.captureDateTime, inPlace);
   } catch(error){
