@@ -217,12 +217,13 @@ export async function runSearch(collection_id, searchStr, trashed = false, isPri
 
   // Item JSON shape (used by both grouped and flat paths):
   //   { albumDate, albumName, data: { ar, id, type, rating, dur, hasGps,
-  //     hasDesc, hasTags, private, t, hasTime } }
+  //     hasDesc, hasTags, private, t, hasTime, localTime, tzOffset } }
   // - albumDate: YYYY-MM-DD; the day this item belongs to in the timeline.
   // - albumName: descriptive part only (e.g. 'New Year' or 'New Year/Subfolder').
   // - t: unix epoch seconds derived from captured_at, or 0 when null.
-  // - hasTime: 1 if captured_at is non-null (real EXIF capture time), 0 if it
-  //   was a fallback (mtime / null). No-time items render at end of day.
+  // - hasTime: 1 if capture_time is non-null (real EXIF capture time), 0 otherwise.
+  // - localTime: 'HH:MM' in the photographer's timezone (from capture_time column).
+  // - tzOffset: '+HH:MM' or null (from capture_tz_offset column).
   const itemSelect = `
     json_object(
       'albumDate', album_date,
@@ -244,7 +245,10 @@ export async function runSearch(collection_id, searchStr, trashed = false, isPri
         'hasTags', case when trim(coalesce(keywords,'')) not in ('', 'null', '[null]') then 1 else 0 end,
         'private', case when coalesce(is_private, 0) = 1 then 1 else 0 end,
         't', coalesce(unixepoch(captured_at), 0),
-        'hasTime', case when captured_at is not null then 1 else 0 end
+        'hasTime', case when capture_time is not null then 1 else 0 end,
+        'localTime', capture_time,
+        'tzOffset', capture_tz_offset,
+        'tzName', capture_tz_name
       )
     )
   `;
@@ -314,6 +318,7 @@ export async function getItemInfo(uuid){
       make, model,
       gps_lat, gps_lng, gps_alt, geo_address,
       captured_at, file_modified_at,
+      capture_date, capture_time, capture_tz_offset, capture_tz_name,
       indexed_at, trashed_at,
       (select json_group_array(json_object(
         'face_idx', fr.face_idx,

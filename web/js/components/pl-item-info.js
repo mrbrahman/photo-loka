@@ -215,25 +215,42 @@ class PlItemInfo extends HTMLElement {
     else fileIcon.name = 'image-fill';
 
     // Dates
-    this.shadowRoot.getElementById('date-header').textContent = d.captured_at ? this.#formatDate(d.captured_at) : '';
+    // Primary header: photographer's local date/time with offset
+    this.shadowRoot.getElementById('date-header').textContent = d.capture_date
+      ? this.#formatCaptureHeader(d.capture_date, d.capture_time, d.capture_tz_name, d.capture_tz_offset)
+      : (d.captured_at ? this.#formatDate(d.captured_at) : '');
 
     let datesList = this.shadowRoot.getElementById('dates-list');
     datesList.innerHTML = '';
-    let allDates = [
+
+    // Show album_date when it differs from capture_date (e.g. folder-derived)
+    let allDates = [];
+    if (d.album_date && d.album_date !== d.capture_date) {
+      allDates.push(['Album Date', d.album_date]);
+    }
+    allDates.push(
       ['Indexed', d.indexed_at],
       ['File Modified', d.file_modified_at],
       ['Trashed', d.trashed_at],
-    ].filter(([, v]) => v);
+    );
+    allDates = allDates.filter(([, v]) => v);
 
     for (let i = 0; i < allDates.length; i++) {
+      if (i > 0 && allDates[i - 1][0] === 'Album Date') {
+        let spacer = document.createElement('div');
+        spacer.style.height = '6px';
+        datesList.appendChild(spacer);
+      }
       if (i === 1 && allDates[0][0] === 'Indexed') {
         let spacer = document.createElement('div');
         spacer.style.height = '6px';
         datesList.appendChild(spacer);
       }
       let row = document.createElement('div');
-      row.className = allDates[i][0] === 'Indexed' ? 'date-row' : 'date-row date-row-minor';
-      row.innerHTML = `<span class="date-label">${allDates[i][0]}</span><span class="date-value">${this.#formatDate(allDates[i][1])}</span>`;
+      let isMinor = !['Album Date', 'Indexed'].includes(allDates[i][0]);
+      row.className = isMinor ? 'date-row date-row-minor' : 'date-row';
+      let val = allDates[i][0] === 'Album Date' ? allDates[i][1] : this.#formatDate(allDates[i][1]);
+      row.innerHTML = `<span class="date-label">${allDates[i][0]}</span><span class="date-value">${val}</span>`;
       datesList.appendChild(row);
     }
 
@@ -438,6 +455,43 @@ class PlItemInfo extends HTMLElement {
       if (m[7]) formatted += ` (GMT${m[7]})`;
       return formatted;
     } catch { return dateStr; }
+  }
+
+  // Format the primary capture header from the stored capture_date, capture_time,
+  // capture_tz_name, and capture_tz_offset fields.
+  // Shows: "Wed, Oct 22, 2025 9:40pm EST" (or "... (GMT-04:00)" as fallback)
+  #formatCaptureHeader(captureDate, captureTime, tzName, tzOffset) {
+    if (!captureDate) return '';
+    let [y, m, d] = captureDate.split('-').map(Number);
+    let date = new Date(y, m - 1, d);
+    let dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
+    let monthName = date.toLocaleDateString('en-US', { month: 'short' });
+    let header = `${dayName}, ${monthName} ${d}, ${y}`;
+
+    if (captureTime) {
+      let [hStr, mStr] = captureTime.split(':');
+      let h = parseInt(hStr, 10);
+      let period = h >= 12 ? 'pm' : 'am';
+      h = h % 12 || 12;
+      header += ` ${h}:${mStr}${period}`;
+    }
+
+    // Prefer IANA abbreviation, fall back to numeric offset
+    if (tzName) {
+      try {
+        let abbrev = new Intl.DateTimeFormat('en-US', {
+          timeZone: tzName,
+          timeZoneName: 'short'
+        }).formatToParts(new Date(y, m - 1, d))
+          .find(p => p.type === 'timeZoneName')?.value;
+        if (abbrev) { header += ` ${abbrev}`; return header; }
+      } catch { /* invalid tzName, fall through */ }
+    }
+    if (tzOffset) {
+      header += ` (GMT${tzOffset})`;
+    }
+
+    return header;
   }
 }
 

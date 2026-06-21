@@ -18,23 +18,26 @@ export function isPlaceholder(albumName, placeholder) {
 }
 
 /**
- * Format a unix epoch (seconds) as 'h:mma' (e.g. '5:00pm', '12:30am').
+ * Format a local time string ('HH:MM') as 'h:mma' (e.g. '5:00pm', '12:30am').
  */
-export function formatTime(epochSec) {
-  const d = new Date(epochSec * 1000);
-  let h = d.getHours();
-  const m = d.getMinutes();
+export function formatTime(localTime) {
+  if (!localTime) return '';
+  const [hStr, mStr] = localTime.split(':');
+  let h = parseInt(hStr, 10);
+  const m = mStr;
   const period = h >= 12 ? 'pm' : 'am';
   h = h % 12 || 12;
-  return `${h}:${m.toString().padStart(2, '0')}${period}`;
+  return `${h}:${m}${period}`;
 }
 
 /**
- * Format a time window from a list of items. Items have data.t (epoch seconds)
- * and data.hasTime (0/1). Returns:
+ * Format a time window from a list of items. Items have data.t (epoch seconds),
+ * data.localTime ('HH:MM' in photographer's timezone), data.tzOffset ('+HH:MM'
+ * or null), data.tzName (IANA timezone name or null), and data.hasTime (0/1).
+ * Returns:
  *   - 'h:mma ← h:mma' (latest ← earliest) when displayed times differ
- *   - 'h:mma' when displayed times are the same (same h:mm, even if seconds
- *     differ - we don't render seconds, so '8:04pm <- 8:04pm' would be noise)
+ *   - 'h:mma EST ← h:mma IST' when offsets differ (uses abbreviation if available)
+ *   - 'h:mma' when displayed times are the same
  *   - '(no time)' when no items have a real capture time
  *
  * Uses U+2190 (left arrow) here intentionally - exception to the project's
@@ -42,15 +45,46 @@ export function formatTime(epochSec) {
  * direction cue than ASCII '<-'.
  */
 export function formatTimeWindow(items) {
-  const timed = items.filter(i => i.data?.hasTime);
+  const timed = items.filter(i => i.data?.hasTime && i.data.localTime);
   if (timed.length === 0) return '(no time)';
 
-  const times = timed.map(i => i.data.t);
-  const min = Math.min(...times);
-  const max = Math.max(...times);
-  const minStr = formatTime(min);
-  const maxStr = formatTime(max);
-  return minStr === maxStr ? minStr : `${maxStr} ← ${minStr}`;
+  // Find earliest and latest by epoch (true chronological order)
+  let minItem = timed[0], maxItem = timed[0];
+  for (const item of timed) {
+    if (item.data.t < minItem.data.t) minItem = item;
+    if (item.data.t > maxItem.data.t) maxItem = item;
+  }
+
+  const minStr = formatTime(minItem.data.localTime);
+  const maxStr = formatTime(maxItem.data.localTime);
+
+  // Show timezone only when earliest and latest are in different timezones
+  const showTz = minItem.data.tzOffset && maxItem.data.tzOffset
+    && minItem.data.tzOffset !== maxItem.data.tzOffset;
+
+  if (minStr === maxStr && !showTz) return minStr;
+
+  const maxTz = showTz ? ' ' + formatTzLabel(maxItem.data.tzName, maxItem.data.tzOffset, maxItem.data.t) : '';
+  const minTz = showTz ? ' ' + formatTzLabel(minItem.data.tzName, minItem.data.tzOffset, minItem.data.t) : '';
+  return `${maxStr}${maxTz} \u2190 ${minStr}${minTz}`;
+}
+
+/**
+ * Get a timezone display label. Prefers abbreviation from IANA name (e.g. 'EST')
+ * via Intl.DateTimeFormat; falls back to numeric offset (e.g. '+05:30').
+ */
+function formatTzLabel(tzName, tzOffset, epochSec) {
+  if (tzName) {
+    try {
+      const abbrev = new Intl.DateTimeFormat('en-US', {
+        timeZone: tzName,
+        timeZoneName: 'short'
+      }).formatToParts(new Date(epochSec * 1000))
+        .find(p => p.type === 'timeZoneName')?.value;
+      if (abbrev) return abbrev;
+    } catch { /* invalid tzName, fall through */ }
+  }
+  return tzOffset || '';
 }
 
 function ordinal(n) {

@@ -50,22 +50,13 @@ export async function getFilesMtime(dir) {
   }, {});
 }
 
-// Convert a date-like string ('YYYY-MM-DD ...' or ISO with timezone) into the
-// {yyyy, mm, dd} fields expected by the moustache pattern engine. Returns null
-// if the input doesn't have a parseable date prefix.
-function dateFieldsFrom(captured_at) {
-  if (!captured_at) return null;
-  const d = new Date(captured_at);
-  if (isNaN(d.getTime())) {
-    // Fallback: parse the leading 'YYYY-MM-DD' if the string starts with one.
-    const m = String(captured_at).match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (!m) return null;
-    return { yyyy: m[1], mm: m[2], dd: m[3] };
-  }
+// Build {yyyy, mm, dd} for the moustache pattern engine from a captureDateTime object.
+function patternFieldsFrom(captureDateTime) {
+  if (!captureDateTime) return null;
   return {
-    yyyy: String(d.getFullYear()),
-    mm: String(d.getMonth() + 1).padStart(2, '0'),
-    dd: String(d.getDate()).padStart(2, '0')
+    yyyy: String(captureDateTime.year).padStart(4, '0'),
+    mm: String(captureDateTime.month).padStart(2, '0'),
+    dd: String(captureDateTime.day).padStart(2, '0')
   };
 }
 
@@ -79,24 +70,31 @@ function dateStringFromFields(fields) {
  *
  * Returns: { album_date: 'YYYY-MM-DD', album_name: '...', filename: <abs path> }
  *
+ * @param {object} collection - Collection config object
+ * @param {string} filename - Absolute path to the source file
+ * @param {object|null} captureDateTime - Structured capture date/time:
+ *   { year, month, day, hour, minute, second, tzOffsetMinutes }
+ *   null when no EXIF date is available.
+ * @param {boolean} inPlace - true = file already in collection; false = intake mode
+ *
  * In intake mode (inPlace=false): file is moved into the collection at a path
- * computed forward via the pattern engine using captured_at's date and an empty
- * album_name (later optionally appended with collection.placeholder_album_text).
+ * computed forward via the pattern engine using captureDateTime's date and an
+ * empty album_name (later optionally appended with collection.placeholder_album_text).
  *
  * In inPlace mode (inPlace=true): file is already at its target location;
  * we parse the parent folder against the collection's apply_folder_pattern
  * to extract album_date and album_name. If the path doesn't match the
  * pattern (e.g. user placed the file in an unstructured folder), we fall
- * back to captured_at's date for album_date and an empty album_name.
+ * back to captureDateTime's date for album_date and an empty album_name.
  */
-export async function placeFileInCollection(collection, filename, captured_at, inPlace = false) {
+export async function placeFileInCollection(collection, filename, captureDateTime, inPlace = false) {
   if (inPlace) {
-    return placeInPlace(collection, filename, captured_at);
+    return placeInPlace(collection, filename, captureDateTime);
   }
-  return placeViaIntake(collection, filename, captured_at);
+  return placeViaIntake(collection, filename, captureDateTime);
 }
 
-async function placeInPlace(collection, filename, captured_at) {
+async function placeInPlace(collection, filename, captureDateTime) {
   let album_date, album_name = '';
 
   if (collection.album_type === 'FOLDER_ALBUM' && collection.apply_folder_pattern) {
@@ -106,15 +104,15 @@ async function placeInPlace(collection, filename, captured_at) {
       album_date = `${parsed.yyyy}-${parsed.mm}-${parsed.dd}`;
       album_name = parsed.album || '';
     } else {
-      // Folder doesn't match the pattern. Fall back to captured_at's date.
-      const f = dateFieldsFrom(captured_at);
+      // Folder doesn't match the pattern. Fall back to captureDateTime's date.
+      const f = patternFieldsFrom(captureDateTime);
       album_date = dateStringFromFields(f) || '1970-01-01';
       album_name = '';
     }
   } else {
-    // VIRTUAL_ALBUM has no folder structure - album_date comes from captured_at,
+    // VIRTUAL_ALBUM has no folder structure - album_date comes from captureDateTime,
     // album_name is empty.
-    const f = dateFieldsFrom(captured_at);
+    const f = patternFieldsFrom(captureDateTime);
     album_date = dateStringFromFields(f) || '1970-01-01';
     album_name = '';
   }
@@ -124,11 +122,11 @@ async function placeInPlace(collection, filename, captured_at) {
   return { album_date, album_name, filename };
 }
 
-async function placeViaIntake(collection, filename, captured_at) {
+async function placeViaIntake(collection, filename, captureDateTime) {
   // Intake creates a fresh folder for this file. album_date comes from
-  // captured_at; album_name defaults to the collection's placeholder text
+  // captureDateTime; album_name defaults to the collection's placeholder text
   // (so the user can later rename it from the gallery).
-  const fields = dateFieldsFrom(captured_at);
+  const fields = patternFieldsFrom(captureDateTime);
   const album_date = dateStringFromFields(fields) || '1970-01-01';
   const album_name = collection.placeholder_album_text || '';
 

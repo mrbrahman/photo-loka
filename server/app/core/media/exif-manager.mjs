@@ -25,6 +25,41 @@ function validExifDate(tag) {
   return s;
 }
 
+// Extract a structured captureDateTime object from an ExifDateTime tag.
+// Returns null if the tag is not a valid ExifDateTime.
+// This is the canonical representation passed through the indexing pipeline --
+// decoupled from the exiftool-vendored ExifDateTime class so downstream code
+// has no library dependency.
+function extractCaptureDateTime(tag) {
+  if (!tag || typeof tag !== 'object' || typeof tag.year !== 'number') return null;
+  if (tag.year < 1900) return null;
+
+  return {
+    year: tag.year,
+    month: tag.month,
+    day: tag.day,
+    hour: tag.hour,
+    minute: tag.minute,
+    second: tag.second,
+    tzOffsetMinutes: tag.tzoffsetMinutes ?? null
+  };
+}
+
+// Extract the IANA timezone name from an ExifDateTime object.
+// Returns null if the tag is not an ExifDateTime or zone is unknown/unset.
+// Note: ExifDateTime.zone requires @photostructure/tz-lookup to resolve GPS
+// to IANA names. Without it, .zone returns generic offset names like 'UTC-4'.
+// We fall back to it but prefer GeolocationTimeZone passed separately.
+function extractZoneName(tag) {
+  if (!tag || typeof tag !== 'object') return null;
+  const zone = tag.zone;
+  if (!zone || zone === 'UnsetZone') return null;
+  // Reject generic offset-based names (e.g. 'UTC-4', 'UTC+5:30') - these
+  // aren't real IANA names and don't help with abbreviation lookups.
+  if (/^UTC[+-]/.test(zone)) return null;
+  return zone;
+}
+
 export async function getMetadata(file){
   // exiftool needs a file, and not buffer
   // since it is just a wrapper around perl exiftool
@@ -108,6 +143,16 @@ export async function getMetadata(file){
     // gap from folder path (in-place) or mtime (intake) when both EXIF
     // dates are invalid/missing.
     captured_at: validExifDate(tags.DateTimeOriginal) || validExifDate(tags.CreateDate) || null,
+    // Structured capture date/time extracted directly from ExifDateTime object
+    // properties. Passed through the indexing pipeline for folder placement and
+    // populating capture_date/time/offset columns. null when no EXIF date.
+    captureDateTime: extractCaptureDateTime(tags.DateTimeOriginal) || extractCaptureDateTime(tags.CreateDate) || null,
+    // IANA timezone name inferred by exiftool-vendored (from GPS, explicit
+    // EXIF tags, or UTC delta). 'UnsetZone' means unknown.
+    // Prefer GeolocationTimeZone (from exiftool's built-in geolocation DB,
+    // always an IANA name when GPS is available) over ExifDateTime.zone
+    // (which requires @photostructure/tz-lookup to be a real IANA name).
+    capture_tz_name: tags.GeolocationTimeZone || extractZoneName(tags.DateTimeOriginal) || extractZoneName(tags.CreateDate) || null,
     exif_datetime_original_ref: validExifDate(tags.DateTimeOriginal),
     exif_create_date_ref: validExifDate(tags.CreateDate)
   }

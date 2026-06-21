@@ -37,6 +37,8 @@ export async function indexFile(collection, sourceFileName, uuid, inPlace){
   // Step 1b: Fall back for captured_at if EXIF didn't yield a valid one.
   //  - intake: file isn't placed yet; we need *some* value to drive folder
   //    placement. Fall back to mtime (current behavior pre-timeline-view).
+  //    NOTE: Intake without EXIF dates is unexpected -- files without EXIF
+  //    should be placed directly in the collection, not via intake.
   //  - inPlace: leave captured_at null - the file has no real capture time.
   //    album_date will still be derived from the folder via the pattern
   //    engine inside placeFileInCollection, so the timeline grouping
@@ -50,7 +52,7 @@ export async function indexFile(collection, sourceFileName, uuid, inPlace){
   // Step 2: Place the file (intake = move to its computed folder; inPlace =
   // just inspect the folder and split into album_date/album_name).
   try{
-    var f = await fileOps.placeFileInCollection(collection, sourceFileName, p.captured_at, inPlace);
+    var f = await fileOps.placeFileInCollection(collection, sourceFileName, p.captureDateTime, inPlace);
   } catch(error){
     throw `ERROR during placeFileInCollection for file: ${sourceFileName}: ${error}`;
   }
@@ -62,6 +64,31 @@ export async function indexFile(collection, sourceFileName, uuid, inPlace){
   } catch(error){
     throw `ERROR during Generate uuid for file: ${sourceFileName}: ${error}`;
   }
+
+  // Step 3b: Derive capture_date, capture_time, capture_tz_offset from
+  // captureDateTime (structured object from exif-manager, extracted directly
+  // from ExifDateTime properties -- no string parsing).
+  // capture_tz_name is already set by exif-manager (from GeolocationTimeZone).
+  if (p.captureDateTime) {
+    const cdt = p.captureDateTime;
+    p.capture_date = `${String(cdt.year).padStart(4, '0')}-${String(cdt.month).padStart(2, '0')}-${String(cdt.day).padStart(2, '0')}`;
+    p.capture_time = `${String(cdt.hour).padStart(2, '0')}:${String(cdt.minute).padStart(2, '0')}`;
+    if (cdt.tzOffsetMinutes != null) {
+      const sign = cdt.tzOffsetMinutes >= 0 ? '+' : '-';
+      const abs = Math.abs(cdt.tzOffsetMinutes);
+      const h = String(Math.floor(abs / 60)).padStart(2, '0');
+      const m = String(abs % 60).padStart(2, '0');
+      p.capture_tz_offset = `${sign}${h}:${m}`;
+    } else {
+      p.capture_tz_offset = null;
+    }
+  } else {
+    p.capture_date = null;
+    p.capture_time = null;
+    p.capture_tz_offset = null;
+  }
+  delete p.captureDateTime;
+  // capture_tz_name is already on p from exif-manager
 
   // Step 4: Video thumbnail extraction
   if(p.mediatype == "video" || p.mediatype == "image"){

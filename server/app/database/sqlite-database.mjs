@@ -49,6 +49,16 @@ if (currentVersion < 11) {
   db.pragma("user_version = 11");
 }
 
+if (currentVersion < 12) {
+  logger.info("Running migration 012: capture_date, capture_time, capture_tz_offset columns ...");
+  const sql3 = fs.readFileSync(path.join(schemaDir, '012-capture-time-columns.sql'), 'utf8');
+  db.transaction(() => {
+    db.exec(sql3);
+  })();
+  currentVersion = 12;
+  db.pragma("user_version = 12");
+}
+
 // TODO: v12 - DROP these deprecated columns from metadata (manual, after verification):
 //   - exif_datetime_original_ref
 //   - exif_create_date_ref

@@ -20,6 +20,7 @@ insert into metadata
   make, model, orientation, duration, 
   gps_lat, gps_lng, gps_alt, geo_address,
   file_modified_at, captured_at,
+  capture_date, capture_time, capture_tz_offset, capture_tz_name,
   exif_datetime_original_ref, exif_create_date_ref,
   indexed_at
 )
@@ -32,6 +33,7 @@ values
   @make, @model, @orientation, @duration, 
   @gps_lat, @gps_lng, @gps_alt, @geo_address,
   @file_modified_at, @captured_at,
+  @capture_date, @capture_time, @capture_tz_offset, @capture_tz_name,
   @exif_datetime_original_ref, @exif_create_date_ref,
   datetime('now','localtime')
 )
@@ -65,7 +67,11 @@ const updateMetadataStatement = `
     gps_alt = @gps_alt,
     geo_address = @geo_address,
     file_modified_at = @file_modified_at,
-    captured_at = @captured_at
+    captured_at = @captured_at,
+    capture_date = @capture_date,
+    capture_time = @capture_time,
+    capture_tz_offset = @capture_tz_offset,
+    capture_tz_name = @capture_tz_name
   where uuid = @uuid
 `;
 
