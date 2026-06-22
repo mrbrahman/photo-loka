@@ -42,6 +42,30 @@ export async function indexFile(collection, sourceFileName, uuid, inPlace){
   // folder via the pattern engine regardless. For intake, files without EXIF
   // dates should not be present (intake relies on EXIF dates for folder
   // placement); if it happens, album_date defaults to '1970-01-01' as a sentinel.
+<<<<<<< Updated upstream
+=======
+  //
+  // Exception: audio files typically lack EXIF date fields. For intake audio
+  // files, fall back to file_modified_at so they get placed in a dated folder.
+  if (!p.captureDateTime && !inPlace && p.mediatype === 'audio') {
+    p.captured_at = p.file_modified_at;
+    // Build a captureDateTime from file_modified_at for folder placement.
+    // Extract components directly from the ISO string prefix (positions are
+    // stable across all exiftool-vendored format variants).
+    if (p.file_modified_at) {
+      const m = p.file_modified_at.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})/);
+      if (m) {
+        p.captureDateTime = {
+          year: +m[1], month: +m[2], day: +m[3],
+          hour: +m[4], minute: +m[5], second: +m[6],
+          tzOffsetMinutes: null
+        };
+      }
+    }
+    logger.info(`Audio file without EXIF date: ${sourceFileName}; using file_modified_at for placement`);
+  }
+
+>>>>>>> Stashed changes
   try{
     var f = await fileOps.placeFileInCollection(collection, sourceFileName, p.captureDateTime, inPlace);
   } catch(error){
