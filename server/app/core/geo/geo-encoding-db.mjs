@@ -97,8 +97,8 @@ export async function insertGeoLookup(uuid, source, api_name, request_params, re
 // ---------------------------------------------------------------------------
 
 // Update derived geo fields on metadata. Uses COALESCE for geo_country and
-// geo_country_code so that passing null does not overwrite values already set
-// at index time (from exiftool).
+// geo_country_code so that passing null preserves any existing value (e.g.
+// from a prior finalization or cache hit copy).
 export async function updateGeoFields(uuid, fields) {
   return await asyncRun(`
     UPDATE metadata

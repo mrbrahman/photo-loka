@@ -171,6 +171,15 @@ async function resolveFromAddress(uuid, findNearestAddressData, status, matchedU
     city = await resolveCity(uuid, addr.postalcode, addr.countryCode);
   }
 
+  // geonames findNearestAddress does not return full country name;
+  // get it from exiftool geolocation data instead
+  let geo_country = null;
+  const exiftoolLookup = await db.getExiftoolGeoLookup(uuid);
+  if (exiftoolLookup) {
+    const exGeo = JSON.parse(exiftoolLookup.response_json);
+    geo_country = exGeo.GeolocationCountry || null;
+  }
+
   const geo_address = [
     addr.streetNumber,
     addr.street,
@@ -183,7 +192,7 @@ async function resolveFromAddress(uuid, findNearestAddressData, status, matchedU
     geo_address,
     geo_city: city,
     geo_region: addr.adminName1 || null,
-    geo_country: null,          // geonames findNearestAddress does not return full country name
+    geo_country,
     geo_country_code: addr.countryCode || null,
     geo_status: status,
     geo_matched_uuid: matchedUuid
