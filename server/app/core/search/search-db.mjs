@@ -288,7 +288,7 @@ export async function runSearch(collection_id, searchStr, trashed = false, isPri
     `;
   }
 
-  logger.info(sql)
+  // logger.info(sql)
   
   let results = await asyncAll(sql);
   return groupByDay ? transformDayGrouped(results) : transformFlat(results);
