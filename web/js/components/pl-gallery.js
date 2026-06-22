@@ -118,7 +118,8 @@ class PlGallery extends HTMLElement {
 
     const totalItems = this.#data.reduce((sum, d) => sum + d.items.length, 0);
     const albumSet = new Set(this.#data.flatMap(d => d.items.map(i => i.albumName)));
-    notify(`Found ${totalItems.toLocaleString()} items in ${albumSet.size.toLocaleString()} albums`);
+    const verb = this.#mode === 'search' || this.#mode === 'trash' ? 'Found' : 'Showing';
+    notify(`${verb} ${totalItems.toLocaleString()} items in ${albumSet.size.toLocaleString()} albums`);
 
     let galleryEl = this.shadowRoot.getElementById('gallery');
 
