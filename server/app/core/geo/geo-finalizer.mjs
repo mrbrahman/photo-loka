@@ -6,6 +6,27 @@ import { startupConfig } from '#startup-config';
 const logger = createLogger(import.meta.url);
 
 // ---------------------------------------------------------------------------
+// Geo field derivation mapping
+//
+// US items (via geonames findNearestAddress):
+//   geo_city         <- address.placename, or postalCodeLookup postalcodes[0].placeName if empty
+//   geo_region       <- address.adminName1
+//   geo_country      <- exiftool GeolocationCountry (geonames does not provide it)
+//   geo_country_code <- address.countryCode
+//   geo_address      <- "streetNumber street, city||adminName2, adminName1, countryCode"
+//
+// Non-US items (via exiftool geolocation):
+//   geo_city         <- GeolocationCity
+//   geo_region       <- GeolocationRegion
+//   geo_country      <- GeolocationCountry
+//   geo_country_code <- GeolocationCountryCode
+//   geo_address      <- "City, Subregion, Region, CountryCode, Country"
+//
+// Cache hits (exact/proximity match):
+//   All fields copied verbatim from the matched row.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
 // finalizeGeo: single entry point for resolving geo_ fields on a metadata row.
 //
 // uuid is required. Optional fields (gps_lat, gps_lng, country_code) are used
