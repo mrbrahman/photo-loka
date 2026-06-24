@@ -24,6 +24,8 @@ import { throttle, notify, showConfirmDialog, showProgress, hideProgress } from 
 import { searchItems, getTrashedItems, searchByGpsCoordinates, getAllItems } from '../api/search-api.mjs';
 import { updateRating, trashItems, togglePrivate, restoreFromTrash, cleanupTrash, emptyTrash, moveItems } from '../api/media-api.mjs';
 
+import './pl-gallery-index.js';
+
 import sheet from "./styles/pl-gallery.css" with { type: "css" };
 
 class PlGallery extends HTMLElement {
@@ -41,6 +43,15 @@ class PlGallery extends HTMLElement {
   #slideshowItemId = null;
   #placeholderText = '';
 
+  // Scroll-stop debounce for the gallery index (.scrolling class on the
+  // index toggles its visibility). Cleared in disconnectedCallback.
+  #indexScrollTimer = null;
+
+  // Dedup flag for the per-frame marker update. Set when an rAF is pending
+  // so multiple scroll events within the same frame coalesce into one
+  // update.
+  #markerRafPending = false;
+
   static template = document.createElement('template');
   static {
     this.template.innerHTML = // html
@@ -53,6 +64,7 @@ class PlGallery extends HTMLElement {
         </sl-button>
       </div>
       <div id="gallery"></div>
+      <pl-gallery-index id="gallery-index"></pl-gallery-index>
       <div id="nav-btns">
         <sl-icon-button id="prev-album-btn" name="chevron-up" label="Previous album"></sl-icon-button>
         <sl-icon-button id="next-album-btn" name="chevron-down" label="Next album"></sl-icon-button>
@@ -142,6 +154,11 @@ class PlGallery extends HTMLElement {
     this.#attachAllAlbumListeners();
     galleryEl.addEventListener('pl-day-section-albums-changed', this.#handleSectionAlbumsChanged);
 
+    // Hand the index its data and listen for jump-to-day clicks.
+    let indexEl = this.shadowRoot.getElementById('gallery-index');
+    indexEl.data = this.#data;
+    indexEl.addEventListener('pl-gallery-index-jump', this.#handleIndexJump);
+
     // Reset scroll
     galleryEl.scrollTop = 0;
 
@@ -150,6 +167,7 @@ class PlGallery extends HTMLElement {
     requestAnimationFrame(() => {
       this.#selectivelyPaintAlbums();
       this.#updateNavBtnState();
+      this.#pushIndexLayout();
     });
 
     if (this.#mode === 'trash') {
@@ -179,7 +197,7 @@ class PlGallery extends HTMLElement {
       this.closeSlideshow(evt.detail.currentItemId);
     });
 
-    galleryEl.addEventListener('scroll', this.#throttleHandleScroll);
+    galleryEl.addEventListener('scroll', this.#handleScroll);
     galleryEl.addEventListener('scrollend', this.#updateNavBtnState);
     this.shadowRoot.getElementById('next-album-btn').addEventListener('click', this.#scrollToNextAlbum);
     this.shadowRoot.getElementById('prev-album-btn').addEventListener('click', this.#scrollToPrevAlbum);
@@ -234,7 +252,41 @@ class PlGallery extends HTMLElement {
     requestAnimationFrame(() => {
       this.#selectivelyPaintAlbums();
       this.#updateNavBtnState();
+      this.#pushIndexLayout();
     });
+  }
+
+  // Snapshot each day-section's geometry and push it (plus gallery scroll
+  // metrics) to the index. Called after layout changes (initial render,
+  // album height change, resize, day-section mode toggle). Cheap enough to
+  // run on every layout event.
+  #pushIndexLayout = () => {
+    let indexEl = this.shadowRoot.getElementById('gallery-index');
+    if (!indexEl) return;
+    let galleryEl = this.shadowRoot.getElementById('gallery');
+    if (!galleryEl) return;
+
+    let dayOffsets = this.#daySections.map(s => ({
+      day: s.day,
+      offsetTop: s.offsetTop,
+      offsetHeight: s.offsetHeight
+    }));
+
+    indexEl.updateLayout({
+      dayOffsets,
+      scrollHeight: galleryEl.scrollHeight,
+      clientHeight: galleryEl.clientHeight
+    });
+    indexEl.updateScroll(galleryEl.scrollTop);
+  }
+
+  #handleIndexJump = (evt) => {
+    let day = evt.detail?.day;
+    if (!day) return;
+    let section = this.#daySections.find(s => s.day === day);
+    if (!section) return;
+    let galleryEl = this.shadowRoot.getElementById('gallery');
+    galleryEl.scrollTo({ top: section.offsetTop, behavior: 'smooth' });
   }
 
   #handleItemsSelected = (evt) => {
@@ -396,7 +448,10 @@ class PlGallery extends HTMLElement {
       }
     }
 
-    requestAnimationFrame(() => this.#selectivelyPaintAlbums());
+    requestAnimationFrame(() => {
+      this.#selectivelyPaintAlbums();
+      this.#pushIndexLayout();
+    });
 
     let movedCnt = okPlan.reduce((s, p) => s + p.items.length, 0);
     notify(`${movedCnt} item${movedCnt > 1 ? 's' : ''} moved`, 'success');
@@ -497,6 +552,7 @@ class PlGallery extends HTMLElement {
       this.#daySections = [];
       this.#albumsInBuffer = {};
       this.#updateTrashCount();
+      this.#pushIndexLayout();
       notify('Trash emptied', 'success');
     } catch(err) {
       notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
@@ -514,7 +570,11 @@ class PlGallery extends HTMLElement {
     // recomputes layout after a child height change. We just need to repaint
     // visible thumbs.
     this.#selectivelyPaintAlbums();
-    setTimeout(() => this.#selectivelyPaintAlbums(), 300);
+    this.#pushIndexLayout();
+    setTimeout(() => {
+      this.#selectivelyPaintAlbums();
+      this.#pushIndexLayout();
+    }, 300);
   }
 
   #removeAlbum = (evt) => {
@@ -655,7 +715,35 @@ class PlGallery extends HTMLElement {
       scrollTop >= lastAlbumTop - 1 || scrollTop >= maxScroll - 1;
   }
 
-  #throttleHandleScroll = throttle(() => {
+  // Scroll handler with two cadences:
+  //  - Per-frame (rAF-deduped): cheap update of the index marker so it
+  //    tracks scroll smoothly without throttle-induced step lag. This path
+  //    also manages the .scrolling class on the index and its 1.5s
+  //    fade-out timer.
+  //  - Throttled (100ms): heavier work that doesn't need frame-rate
+  //    cadence -- selective album painting and nav-button state.
+  #handleScroll = () => {
+    if (!this.#markerRafPending) {
+      this.#markerRafPending = true;
+      requestAnimationFrame(() => {
+        this.#markerRafPending = false;
+        if (!this.isConnected) return;
+        let indexEl = this.shadowRoot.getElementById('gallery-index');
+        let galleryEl = this.shadowRoot.getElementById('gallery');
+        if (!indexEl || !galleryEl) return;
+        indexEl.updateScroll(galleryEl.scrollTop);
+        indexEl.classList.add('scrolling');
+        if (this.#indexScrollTimer) clearTimeout(this.#indexScrollTimer);
+        this.#indexScrollTimer = setTimeout(() => {
+          indexEl.classList.remove('scrolling');
+          this.#indexScrollTimer = null;
+        }, 1500);
+      });
+    }
+    this.#throttledHeavyScroll();
+  }
+
+  #throttledHeavyScroll = throttle(() => {
     this.#selectivelyPaintAlbums(false);
     this.#updateNavBtnState();
   }, 100);
@@ -666,17 +754,21 @@ class PlGallery extends HTMLElement {
       section.redoLayout();
     }
     this.#selectivelyPaintAlbums();
+    this.#pushIndexLayout();
   }
-
   #throttleHandleResize = throttle(() => this.#handleResize(), 100);
 
   disconnectedCallback() {
     let galleryEl = this.shadowRoot.getElementById('gallery');
-    galleryEl?.removeEventListener('scroll', this.#throttleHandleScroll);
+    galleryEl?.removeEventListener('scroll', this.#handleScroll);
     galleryEl?.removeEventListener('scrollend', this.#updateNavBtnState);
     this.shadowRoot.getElementById('next-album-btn')?.removeEventListener('click', this.#scrollToNextAlbum);
     this.shadowRoot.getElementById('prev-album-btn')?.removeEventListener('click', this.#scrollToPrevAlbum);
     window.removeEventListener('resize', this.#throttleHandleResize);
+    if (this.#indexScrollTimer) {
+      clearTimeout(this.#indexScrollTimer);
+      this.#indexScrollTimer = null;
+    }
   }
 
   attributeChangedCallback() { /* unused */ }
