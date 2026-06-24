@@ -19,11 +19,13 @@
 // === State Transitions ===
 //
 // - hidden -> full:         on first scroll event
-// - full -> marker-only:    1.5s of continuous scrolling without pause
-// - full -> hidden:         1.5s after scroll stops (if scroll < 1.5s total)
+// - full -> marker-only:    2.5s of continuous scrolling without pause
+// - full -> hidden:         1.5s after scroll stops (if scroll < 2.5s total)
 // - marker-only -> hidden:  1.5s after scroll stops
 // - full/marker-only -> full: on scrub start (pointerdown on pill)
-// - On scrub end (pointerup): state stays full, normal 1.5s timer resumes
+// - marker-only -> full (CSS): on hover of pill or any tick element
+// - On scrub end (pointerup): state stays full, normal 2.5s timer resumes
+// - On tick click: timer resets, stays full for another 2.5s
 //
 // === Position Mapping ===
 //
@@ -76,6 +78,7 @@ class PlGalleryIndex extends HTMLElement {
   #tickHideTimer = null;   // full -> marker-only after TICK_HIDE_DELAY
   #markerHideTimer = null; // marker-only/full -> hidden after MARKER_HIDE_DELAY
   #isScrubbing = false;
+  #isHovering = false;
 
   static template = document.createElement('template');
   static {
@@ -101,6 +104,16 @@ class PlGalleryIndex extends HTMLElement {
     this.shadowRoot.getElementById('rail').addEventListener('click', this.#handleTickClick);
     let pill = this.shadowRoot.getElementById('marker-pill');
     pill.addEventListener('pointerdown', this.#handleScrubStart);
+    // Hover-to-reveal only on devices with a real pointer (mouse).
+    // Touch devices get simulated mouseenter on tap which never gets a
+    // corresponding mouseleave, causing ticks to stay visible forever.
+    if (window.matchMedia?.('(hover: hover)').matches) {
+      pill.addEventListener('mouseenter', this.#handleHoverIn);
+      pill.addEventListener('mouseleave', this.#handleHoverOut);
+      let ticks = this.shadowRoot.getElementById('ticks');
+      ticks.addEventListener('mouseenter', this.#handleHoverIn);
+      ticks.addEventListener('mouseleave', this.#handleHoverOut);
+    }
     this.#repaint();
   }
 
@@ -155,12 +168,9 @@ class PlGalleryIndex extends HTMLElement {
   }
 
   #onScrollStop() {
-    if (this.#isScrubbing) return;
+    if (this.#isScrubbing || this.#isHovering) return;
 
     // When scroll stops, start the countdown to hide the marker.
-    // The tick-hide timer may already be running (if still in full state)
-    // or may have already fired (if in marker-only). Either way, the
-    // marker-hide timer starts/resets from now.
     this.#startMarkerHideTimer();
   }
 
@@ -168,7 +178,7 @@ class PlGalleryIndex extends HTMLElement {
     this.#clearTickHideTimer();
     this.#tickHideTimer = setTimeout(() => {
       this.#tickHideTimer = null;
-      if (this.#visState === 'full' && !this.#isScrubbing) {
+      if (this.#visState === 'full' && !this.#isScrubbing && !this.#isHovering) {
         this.#setVisState('marker-only');
       }
     }, TICK_HIDE_DELAY);
@@ -400,6 +410,28 @@ class PlGalleryIndex extends HTMLElement {
       bubbles: true, composed: true,
       detail: { day }
     }));
+  }
+
+  // --- Hover (pill or ticks) ---
+
+  #handleHoverIn = () => {
+    this.#isHovering = true;
+    if (this.#visState === 'full' || this.#visState === 'marker-only') {
+      this.#clearTickHideTimer();
+      this.#clearMarkerHideTimer();
+      this.#setVisState('full');
+    }
+  }
+
+  #handleHoverOut = () => {
+    this.#isHovering = false;
+    if (this.#visState === 'full' && !this.#isScrubbing) {
+      this.#startTickHideTimer();
+      // If scrolling already stopped while we were hovering, the
+      // notifyScrollStop call was a no-op (scrub/hover was active).
+      // Start the marker-hide timer now so the marker eventually hides.
+      this.#startMarkerHideTimer();
+    }
   }
 
   // --- Scrub ---
