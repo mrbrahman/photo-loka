@@ -1,7 +1,8 @@
 /* pl-gallery-index: scroll position ticks overlaid on the right edge.
-   The native scrollbar (thin, themed) provides the strip visual and handles
-   all scrolling. This component floats labels/ticks next to it without
-   intercepting scroll or pointer events on the gallery. */
+   Visibility is driven by the data-vis attribute on the host:
+   - "hidden":      everything invisible (default)
+   - "full":        ticks + marker visible
+   - "marker-only": ticks hidden, marker visible */
 
 :host {
   position: absolute;
@@ -17,28 +18,27 @@
   display: none;
 }
 
-/* The rail is just a positioning container for ticks. No background, no
-   pointer events on the container itself. Labels jut out to the left. */
+/* --- Rail (positioning container) --- */
+
 #rail {
   position: absolute;
   top: 8px;
   right: 0;
   bottom: 24px;
   width: 0;
-  opacity: 0;
-  transition: opacity 0.2s ease;
 }
 
-:host(.scrolling) #rail,
-:host([scrubbing]) #rail {
-  opacity: 1;
-}
-
-/* --- Ticks container --- */
+/* --- Ticks (major + minor) --- */
 
 #ticks {
   position: absolute;
   inset: 0;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+:host([data-vis="full"]) #ticks {
+  opacity: 1;
 }
 
 /* --- Major ticks --- */
@@ -79,7 +79,7 @@
   opacity: 1;
 }
 
-/* --- Minor ticks (visible only during scroll, same as major) --- */
+/* --- Minor ticks --- */
 
 .minor-tick {
   position: absolute;
@@ -100,12 +100,12 @@
   background: var(--sidebar-active-text);
 }
 
-/* --- Marker --- */
+/* --- Marker (line + pill) --- */
 
 #marker {
   position: absolute;
   right: 0;
-  width: 100px; /* enough width for the pill to render */
+  width: 100px;
   top: 0;
   will-change: transform;
   pointer-events: none;
@@ -113,6 +113,14 @@
   align-items: center;
   justify-content: flex-end;
   gap: 4px;
+  /* Hidden by default, shown in full and marker-only states */
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+:host([data-vis="full"]) #marker,
+:host([data-vis="marker-only"]) #marker {
+  opacity: 1;
 }
 
 #marker-line {

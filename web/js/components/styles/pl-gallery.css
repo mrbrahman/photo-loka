@@ -49,7 +49,7 @@ pl-day-section {
 /* When the gallery index is visible (actively scrolling), fade the chevron
    nav buttons out. They serve overlapping purposes and would otherwise sit
    on top of the rail. */
-:host(:has(pl-gallery-index.scrolling)) #nav-btns {
+:host(:has(pl-gallery-index[data-vis="full"])) #nav-btns {
   opacity: 0;
   pointer-events: none;
 }

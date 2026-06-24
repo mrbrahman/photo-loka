@@ -1,31 +1,59 @@
 // pl-gallery-index: a scroll position index for pl-gallery.
 //
-// Design:
+// === Terminology ===
 //
-// 1. Position mapping is scroll-proportional. The rail is a compressed
-//    mirror of the gallery's scroll content. A label for a given day-section
-//    sits at Y = (section.offsetTop / scrollHeight) * railHeight.
-//    The marker tracks scrollTop the same way.
+// - Marker: the moving element that tracks scroll position. Composed of the
+//   marker line (horizontal bar) + marker pill (blue rounded label showing
+//   current month/year). The pill also acts as a scrub handle.
+// - Ticks: the static reference points. Split into major ticks (labeled
+//   pills, max 5) and minor ticks (dots, one per unlabeled month).
+// - Rail: the invisible positioning container that holds ticks + marker.
+//   Controls top/bottom insets.
 //
-// 2. Major ticks: max 5 labeled pills. Topmost and bottommost always shown.
-//    Year transitions get priority for middle slots. Remaining slots are
-//    distributed by rail Y spacing. Labels show "Mon YYYY" except year
-//    transitions which show "YYYY" in bolder style.
-//    If total unique months <= 5, all are shown as major ticks.
+// === Visibility States ===
 //
-// 3. Minor ticks: one per unique month not already a major tick. Shown as
-//    small dots, only visible on desktop hover (not during scroll). Clickable.
+// - Hidden: everything invisible. Default idle state.
+// - Full: ticks + marker visible. Shown at start of scroll and during scrub.
+// - Marker-only: ticks hidden, marker visible. Shown after prolonged scroll.
 //
-// 4. Visibility. The rail fades in on hover or while the gallery is
-//    scrolling (.scrolling class toggled by the gallery). Minor ticks only
-//    appear on hover, not during scroll-only visibility.
+// === State Transitions ===
 //
-// 5. Click to jump. Clicking a major or minor tick dispatches
-//    pl-gallery-index-jump with { day }; the gallery does smooth scroll.
+// - hidden -> full:         on first scroll event
+// - full -> marker-only:    1.5s of continuous scrolling without pause
+// - full -> hidden:         1.5s after scroll stops (if scroll < 1.5s total)
+// - marker-only -> hidden:  1.5s after scroll stops
+// - full/marker-only -> full: on scrub start (pointerdown on pill)
+// - On scrub end (pointerup): state stays full, normal 1.5s timer resumes
+//
+// === Position Mapping ===
+//
+// Scroll-proportional. A tick for a given day-section sits at
+// Y = (section.offsetTop / scrollHeight) * railHeight. The marker tracks
+// scrollTop the same way.
+//
+// === Major Tick Selection (max 5) ===
+//
+// - If unique months <= 5: show all as major ticks.
+// - Otherwise: topmost and bottommost always pinned, year transitions get
+//   priority for middle slots, remaining slots distributed by maximizing
+//   spacing.
+// - Year-start labels show just "YYYY" in bolder style; others show
+//   "Mon YYYY".
+//
+// === Minor Ticks ===
+//
+// One dot per unique month not already a major tick. Clickable (jump).
+//
+// === Scrub ===
+//
+// Dragging the marker pill sets gallery scrollTop proportionally via the
+// pl-gallery-index-scrub event. Works on desktop (mouse) and mobile (touch).
 
 import sheet from "./styles/pl-gallery-index.css" with { type: "css" };
 
 const MAX_MAJOR_TICKS = 5;
+const TICK_HIDE_DELAY = 2500;   // ms before ticks fade in full -> marker-only
+const MARKER_HIDE_DELAY = 1500; // ms after scroll stops before marker hides
 
 class PlGalleryIndex extends HTMLElement {
 
@@ -39,11 +67,15 @@ class PlGalleryIndex extends HTMLElement {
   #clientHeight = 0;
   #scrollTop = 0;
 
-  // Computed ticks for the current layout.
-  // Major: [{day, label, y, isYear: bool}]
-  // Minor: [{day, y}]
+  // Computed ticks.
   #majorTicks = [];
   #minorTicks = [];
+
+  // Visibility state: 'hidden' | 'full' | 'marker-only'
+  #visState = 'hidden';
+  #tickHideTimer = null;   // full -> marker-only after TICK_HIDE_DELAY
+  #markerHideTimer = null; // marker-only/full -> hidden after MARKER_HIDE_DELAY
+  #isScrubbing = false;
 
   static template = document.createElement('template');
   static {
@@ -66,9 +98,7 @@ class PlGalleryIndex extends HTMLElement {
 
   connectedCallback() {
     this.shadowRoot.appendChild(this.constructor.template.content.cloneNode(true));
-    // Single click handler on the rail, using event delegation for all ticks.
     this.shadowRoot.getElementById('rail').addEventListener('click', this.#handleTickClick);
-    // Scrub: pointer events on the marker pill for drag-to-scroll.
     let pill = this.shadowRoot.getElementById('marker-pill');
     pill.addEventListener('pointerdown', this.#handleScrubStart);
     this.#repaint();
@@ -81,13 +111,6 @@ class PlGalleryIndex extends HTMLElement {
     if (this.isConnected) this.#repaint();
   }
 
-  /**
-   * Push the latest layout snapshot from the gallery.
-   * @param {object} layout
-   * @param {Array<{day:string,offsetTop:number,offsetHeight:number}>} layout.dayOffsets
-   * @param {number} layout.scrollHeight
-   * @param {number} layout.clientHeight
-   */
   updateLayout({ dayOffsets, scrollHeight, clientHeight }) {
     this.#dayOffsets = Array.isArray(dayOffsets) ? dayOffsets : [];
     this.#scrollHeight = +scrollHeight || 0;
@@ -96,16 +119,101 @@ class PlGalleryIndex extends HTMLElement {
   }
 
   /**
-   * Push the current scroll position. Called at frame rate by the gallery.
+   * Called at frame rate by the gallery on every scroll tick.
+   * Drives both the marker position and the visibility state machine.
    */
   updateScroll(scrollTop) {
     this.#scrollTop = +scrollTop || 0;
-    if (this.isConnected) this.#paintMarker();
+    if (!this.isConnected) return;
+    this.#paintMarker();
+    this.#onScrollTick();
+  }
+
+  /**
+   * Called by the gallery when scroll has stopped (scrollend or debounce).
+   */
+  notifyScrollStop() {
+    if (!this.isConnected) return;
+    this.#onScrollStop();
+  }
+
+  // --- Visibility state machine ---
+
+  #onScrollTick() {
+    if (this.#isScrubbing) return; // scrub forces full, ignore scroll ticks
+
+    if (this.#visState === 'hidden') {
+      // hidden -> full
+      this.#setVisState('full');
+      // Start the tick-hide timer (full -> marker-only after 1.5s)
+      this.#startTickHideTimer();
+    }
+
+    // Reset the marker-hide timer on every scroll tick (marker stays as
+    // long as scrolling continues).
+    this.#resetMarkerHideTimer();
+  }
+
+  #onScrollStop() {
+    if (this.#isScrubbing) return;
+
+    // When scroll stops, start the countdown to hide the marker.
+    // The tick-hide timer may already be running (if still in full state)
+    // or may have already fired (if in marker-only). Either way, the
+    // marker-hide timer starts/resets from now.
+    this.#startMarkerHideTimer();
+  }
+
+  #startTickHideTimer() {
+    this.#clearTickHideTimer();
+    this.#tickHideTimer = setTimeout(() => {
+      this.#tickHideTimer = null;
+      if (this.#visState === 'full' && !this.#isScrubbing) {
+        this.#setVisState('marker-only');
+      }
+    }, TICK_HIDE_DELAY);
+  }
+
+  #clearTickHideTimer() {
+    if (this.#tickHideTimer) {
+      clearTimeout(this.#tickHideTimer);
+      this.#tickHideTimer = null;
+    }
+  }
+
+  #startMarkerHideTimer() {
+    this.#clearMarkerHideTimer();
+    this.#markerHideTimer = setTimeout(() => {
+      this.#markerHideTimer = null;
+      if (!this.#isScrubbing) {
+        this.#setVisState('hidden');
+      }
+    }, MARKER_HIDE_DELAY);
+  }
+
+  #resetMarkerHideTimer() {
+    // Clear any pending hide - scroll is still active.
+    this.#clearMarkerHideTimer();
+  }
+
+  #clearMarkerHideTimer() {
+    if (this.#markerHideTimer) {
+      clearTimeout(this.#markerHideTimer);
+      this.#markerHideTimer = null;
+    }
+  }
+
+  #setVisState(state) {
+    this.#visState = state;
+    // Reflect state as a data attribute for CSS to drive transitions.
+    this.dataset.vis = state;
   }
 
   // --- Internals ---
 
   #repaint() {
+    // Hide the index entirely when the content fits within the viewport
+    // or there's only a single day (nothing to navigate to).
     let nothingToScroll = this.#scrollHeight <= this.#clientHeight + 1;
     let singleDay = this.#dayOffsets.length <= 1;
     if (nothingToScroll || singleDay || this.#dayOffsets.length === 0) {
@@ -132,10 +240,8 @@ class PlGalleryIndex extends HTMLElement {
       return;
     }
 
-    // Build one entry per unique month, anchored to the first (topmost)
-    // day-section in that month.
-    let monthMap = new Map();  // 'YYYY-MM' -> dayOffset
-    let yearFirstMonth = new Map();  // year -> first monthKey encountered
+    let monthMap = new Map();
+    let yearFirstMonth = new Map();
 
     for (let off of this.#dayOffsets) {
       let parts = parseDay(off.day);
@@ -147,7 +253,6 @@ class PlGalleryIndex extends HTMLElement {
       }
     }
 
-    // Convert to array sorted by rail Y (topmost first).
     let allMonths = [];
     for (let [mKey, off] of monthMap) {
       let parts = parseDay(off.day);
@@ -157,9 +262,6 @@ class PlGalleryIndex extends HTMLElement {
     }
     allMonths.sort((a, b) => a.y - b.y);
 
-    // Clamp top and bottom so ticks don't extend beyond the rail edges.
-    // ~12px inset accounts for the tick's padding + half its line height
-    // so the pill stays fully visible.
     let minY = 12;
     let maxY = railHeight - 12;
     for (let m of allMonths) {
@@ -167,22 +269,16 @@ class PlGalleryIndex extends HTMLElement {
       if (m.y > maxY) m.y = maxY;
     }
 
-    // Determine if we span multiple years.
     let spansMultipleYears = yearFirstMonth.size > 1;
 
-    // --- Major tick selection ---
     let majorSet;
-
     if (allMonths.length <= MAX_MAJOR_TICKS) {
-      // Show all as major ticks.
       majorSet = new Set(allMonths.map(m => m.mKey));
     } else {
-      // Pick up to 5. Always include first (topmost) and last (bottommost).
       majorSet = new Set();
       majorSet.add(allMonths[0].mKey);
       majorSet.add(allMonths[allMonths.length - 1].mKey);
 
-      // Year transitions get priority for remaining slots.
       if (spansMultipleYears) {
         for (let m of allMonths) {
           if (majorSet.size >= MAX_MAJOR_TICKS) break;
@@ -190,11 +286,9 @@ class PlGalleryIndex extends HTMLElement {
         }
       }
 
-      // Fill remaining slots by distributing evenly across the rail.
       if (majorSet.size < MAX_MAJOR_TICKS) {
         let remaining = allMonths.filter(m => !majorSet.has(m.mKey));
         let slotsLeft = MAX_MAJOR_TICKS - majorSet.size;
-        // Pick from remaining that maximizes minimum distance to already-picked.
         for (let i = 0; i < slotsLeft && remaining.length > 0; i++) {
           let majorYs = allMonths.filter(m => majorSet.has(m.mKey)).map(m => m.y);
           let best = null;
@@ -214,14 +308,11 @@ class PlGalleryIndex extends HTMLElement {
       }
     }
 
-    // Build major and minor tick arrays.
     this.#majorTicks = [];
     this.#minorTicks = [];
 
     for (let m of allMonths) {
       if (majorSet.has(m.mKey)) {
-        // Year-start labels show just the year (bold) when spanning multiple
-        // years. Otherwise show "Mon YYYY".
         let isYear = spansMultipleYears && m.isYearStart;
         let label = isYear
           ? `${m.parts.y}`
@@ -236,7 +327,6 @@ class PlGalleryIndex extends HTMLElement {
   #paintTicks() {
     let container = this.shadowRoot.getElementById('ticks');
     if (!container) return;
-
     container.innerHTML = '';
 
     for (let tick of this.#majorTicks) {
@@ -270,7 +360,6 @@ class PlGalleryIndex extends HTMLElement {
     let y = (this.#scrollTop / this.#scrollHeight) * railHeight;
     marker.style.transform = `translateY(calc(${y}px - 50%))`;
 
-    // Pill shows the day-section the user is currently viewing.
     let current = null;
     for (let off of this.#dayOffsets) {
       if (off.offsetTop <= this.#scrollTop) current = off;
@@ -289,7 +378,6 @@ class PlGalleryIndex extends HTMLElement {
 
     let markerY = (this.#scrollTop / this.#scrollHeight) * railHeight;
 
-    // Largest-y major tick that is <= markerY.
     let activeIdx = -1;
     for (let i = 0; i < this.#majorTicks.length; i++) {
       if (this.#majorTicks[i].y <= markerY) activeIdx = i;
@@ -305,13 +393,16 @@ class PlGalleryIndex extends HTMLElement {
     if (!target) return;
     let day = target.dataset.day;
     if (!day) return;
+    // Reset the tick-hide timer so ticks stay visible after a click.
+    this.#setVisState('full');
+    this.#startTickHideTimer();
     this.dispatchEvent(new CustomEvent('pl-gallery-index-jump', {
       bubbles: true, composed: true,
       detail: { day }
     }));
   }
 
-  // --- Scrub (drag the marker pill to scroll) ---
+  // --- Scrub ---
 
   #handleScrubStart = (evt) => {
     evt.preventDefault();
@@ -321,11 +412,12 @@ class PlGalleryIndex extends HTMLElement {
 
     pill.setPointerCapture(evt.pointerId);
     pill.classList.add('scrubbing');
+    this.#isScrubbing = true;
 
-    // Keep the index visible for the entire scrub duration.
-    // The 'scrubbing' attribute on the host tells CSS to force visibility
-    // regardless of the .scrolling class state.
-    this.setAttribute('scrubbing', '');
+    // Force full visibility during scrub.
+    this.#clearTickHideTimer();
+    this.#clearMarkerHideTimer();
+    this.#setVisState('full');
 
     let railRect = rail.getBoundingClientRect();
 
@@ -342,10 +434,14 @@ class PlGalleryIndex extends HTMLElement {
     let onUp = (e) => {
       pill.releasePointerCapture(e.pointerId);
       pill.classList.remove('scrubbing');
-      this.removeAttribute('scrubbing');
+      this.#isScrubbing = false;
       pill.removeEventListener('pointermove', onMove);
       pill.removeEventListener('pointerup', onUp);
       pill.removeEventListener('pointercancel', onUp);
+      // On release: stay in full, start the tick-hide timer so ticks fade
+      // after the normal delay. The marker-hide timer starts when scroll
+      // actually stops (via notifyScrollStop).
+      this.#startTickHideTimer();
     };
 
     pill.addEventListener('pointermove', onMove);

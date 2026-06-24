@@ -724,9 +724,9 @@ class PlGallery extends HTMLElement {
 
   // Scroll handler with two cadences:
   //  - Per-frame (rAF-deduped): cheap update of the index marker so it
-  //    tracks scroll smoothly without throttle-induced step lag. This path
-  //    also manages the .scrolling class on the index and its 1.5s
-  //    fade-out timer.
+  //    tracks scroll smoothly without throttle-induced step lag. The index
+  //    component internally manages its visibility state machine based on
+  //    updateScroll / notifyScrollStop calls.
   //  - Throttled (100ms): heavier work that doesn't need frame-rate
   //    cadence -- selective album painting and nav-button state.
   #handleScroll = () => {
@@ -739,14 +739,16 @@ class PlGallery extends HTMLElement {
         let galleryEl = this.shadowRoot.getElementById('gallery');
         if (!indexEl || !galleryEl) return;
         indexEl.updateScroll(galleryEl.scrollTop);
-        indexEl.classList.add('scrolling');
-        if (this.#indexScrollTimer) clearTimeout(this.#indexScrollTimer);
-        this.#indexScrollTimer = setTimeout(() => {
-          indexEl.classList.remove('scrolling');
-          this.#indexScrollTimer = null;
-        }, 1500);
       });
     }
+    // Reset the scroll-stop detection timer. When it fires, it tells the
+    // index that scrolling has ceased so it can start its hide countdown.
+    if (this.#indexScrollTimer) clearTimeout(this.#indexScrollTimer);
+    this.#indexScrollTimer = setTimeout(() => {
+      this.#indexScrollTimer = null;
+      let indexEl = this.shadowRoot.getElementById('gallery-index');
+      if (indexEl) indexEl.notifyScrollStop();
+    }, 150); // short debounce to detect "scroll stopped"
     this.#throttledHeavyScroll();
   }
 
