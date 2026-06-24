@@ -17,11 +17,8 @@
   position: relative;
   overflow-y: scroll;
   height: 100%;
-  /* The pl-gallery-index now serves as the visible scroll position
-     indicator, so the browser's own scrollbar would just clash with it.
-     Hide the scrollbar in both modern engines (scrollbar-width) and
-     legacy WebKit/Blink (::-webkit-scrollbar). Scrolling via wheel,
-     trackpad, keyboard, and touch all keep working. */
+  /* Scrollbar hidden - the pl-gallery-index marker pill serves as both
+     position indicator and scrub handle, replacing the native scrollbar. */
   scrollbar-width: none;
 }
 
@@ -49,11 +46,10 @@ pl-day-section {
   transition: opacity 0.2s ease;
 }
 
-/* When the gallery index is visible (actively scrolling or hovered), fade
-   the chevron nav buttons out. They serve overlapping purposes and would
-   otherwise sit on top of the rail. */
-:host(:has(pl-gallery-index.scrolling)) #nav-btns,
-:host(:has(pl-gallery-index:hover)) #nav-btns {
+/* When the gallery index is visible (actively scrolling), fade the chevron
+   nav buttons out. They serve overlapping purposes and would otherwise sit
+   on top of the rail. */
+:host(:has(pl-gallery-index.scrolling)) #nav-btns {
   opacity: 0;
   pointer-events: none;
 }

@@ -1,15 +1,13 @@
-/* pl-gallery-index: vertical scroll index on the right edge of the gallery.
-   The host is a thin always-on hover sensor (#hot-zone) plus the visible
-   rail. The rail fades in when scrolling or when the pointer is near the
-   right edge, and fades out 1.5s after the last scroll tick. */
+/* pl-gallery-index: scroll position ticks overlaid on the right edge.
+   The native scrollbar (thin, themed) provides the strip visual and handles
+   all scrolling. This component floats labels/ticks next to it without
+   intercepting scroll or pointer events on the gallery. */
 
 :host {
   position: absolute;
   top: 0;
   right: 0;
   bottom: 0;
-  /* Host itself is invisible and never blocks pointer events. Two children
-     handle hover detection (#hot-zone) and the visible rail (#rail). */
   width: 0;
   pointer-events: none;
   z-index: 5;
@@ -19,100 +17,102 @@
   display: none;
 }
 
-/* Narrow always-on sensor along the right edge. 20px is wide enough to be
-   easy to find with a cursor but narrow enough to barely block any thumbs. */
-#hot-zone {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 20px;
-  pointer-events: auto;
-  z-index: 1;
-}
-
-/* The visible rail. Default opacity 0, fades in on hover or .scrolling.
-   No solid background - photos remain visible behind the rail. Labels use
-   text-shadow halos for readability and the marker pill has its own bg. */
+/* The rail is just a positioning container for ticks. No background, no
+   pointer events on the container itself. Labels jut out to the left. */
 #rail {
   position: absolute;
   top: 8px;
   right: 0;
-  bottom: 8px;
-  width: 72px;
+  bottom: 24px;
+  width: 0;
   opacity: 0;
-  pointer-events: none;
   transition: opacity 0.2s ease;
-  z-index: 2;
 }
 
-/* Show the rail when:
-   - host has .scrolling class (gallery is being scrolled), OR
-   - cursor is hovering the hot zone, OR
-   - cursor is hovering the rail itself (so it doesn't flicker off when
-     the user moves from the hot zone onto the rail).
-   The chained #hot-zone:hover ~ #rail selector works because both are
-   siblings of the shadow root. */
 :host(.scrolling) #rail,
-#hot-zone:hover ~ #rail,
-#rail:hover {
+:host([scrubbing]) #rail {
   opacity: 1;
-  pointer-events: auto;
 }
 
-#labels {
+/* --- Ticks container --- */
+
+#ticks {
   position: absolute;
   inset: 0;
 }
 
-.label {
+/* --- Major ticks --- */
+
+.major-tick {
   position: absolute;
-  right: 8px;
-  /* y is set inline; translate centers the label vertically on its anchor */
+  right: 0;
   transform: translateY(-50%);
-  font-size: 0.65rem;
+  font-size: 0.8rem;
   line-height: 1;
-  color: var(--text-secondary);
-  opacity: 0.55;
+  color: var(--text-primary);
+  opacity: 0.85;
   white-space: nowrap;
   cursor: pointer;
   user-select: none;
   padding: 3px 6px;
   border-radius: 10px;
   background: var(--bg-surface-alt);
+  pointer-events: auto;
   transition: color 0.15s, background 0.15s, opacity 0.15s;
 }
 
-.label:hover {
+.major-tick.year {
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.major-tick:hover {
   color: var(--sidebar-active-text);
-  background: var(--bg-surface-alt);
   opacity: 1;
 }
 
-.label.active {
+.major-tick.active {
   color: white;
   font-weight: 600;
-  font-size: 0.7rem;
+  font-size: 0.85rem;
   background: var(--sidebar-active-text);
   opacity: 1;
 }
 
+/* --- Minor ticks (visible only during scroll, same as major) --- */
+
+.minor-tick {
+  position: absolute;
+  right: 15px;
+  transform: translateY(-50%);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  opacity: 0.65;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.minor-tick:hover {
+  opacity: 1;
+  background: var(--sidebar-active-text);
+}
+
+/* --- Marker --- */
+
 #marker {
   position: absolute;
   right: 0;
-  left: 0;
+  width: 100px; /* enough width for the pill to render */
   top: 0;
-  /* transform is set inline by JS each frame as
-     `translateY(calc(<y>px - 50%))`. The -50% centers the line on its
-     anchor Y; <y>px is the scroll-proportional position on the rail.
-     will-change keeps the marker on its own compositor layer so per-frame
-     transform updates do not trigger layout or paint. */
   will-change: transform;
   pointer-events: none;
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 6px;
+  gap: 4px;
 }
 
 #marker-line {
@@ -127,10 +127,19 @@
   display: inline-block;
   background: var(--sidebar-active-text);
   color: white;
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   line-height: 1;
-  padding: 3px 6px;
+  padding: 4px 8px;
   border-radius: 10px;
   white-space: nowrap;
   box-shadow: 0 1px 3px var(--shadow-light);
+  pointer-events: auto;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+#marker-pill:active,
+#marker-pill.scrubbing {
+  cursor: grabbing;
 }

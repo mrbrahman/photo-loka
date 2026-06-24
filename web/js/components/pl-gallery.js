@@ -154,10 +154,11 @@ class PlGallery extends HTMLElement {
     this.#attachAllAlbumListeners();
     galleryEl.addEventListener('pl-day-section-albums-changed', this.#handleSectionAlbumsChanged);
 
-    // Hand the index its data and listen for jump-to-day clicks.
+    // Hand the index its data and listen for jump-to-day clicks and scrub.
     let indexEl = this.shadowRoot.getElementById('gallery-index');
     indexEl.data = this.#data;
     indexEl.addEventListener('pl-gallery-index-jump', this.#handleIndexJump);
+    indexEl.addEventListener('pl-gallery-index-scrub', this.#handleIndexScrub);
 
     // Reset scroll
     galleryEl.scrollTop = 0;
@@ -287,6 +288,12 @@ class PlGallery extends HTMLElement {
     if (!section) return;
     let galleryEl = this.shadowRoot.getElementById('gallery');
     galleryEl.scrollTo({ top: section.offsetTop, behavior: 'smooth' });
+  }
+
+  #handleIndexScrub = (evt) => {
+    let galleryEl = this.shadowRoot.getElementById('gallery');
+    if (!galleryEl) return;
+    galleryEl.scrollTop = evt.detail.scrollTop;
   }
 
   #handleItemsSelected = (evt) => {
