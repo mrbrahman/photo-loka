@@ -39,7 +39,7 @@ class PlThumb extends HTMLElement {
     
     // wait for an arbitrary 250ms and create & paint the rest of the shadow DOM
     // this is so that in case the user is scrolling too fast, we don't download the image unnessarily or call the other sl (shoelace) web components or setup the listeners
-    setTimeout(this.#paintRest(), 250);
+    setTimeout(() => this.#paintRest(), 250);
     
   }
   

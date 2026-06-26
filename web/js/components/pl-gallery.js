@@ -52,6 +52,21 @@ class PlGallery extends HTMLElement {
   // update.
   #markerRafPending = false;
 
+  // When true, #selectivelyPaintAlbums is skipped during the throttled
+  // scroll handler. Set during programmatic jumps (tick click, scrub) to
+  // avoid fetching thumbnails for content that flies past during the
+  // animation. Cleared on scrollend.
+  #isJumping = false;
+
+  // Set during scrub (pill drag). Prevents album painting while the user
+  // is dragging fast. Cleared on scrub end, which triggers a final paint.
+  #isScrubbing = false;
+
+  // Number of viewport-heights above and below to pre-paint thumbnails.
+  // Higher = smoother normal scroll (more pre-fetched), lower = fewer
+  // wasted fetches during fast scroll.
+  #paintBuffer = 3;
+
   static template = document.createElement('template');
   static {
     this.template.innerHTML = // html
@@ -159,6 +174,7 @@ class PlGallery extends HTMLElement {
     indexEl.data = this.#data;
     indexEl.addEventListener('pl-gallery-index-jump', this.#handleIndexJump);
     indexEl.addEventListener('pl-gallery-index-scrub', this.#handleIndexScrub);
+    indexEl.addEventListener('pl-gallery-index-scrub-end', this.#handleIndexScrubEnd);
 
     // Reset scroll
     galleryEl.scrollTop = 0;
@@ -199,7 +215,7 @@ class PlGallery extends HTMLElement {
     });
 
     galleryEl.addEventListener('scroll', this.#handleScroll);
-    galleryEl.addEventListener('scrollend', this.#updateNavBtnState);
+    galleryEl.addEventListener('scrollend', this.#handleScrollEnd);
     this.shadowRoot.getElementById('next-album-btn').addEventListener('click', this.#scrollToNextAlbum);
     this.shadowRoot.getElementById('prev-album-btn').addEventListener('click', this.#scrollToPrevAlbum);
     window.addEventListener('resize', this.#throttleHandleResize);
@@ -287,13 +303,20 @@ class PlGallery extends HTMLElement {
     let section = this.#daySections.find(s => s.day === day);
     if (!section) return;
     let galleryEl = this.shadowRoot.getElementById('gallery');
+    this.#isJumping = true;
     galleryEl.scrollTo({ top: section.offsetTop, behavior: 'smooth' });
   }
 
   #handleIndexScrub = (evt) => {
     let galleryEl = this.shadowRoot.getElementById('gallery');
     if (!galleryEl) return;
+    this.#isScrubbing = true;
     galleryEl.scrollTop = evt.detail.scrollTop;
+  }
+
+  #handleIndexScrubEnd = () => {
+    this.#isScrubbing = false;
+    this.#selectivelyPaintAlbums();
   }
 
   #handleItemsSelected = (evt) => {
@@ -615,8 +638,8 @@ class PlGallery extends HTMLElement {
     let galleryEl = this.shadowRoot.getElementById('gallery');
     let scrollTop = -galleryEl.scrollTop;
     let viewportHeight = galleryEl.clientHeight;
-    let bufferTop = viewportHeight * -6;
-    let bufferBottom = viewportHeight * (1 + 6);
+    let bufferTop = viewportHeight * -this.#paintBuffer;
+    let bufferBottom = viewportHeight * (1 + this.#paintBuffer);
 
     for (let section of this.#daySections) {
       let sectionTop = section.offsetTop + scrollTop;
@@ -753,9 +776,17 @@ class PlGallery extends HTMLElement {
   }
 
   #throttledHeavyScroll = throttle(() => {
-    this.#selectivelyPaintAlbums(false);
+    if (!this.#isJumping && !this.#isScrubbing) this.#selectivelyPaintAlbums(false);
     this.#updateNavBtnState();
   }, 100);
+
+  #handleScrollEnd = () => {
+    if (this.#isJumping) {
+      this.#isJumping = false;
+      this.#selectivelyPaintAlbums();
+    }
+    this.#updateNavBtnState();
+  }
 
   #handleResize() {
     for (let section of this.#daySections) {
@@ -770,7 +801,7 @@ class PlGallery extends HTMLElement {
   disconnectedCallback() {
     let galleryEl = this.shadowRoot.getElementById('gallery');
     galleryEl?.removeEventListener('scroll', this.#handleScroll);
-    galleryEl?.removeEventListener('scrollend', this.#updateNavBtnState);
+    galleryEl?.removeEventListener('scrollend', this.#handleScrollEnd);
     this.shadowRoot.getElementById('next-album-btn')?.removeEventListener('click', this.#scrollToNextAlbum);
     this.shadowRoot.getElementById('prev-album-btn')?.removeEventListener('click', this.#scrollToPrevAlbum);
     window.removeEventListener('resize', this.#throttleHandleResize);

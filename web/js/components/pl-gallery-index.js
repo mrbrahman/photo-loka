@@ -474,6 +474,9 @@ class PlGalleryIndex extends HTMLElement {
       // after the normal delay. The marker-hide timer starts when scroll
       // actually stops (via notifyScrollStop).
       this.#startTickHideTimer();
+      this.dispatchEvent(new CustomEvent('pl-gallery-index-scrub-end', {
+        bubbles: true, composed: true
+      }));
     };
 
     pill.addEventListener('pointermove', onMove);
