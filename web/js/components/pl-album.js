@@ -137,12 +137,12 @@ class PlAlbum extends HTMLElement {
   }
 
   #handleItemSelected = (evt)=>{
-    // #1 First find out and set the value of album select
-    this.#updateAlbumSelect();
-
-    // #2 Sync layout.selected so it stays the single source of truth
+    // #1 Sync layout.selected so it stays the single source of truth
     let matchingItems = this.data.filter(x=>x.data.id==evt.target.id);
     for (let item of matchingItems) item.layout.selected = evt.target.selected;
+
+    // #2 Update the album-level select indicator (reads layout.selected)
+    this.#updateAlbumSelect();
 
     // #3 create an event and pass it to gallery, which will be used in pl-gallery-controls
     this.dispatchEvent( new CustomEvent('pl-album-item-selected', {
