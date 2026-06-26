@@ -40,7 +40,7 @@
 
 // Bump this version whenever you deploy frontend changes.
 // The browser compares sw.js byte-for-byte; a changed VERSION triggers an update.
-const VERSION = '4.10.3';
+const VERSION = '4.10.5';
 
 const CACHE_NAME = `photo-loka-${VERSION}`;
 

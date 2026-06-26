@@ -95,6 +95,7 @@ class PlAlbum extends HTMLElement {
           // item is already in the target state, nothing to do
         } else {
           item.elem.selected = isSelected;
+          item.layout.selected = isSelected;
           selectedItems.push(item);
         }
       } else {
@@ -120,7 +121,7 @@ class PlAlbum extends HTMLElement {
 
   #updateAlbumSelect(){
     // get distinct values of array found at https://stackoverflow.com/a/14438954/8098748
-    let albumItemsDistinctSelected = [... new Set( this.data.map(item=>item.elem ? item.elem.selected : item.layout.selected ? item.layout.selected : false) )];
+    let albumItemsDistinctSelected = [... new Set( this.data.map(item=> !!item.layout.selected) )];
 
     let plAlbumName = this.shadowRoot.querySelector('pl-album-name');
     
@@ -139,12 +140,16 @@ class PlAlbum extends HTMLElement {
     // #1 First find out and set the value of album select
     this.#updateAlbumSelect();
 
-    // #2 create an event and pass it to gallery, which will be used in pl-gallery-controls
+    // #2 Sync layout.selected so it stays the single source of truth
+    let matchingItems = this.data.filter(x=>x.data.id==evt.target.id);
+    for (let item of matchingItems) item.layout.selected = evt.target.selected;
+
+    // #3 create an event and pass it to gallery, which will be used in pl-gallery-controls
     this.dispatchEvent( new CustomEvent('pl-album-item-selected', {
       detail: {
         selectAlbum: this.shadowRoot.querySelector('pl-album-name').albumName,
         selected: evt.target.selected,
-        selectedItems: this.data.filter(x=>x.data.id==evt.target.id)
+        selectedItems: matchingItems
       }
     }) );
   }
@@ -208,11 +213,8 @@ class PlAlbum extends HTMLElement {
 
   unselectSelectedItems(){
     this.data.forEach(item=>{
-      if(item.elem && item.elem.selected){
-        item.elem.selected = false;
-      } else if (item.layout.selected){
-        item.layout.selected = false;
-      }
+      item.layout.selected = false;
+      if(item.elem) item.elem.selected = false;
     });
 
     // save a few CPU cycles by directly setting to 'none',
@@ -222,9 +224,7 @@ class PlAlbum extends HTMLElement {
 
   changeRatingSelectedItems(newRating) {
     this.data.forEach(item=>{
-      if(! ((item.elem && item.elem.selected)||item.layout.selected)){
-        return;
-      }
+      if(!item.layout.selected) return;
 
       // update data
       item.data.rating = newRating;
@@ -247,7 +247,7 @@ class PlAlbum extends HTMLElement {
 
     let i = this.data.length;
     while(i--){
-      if((this.data[i].elem && this.data[i].elem.selected) || this.data[i].layout.selected){
+      if(this.data[i].layout.selected){
         // remove from album
         this.#deleteItem(i);
         deletedCnt++;
@@ -408,6 +408,10 @@ class PlAlbum extends HTMLElement {
 
         // remove the item from DOM if present
         if(x.elem !== undefined){
+          // Preserve selection state before removing -- the gallery tracks
+          // selected items independently, and when the element is recreated
+          // on scroll-back it must reflect the same state.
+          x.layout.selected = x.elem.selected;
           // remove element in shadow dom
           x.elem.remove();
           x.elem = undefined;
