@@ -325,6 +325,27 @@ class PlGallery extends HTMLElement {
     if (selected) {
       this.#albumsSelectedCnt[selectAlbum] = (this.#albumsSelectedCnt[selectAlbum] || 0) + selectedItems.length;
       this.#itemsSelected.push(...selectedItems);
+
+      // Detect duplicates early - warn immediately so the user knows before
+      // attempting a move. This helps diagnose the root cause.
+      let existingIds = new Set();
+      let dups = [];
+      for (let item of this.#itemsSelected) {
+        if (existingIds.has(item.data.id)) dups.push(item.data.id);
+        else existingIds.add(item.data.id);
+      }
+      if (dups.length > 0) {
+        let dupShort = dups.map(id => id.slice(0, 8)).join(', ');
+        let addedShort = selectedItems.map(i => i.data.id.slice(0, 8)).join(', ');
+        notify(
+          `<strong>Bug: duplicate in selection</strong><br>` +
+          `Dups: ${dupShort}<br>` +
+          `Album: ${selectAlbum}<br>` +
+          `Just added: ${addedShort}<br>` +
+          `Total selected: ${this.#itemsSelected.length}`,
+          'warning', -1
+        );
+      }
     } else {
       this.#albumsSelectedCnt[selectAlbum] -= selectedItems.length;
       this.#itemsSelected = this.#itemsSelected.filter(a =>
@@ -386,13 +407,14 @@ class PlGallery extends HTMLElement {
       byDay.get(day).push(item);
     }
 
-    // Build per-day plan: target (date, name) + items + uuid list for the API.
+    // Deduplicate UUIDs per day as a safety net (the early check in
+    // #handleItemsSelected already warned the user about the root cause).
     let plan = [...byDay.entries()].map(([day, items]) => ({
       day,
       items,
       targetAlbumDate: day,
       targetAlbumName: descName,
-      uuids: items.map(i => i.data.id)
+      uuids: [...new Set(items.map(i => i.data.id))]
     }));
 
     let results = await Promise.allSettled(
