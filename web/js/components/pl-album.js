@@ -214,7 +214,7 @@ class PlAlbum extends HTMLElement {
   unselectSelectedItems(){
     this.data.forEach(item=>{
       item.layout.selected = false;
-      if(item.elem) item.elem.selected = false;
+      if(item.elem && item.elem.selected) item.elem.selected = false;
     });
 
     // save a few CPU cycles by directly setting to 'none',
