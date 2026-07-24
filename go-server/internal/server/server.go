@@ -235,12 +235,27 @@ func requestLogger() gin.HandlerFunc {
 			level = slog.LevelError
 		}
 
-		slog.Log(context.Background(), level, "request",
+		// Include username if available (set by auth middleware)
+		username, _ := c.Get("username")
+		usernameStr, _ := username.(string)
+
+		attrs := []any{}
+		if usernameStr != "" {
+			attrs = append(attrs, "user", usernameStr)
+		}
+		attrs = append(attrs,
 			"method", c.Request.Method,
 			"path", path,
+		)
+		if c.Request.URL.RawQuery != "" {
+			attrs = append(attrs, "query", c.Request.URL.RawQuery)
+		}
+		attrs = append(attrs,
 			"status", status,
 			"duration", duration.String(),
 		)
+
+		slog.Log(context.Background(), level, "request", attrs...)
 	}
 }
 

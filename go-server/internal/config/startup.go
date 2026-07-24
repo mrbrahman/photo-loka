@@ -65,6 +65,11 @@ func LoadStartupConfig() (*StartupConfig, error) {
 		port = p
 	}
 
+	geonamesUsername := os.Getenv("GEONAMES_USERNAME")
+	if geonamesUsername == "" {
+		return nil, fmt.Errorf("GEONAMES_USERNAME environment variable is required")
+	}
+
 	cfg := &StartupConfig{
 		DataDir:          dataDir,
 		ThumbsDir:        filepath.Join(dataDir, "thumbnails"),
@@ -73,7 +78,7 @@ func LoadStartupConfig() (*StartupConfig, error) {
 		JWTSecret:        jwtSecret,
 		MLServiceURL:     mlServiceURL,
 		IndexerMode:      indexerMode,
-		GeonamesUsername: os.Getenv("GEONAMES_USERNAME"),
+		GeonamesUsername: geonamesUsername,
 		LogLevel:         logLevel,
 		NoColor:          noColor,
 		Port:             port,

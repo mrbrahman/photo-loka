@@ -31,9 +31,9 @@ func (a *AlbumsDB) SearchForExisting(searchStr string, collectionID *int64, plac
 
 	query := `
 		SELECT album_name as similar, count(*) as cnt
-		FROM metadata_fts_porter
-		JOIN metadata USING(rowid)
-		WHERE metadata_fts_porter MATCH ?
+		FROM metadata
+		WHERE rowid IN (SELECT rowid FROM metadata_fts_porter WHERE metadata_fts_porter MATCH ?)
+		  AND trim(coalesce(album_name, '')) != ''
 		  AND coalesce(is_trashed, 0) = 0`
 
 	args := []interface{}{matchExpr}
@@ -44,7 +44,7 @@ func (a *AlbumsDB) SearchForExisting(searchStr string, collectionID *int64, plac
 	}
 
 	if placeholder != nil && *placeholder != "" {
-		query += " AND album_name != ?"
+		query += " AND album_name NOT LIKE '%' || ? || '%'"
 		args = append(args, *placeholder)
 	}
 
@@ -78,10 +78,15 @@ func (a *AlbumsDB) SearchForExisting(searchStr string, collectionID *int64, plac
 // UpdateAlbumName renames an album by updating all metadata records matching
 // the given collection, album_date, and current album name.
 // It updates both the album_name field and the filename path (replacing the folder component).
+// Also handles nested albums (sub-folders within the album folder).
 func (a *AlbumsDB) UpdateAlbumName(collectionID int64, albumDate, fromName, toName string) error {
-	// Update album_name and replace the folder name component in filename
-	// This handles both direct items (in the album folder) and nested items (subfolders)
-	query := `
+	// The filename replacement uses a leading space + album name to match the
+	// folder segment within the path (e.g. "2021-01-01 Trip" -> "2021-01-01 Beach")
+	fromBase := " " + fromName
+	toBase := " " + toName
+
+	// Direct rename: items where album_name matches exactly
+	directQuery := `
 		UPDATE metadata
 		SET album_name = ?,
 		    filename = replace(filename, ?, ?)
@@ -89,17 +94,23 @@ func (a *AlbumsDB) UpdateAlbumName(collectionID int64, albumDate, fromName, toNa
 		  AND album_date = ?
 		  AND album_name = ?`
 
-	result, err := a.db.Exec(query, toName, fromName, toName, collectionID, albumDate, fromName)
+	_, err := a.db.Exec(directQuery, toName, fromBase, toBase, collectionID, albumDate, fromName)
 	if err != nil {
 		return fmt.Errorf("updating album name from %q to %q: %w", fromName, toName, err)
 	}
 
-	rows, err := result.RowsAffected()
+	// Nested rename: items where album_name starts with fromName/ (sub-folders)
+	nestedQuery := `
+		UPDATE metadata
+		SET album_name = ? || substr(album_name, length(?) + 1),
+		    filename = replace(filename, ?, ?)
+		WHERE collection_id = ?
+		  AND album_date = ?
+		  AND album_name LIKE ? || '/%'`
+
+	_, err = a.db.Exec(nestedQuery, toName, fromName, fromBase, toBase, collectionID, albumDate, fromName)
 	if err != nil {
-		return fmt.Errorf("checking rows affected: %w", err)
-	}
-	if rows == 0 {
-		return fmt.Errorf("no items found for album %q on %s in collection %d", fromName, albumDate, collectionID)
+		return fmt.Errorf("updating nested albums from %q to %q: %w", fromName, toName, err)
 	}
 
 	return nil

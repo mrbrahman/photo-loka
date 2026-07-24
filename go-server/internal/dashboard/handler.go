@@ -47,7 +47,7 @@ func NewHandler(conn *sql.DB) *Handler {
 
 // RegisterRoutes registers dashboard routes on the given router group.
 func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
-	rg.GET("/getStats", h.getStats)
+	rg.GET("/dashboard/stats", h.getStats)
 }
 
 // getStats returns library and collection statistics.
@@ -77,20 +77,22 @@ func (h *Handler) getStats(c *gin.Context) {
 func (h *Handler) queryLibraryStats() (*LibraryStats, error) {
 	query := `
 		SELECT
-			count(CASE WHEN coalesce(is_trashed, 0) = 0 THEN 1 END) as totalItems,
-			coalesce(sum(CASE WHEN coalesce(is_trashed, 0) = 0 THEN filesize END), 0) as totalSize,
-			count(DISTINCT CASE WHEN coalesce(is_trashed, 0) = 0 THEN album_date || '|' || coalesce(album_name, '') END) as albums,
-			count(CASE WHEN coalesce(is_trashed, 0) = 1 THEN 1 END) as trashedItems,
-			count(CASE WHEN coalesce(is_trashed, 0) = 0 AND mediatype = 'image' THEN 1 END) as imageCount,
-			coalesce(sum(CASE WHEN coalesce(is_trashed, 0) = 0 AND mediatype = 'image' THEN filesize END), 0) as imageSize,
-			count(CASE WHEN coalesce(is_trashed, 0) = 0 AND mediatype = 'video' THEN 1 END) as videoCount,
-			coalesce(sum(CASE WHEN coalesce(is_trashed, 0) = 0 AND mediatype = 'video' THEN filesize END), 0) as videoSize,
-			count(CASE WHEN coalesce(is_trashed, 0) = 0 AND mediatype = 'audio' THEN 1 END) as audioCount,
-			coalesce(sum(CASE WHEN coalesce(is_trashed, 0) = 0 AND mediatype = 'audio' THEN filesize END), 0) as audioSize
+			count(*) filter (where coalesce(is_trashed, 0) = 0) as totalItems,
+			coalesce(sum(filesize) filter (where coalesce(is_trashed, 0) = 0), 0) as totalSize,
+			count(distinct album_date || '|' || coalesce(album_name, '')) filter (where coalesce(is_trashed, 0) = 0) as albums,
+			count(*) filter (where coalesce(is_trashed, 0) = 1) as trashedItems,
+			count(*) filter (where coalesce(is_trashed, 0) = 0 and mediatype = 'image') as imageCount,
+			coalesce(sum(filesize) filter (where coalesce(is_trashed, 0) = 0 and mediatype = 'image'), 0) as imageSize,
+			count(*) filter (where coalesce(is_trashed, 0) = 0 and mediatype = 'video') as videoCount,
+			coalesce(sum(filesize) filter (where coalesce(is_trashed, 0) = 0 and mediatype = 'video'), 0) as videoSize,
+			count(*) filter (where coalesce(is_trashed, 0) = 0 and mediatype = 'audio') as audioCount,
+			coalesce(sum(filesize) filter (where coalesce(is_trashed, 0) = 0 and mediatype = 'audio'), 0) as audioSize,
+			count(*) filter (where coalesce(is_trashed, 0) = 0 and mediatype not in ('image', 'video', 'audio')) as otherCount,
+			coalesce(sum(filesize) filter (where coalesce(is_trashed, 0) = 0 and mediatype not in ('image', 'video', 'audio')), 0) as otherSize
 		FROM metadata`
 
 	var stats LibraryStats
-	var imageCount, imageSize, videoCount, videoSize, audioCount, audioSize int64
+	var imageCount, imageSize, videoCount, videoSize, audioCount, audioSize, otherCount, otherSize int64
 
 	err := h.db.QueryRow(query).Scan(
 		&stats.TotalItems,
@@ -103,15 +105,25 @@ func (h *Handler) queryLibraryStats() (*LibraryStats, error) {
 		&videoSize,
 		&audioCount,
 		&audioSize,
+		&otherCount,
+		&otherSize,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("querying library stats: %w", err)
 	}
 
-	stats.ByType = map[string]TypeStat{
-		"image": {Count: imageCount, Size: imageSize},
-		"video": {Count: videoCount, Size: videoSize},
-		"audio": {Count: audioCount, Size: audioSize},
+	stats.ByType = make(map[string]TypeStat)
+	if imageCount > 0 {
+		stats.ByType["image"] = TypeStat{Count: imageCount, Size: imageSize}
+	}
+	if videoCount > 0 {
+		stats.ByType["video"] = TypeStat{Count: videoCount, Size: videoSize}
+	}
+	if audioCount > 0 {
+		stats.ByType["audio"] = TypeStat{Count: audioCount, Size: audioSize}
+	}
+	if otherCount > 0 {
+		stats.ByType["other"] = TypeStat{Count: otherCount, Size: otherSize}
 	}
 
 	return &stats, nil
@@ -124,11 +136,12 @@ func (h *Handler) queryCollectionStats() ([]CollectionStat, error) {
 			c.collection_id,
 			c.collection_name,
 			c.collection_path,
-			count(CASE WHEN coalesce(m.is_trashed, 0) = 0 THEN 1 END) as items,
-			coalesce(sum(CASE WHEN coalesce(m.is_trashed, 0) = 0 THEN m.filesize END), 0) as totalSize
+			count(m.uuid) as items,
+			coalesce(sum(m.filesize), 0) as totalSize
 		FROM collections c
-		LEFT JOIN metadata m ON m.collection_id = c.collection_id
-		GROUP BY c.collection_id, c.collection_name, c.collection_path`
+		INNER JOIN metadata m ON m.collection_id = c.collection_id
+		WHERE coalesce(m.is_trashed, 0) = 0
+		GROUP BY c.collection_id`
 
 	rows, err := h.db.Query(query)
 	if err != nil {

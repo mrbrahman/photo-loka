@@ -95,7 +95,7 @@ func (h *Handler) startIntakeFileIndexing(c *gin.Context) {
 	var body struct {
 		CollectionID int64  `json:"collection_id" binding:"required"`
 		Dir          string `json:"dir" binding:"required"`
-		StaleDays    int    `json:"stale_days"`
+		StaleDays    int    `json:"staleDays"`
 	}
 
 	if err := c.ShouldBindJSON(&body); err != nil {
@@ -134,8 +134,17 @@ func (h *Handler) getIndexerStatus(c *gin.Context) {
 	videoStatus := h.videoQueue.GetStatus()
 
 	c.JSON(http.StatusOK, gin.H{
-		"indexer": indexStatus,
-		"video":   videoStatus,
+		"processingCnt": indexStatus.Active + videoStatus.Active,
+		"pendingCnt":    indexStatus.Pending + videoStatus.Pending,
+		"completedCnt":  indexStatus.Completed + videoStatus.Completed,
+		"failedCnt":     indexStatus.Failed + videoStatus.Failed,
+		"paused":        indexStatus.IsPaused,
+		"maxConcurrency": indexStatus.MaxConcurrency,
+		"queueSizes": gin.H{
+			"high":   0, // tracked within indexQueue internally
+			"normal": indexStatus.Pending,
+			"low":    videoStatus.Pending,
+		},
 	})
 }
 
@@ -159,10 +168,8 @@ func (h *Handler) getIndexerErrors(c *gin.Context) {
 	indexErrors := h.indexQueue.GetErrors()
 	videoErrors := h.videoQueue.GetErrors()
 
-	c.JSON(http.StatusOK, gin.H{
-		"indexer_errors": indexErrors,
-		"video_errors":   videoErrors,
-	})
+	allErrors := append(indexErrors, videoErrors...)
+	c.JSON(http.StatusOK, allErrors)
 }
 
 // updateIndexerConcurrency changes the max concurrency of the index queue.

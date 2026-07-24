@@ -221,7 +221,7 @@ func (h *Handler) searchPersonNames(c *gin.Context) {
 		names = []string{}
 	}
 
-	c.JSON(http.StatusOK, names)
+	c.JSON(http.StatusOK, gin.H{"names": names})
 }
 
 // dismissFaceCluster marks a face cluster as dismissed.

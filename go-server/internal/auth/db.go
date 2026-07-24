@@ -174,7 +174,7 @@ func (a *AuthDB) CleanupExpiredTokens() (int64, error) {
 // GetAllUsers returns all users (without password hashes).
 func (a *AuthDB) GetAllUsers() ([]User, error) {
 	rows, err := a.db.Query(
-		`SELECT user_id, username, role, failed_login_attempts, locked_at, created_at FROM users`,
+		`SELECT user_id, username, role, failed_login_attempts, locked_at, created_at FROM users ORDER BY created_at ASC`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("querying all users: %w", err)

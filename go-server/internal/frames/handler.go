@@ -113,8 +113,8 @@ func (h *Handler) events(c *gin.Context) {
 			if !ok {
 				return
 			}
-			// Write SSE event
-			_, err := io.WriteString(c.Writer, fmt.Sprintf("event: %s\ndata: {}\n\n", event))
+			// Write SSE event (Node.js format: unnamed event with type in JSON payload)
+			_, err := io.WriteString(c.Writer, fmt.Sprintf("data: {\"type\":\"%s\"}\n\n", event))
 			if err != nil {
 				return
 			}

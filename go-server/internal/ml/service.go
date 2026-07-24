@@ -25,30 +25,18 @@ func NewService(client *Client, db *MLDB) *Service {
 // It retrieves item info from the DB, calls the ML client, and saves results.
 func (s *Service) ProcessFaceRecognition(uuid string) (map[string]interface{}, error) {
 	// Get item info from DB for the ML call
-	var imagePath string
-	var orientation int
-	err := s.db.db.QueryRow(
-		`SELECT file_path, COALESCE(orientation, 1) FROM metadata WHERE uuid = ?`,
-		uuid,
-	).Scan(&imagePath, &orientation)
+	item, err := s.db.GetItemForRecognition(uuid)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get item info for %s: %w", uuid, err)
 	}
 
-	// Get existing XMP regions if any
-	var xmpRegionsStr *string
-	_ = s.db.db.QueryRow(
-		`SELECT xmp_regions FROM metadata WHERE uuid = ?`,
-		uuid,
-	).Scan(&xmpRegionsStr)
-
 	var xmpRegions interface{}
-	if xmpRegionsStr != nil {
-		xmpRegions = *xmpRegionsStr
+	if item.Xmpregion != nil {
+		xmpRegions = *item.Xmpregion
 	}
 
 	// Call ML service
-	result, err := s.client.RecognizeFaces(uuid, imagePath, orientation, xmpRegions)
+	result, err := s.client.RecognizeFaces(uuid, item.Filename, item.Orientation, xmpRegions)
 	if err != nil {
 		return nil, fmt.Errorf("face recognition failed for %s: %w", uuid, err)
 	}

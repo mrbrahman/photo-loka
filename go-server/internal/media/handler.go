@@ -70,7 +70,7 @@ func (h *Handler) getThumbnail(c *gin.Context) {
 		string(uuid[0]),
 		string(uuid[1]),
 		string(uuid[2]),
-		fmt.Sprintf("%s_h%d.webp", uuid, heightBucket),
+		fmt.Sprintf("%s_%d_fit.jpg", uuid, heightBucket),
 	)
 
 	if _, err := os.Stat(thumbPath); os.IsNotExist(err) {
@@ -82,7 +82,7 @@ func (h *Handler) getThumbnail(c *gin.Context) {
 	c.File(thumbPath)
 }
 
-// getImage serves the original image file for the given uuid.
+// getImage serves a resized image (fit within 1920x1080) for the given uuid.
 func (h *Handler) getImage(c *gin.Context) {
 	uuid := c.Query("uuid")
 	if uuid == "" {
@@ -92,29 +92,32 @@ func (h *Handler) getImage(c *gin.Context) {
 		return
 	}
 
-	filename, collectionPath, err := h.getFilePathByUUID(uuid)
+	// filename in DB is the absolute path
+	var filename string
+	err := h.db.QueryRow("SELECT filename FROM metadata WHERE uuid = ?", uuid).Scan(&filename)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": gin.H{"message": err.Error(), "code": "INTERNAL_ERROR"},
-		})
-		return
-	}
-	if filename == "" {
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": gin.H{"message": "Item not found", "code": "NOT_FOUND"},
 		})
 		return
 	}
 
-	fullPath := filepath.Join(collectionPath, filename)
-	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+	if _, err := os.Stat(filename); os.IsNotExist(err) {
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": gin.H{"message": "File not found on disk", "code": "NOT_FOUND"},
 		})
 		return
 	}
 
-	c.File(fullPath)
+	// Resize on-the-fly to fit within 1920x1080 (like Node.js sharp)
+	bytes, err := ResizeImage(filename, 1920, 1080)
+	if err != nil {
+		// Fallback: serve original if resize fails (e.g. unsupported format)
+		c.File(filename)
+		return
+	}
+
+	c.Data(http.StatusOK, "image/jpeg", bytes)
 }
 
 // getVideo serves a video file with range request support.
@@ -130,14 +133,9 @@ func (h *Handler) getVideo(c *gin.Context) {
 
 	quality := c.DefaultQuery("quality", "compressed")
 
-	filename, collectionPath, err := h.getFilePathByUUID(uuid)
+	var filename string
+	err := h.db.QueryRow("SELECT filename FROM metadata WHERE uuid = ?", uuid).Scan(&filename)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": gin.H{"message": err.Error(), "code": "INTERNAL_ERROR"},
-		})
-		return
-	}
-	if filename == "" {
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": gin.H{"message": "Item not found", "code": "NOT_FOUND"},
 		})
@@ -146,25 +144,26 @@ func (h *Handler) getVideo(c *gin.Context) {
 
 	var servePath string
 
-	if quality == "compressed" {
-		// Look for compressed version in thumbs directory
-		if len(uuid) >= 3 {
-			compressedPath := filepath.Join(
-				h.thumbsDir,
-				string(uuid[0]),
-				string(uuid[1]),
-				string(uuid[2]),
-				uuid+"_compressed_video.webm",
-			)
-			if _, err := os.Stat(compressedPath); err == nil {
-				servePath = compressedPath
+	if quality == "compressed" && len(uuid) >= 3 {
+		// Check for compressed versions in priority order (matching Node.js resolveVideoPath)
+		thumbDir := filepath.Join(h.thumbsDir, string(uuid[0]), string(uuid[1]), string(uuid[2]))
+		candidates := []string{
+			filepath.Join(thumbDir, uuid+"_2pass_vp9_compressed_video.webm"),
+			filepath.Join(thumbDir, uuid+"_2pass_vp8_compressed_video.webm"),
+			filepath.Join(thumbDir, uuid+"_compressed_video.webm"),
+			filepath.Join(thumbDir, uuid+"_compressed_video.mp4"),
+		}
+		for _, candidate := range candidates {
+			if _, err := os.Stat(candidate); err == nil {
+				servePath = candidate
+				break
 			}
 		}
 	}
 
 	// Fall back to original file
 	if servePath == "" {
-		servePath = filepath.Join(collectionPath, filename)
+		servePath = filename
 	}
 
 	if _, err := os.Stat(servePath); os.IsNotExist(err) {
@@ -256,6 +255,7 @@ func (h *Handler) getFilePathByUUID(uuid string) (filename, collectionPath strin
 
 // bucketHeight rounds a height value to the nearest standard thumbnail size.
 func bucketHeight(height int) int {
+	// Match Node.js: [100, 250, 500].filter(x => x >= height)[0] || 500
 	if height <= 100 {
 		return 100
 	}

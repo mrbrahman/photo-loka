@@ -85,6 +85,10 @@ func runServe() {
 		os.Exit(1)
 	}
 
+	// Initialize libvips for image processing
+	media.InitVips()
+	defer media.ShutdownVips()
+
 	// Open database
 	db, err := database.Open(cfg.DBFile)
 	if err != nil {
@@ -108,7 +112,8 @@ func runServe() {
 
 	// Create search handler
 	searchDB := search.NewSearchDB(db.Conn)
-	searchHandler := search.NewHandler(searchDB, collectionsDB, albumsDB)
+	mlClient := ml.NewClient(cfg.MLServiceURL)
+	searchHandler := search.NewHandler(searchDB, collectionsDB, albumsDB, mlClient)
 
 	// Create media handler
 	mediaHandler := media.NewHandler(cfg.ThumbsDir, cfg.FacesDir, db.Conn)
@@ -146,13 +151,12 @@ func runServe() {
 	geoHandler := geo.NewHandler(geoService)
 
 	// Create ML components
-	mlClient := ml.NewClient(cfg.MLServiceURL)
 	mlDB := ml.NewMLDB(db.Conn)
 	mlService := ml.NewService(mlClient, mlDB)
 	mlHandler := ml.NewHandler(mlService)
 
 	// Create items handler
-	itemsHandler := items.NewHandler(indexer, organizer, mlService, cfg.ThumbsDir)
+	itemsHandler := items.NewHandler(indexer, organizer, mlService, collectionsDB, rtCfg, cfg.ThumbsDir)
 
 	// Scheduler
 	sched := scheduler.New()
@@ -169,7 +173,7 @@ func runServe() {
 	// Admin handlers
 	configHandler := admin.NewConfigHandler(rtCfg)
 	usersHandler := admin.NewUsersHandler(authSvc)
-	jobsHandler := admin.NewJobsHandler(sched, fileWatcher, collectionsDB, frameManager)
+	jobsHandler := admin.NewJobsHandler(sched, fileWatcher, scheduledIndexing, collectionsDB, frameManager)
 
 	// Authn handler
 	authnHandler := authn.NewHandler(authSvc)

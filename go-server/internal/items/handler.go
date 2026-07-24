@@ -11,6 +11,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"photo-loka/internal/collections"
+	"photo-loka/internal/config"
 	"photo-loka/internal/indexing"
 	"photo-loka/internal/media"
 	"photo-loka/internal/ml"
@@ -18,19 +20,23 @@ import (
 
 // Handler provides HTTP route handlers for item operations.
 type Handler struct {
-	indexer   *indexing.Indexer
-	organizer *indexing.Organizer
-	mlService *ml.Service
-	thumbsDir string
-	logger    *slog.Logger
+	indexer      *indexing.Indexer
+	organizer    *indexing.Organizer
+	mlService    *ml.Service
+	colDB        *collections.CollectionsDB
+	rtConfig     *config.RuntimeConfig
+	thumbsDir    string
+	logger       *slog.Logger
 }
 
 // NewHandler creates a new items Handler.
-func NewHandler(indexer *indexing.Indexer, org *indexing.Organizer, mlSvc *ml.Service, thumbsDir string) *Handler {
+func NewHandler(indexer *indexing.Indexer, org *indexing.Organizer, mlSvc *ml.Service, colDB *collections.CollectionsDB, rtCfg *config.RuntimeConfig, thumbsDir string) *Handler {
 	return &Handler{
 		indexer:   indexer,
 		organizer: org,
 		mlService: mlSvc,
+		colDB:     colDB,
+		rtConfig:  rtCfg,
 		thumbsDir: thumbsDir,
 		logger:    slog.Default().With("component", "items-handler"),
 	}
@@ -43,11 +49,12 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.PUT("/renameFile", h.renameFile)
 	rg.PUT("/refreshThumbs/:uuid", h.refreshThumbs)
 	rg.PUT("/compressVideo/:uuid", h.compressVideo)
+	rg.PUT("/moveItems", h.moveItems)
 	rg.DELETE("/trashItems", h.trashItems)
 	rg.PUT("/togglePrivate", h.togglePrivate)
 	rg.PUT("/restoreFromTrash", h.restoreFromTrash)
 	rg.DELETE("/cleanupTrash", h.cleanupTrash)
-	rg.DELETE("/emptyTrash", h.emptyTrash)
+	rg.DELETE("/emptyTrash", h.cleanupTrash) // same handler as cleanupTrash; kept for API compatibility
 }
 
 // updateRating updates the rating (stars) for one or more items.
@@ -245,7 +252,7 @@ func (h *Handler) compressVideo(c *gin.Context) {
 	}
 
 	go func() {
-		encoder := media.EncoderVP9 // default encoder
+		encoder := h.rtConfig.VideoEncoder
 		if err := media.CompressVideo(uuid, filename, h.thumbsDir, encoder); err != nil {
 			h.logger.Error("video compression failed", "uuid", uuid, "error", err)
 		} else {
@@ -376,37 +383,6 @@ func (h *Handler) cleanupTrash(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "trash cleaned up", "count": len(body.UUIDs)})
 }
 
-// emptyTrash permanently deletes all specified trashed items.
-// DELETE /emptyTrash (body: {collection_id, uuid_arr})
-func (h *Handler) emptyTrash(c *gin.Context) {
-	var body struct {
-		CollectionID int64    `json:"collection_id" binding:"required"`
-		UUIDs        []string `json:"uuid_arr" binding:"required"`
-	}
-
-	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
-			"message": "invalid request body: " + err.Error(),
-			"code":    "INVALID_BODY",
-		}})
-		return
-	}
-
-	errors := h.permanentlyDeleteItems(body.UUIDs)
-	if len(errors) > 0 {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": gin.H{
-				"message": fmt.Sprintf("failed to empty %d of %d items", len(errors), len(body.UUIDs)),
-				"code":    "PARTIAL_FAILURE",
-			},
-			"errors": errors,
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "trash emptied", "count": len(body.UUIDs)})
-}
-
 // permanentlyDeleteItems removes files, thumbnails, face data, and metadata rows.
 // Returns a list of error strings for items that failed.
 func (h *Handler) permanentlyDeleteItems(uuids []string) []string {
@@ -460,4 +436,84 @@ func isVideoExtension(ext string) bool {
 		return true
 	}
 	return false
+}
+
+// moveItemsRequest is the request body for moving items to a different album.
+type moveItemsRequest struct {
+	CollectionID    int64    `json:"collection_id"`
+	UUIDs           []string `json:"uuid_arr"`
+	TargetAlbumDate string   `json:"target_album_date"`
+	TargetAlbumName string   `json:"target_album_name"`
+}
+
+// moveItems moves selected items to a target album folder and updates the DB.
+func (h *Handler) moveItems(c *gin.Context) {
+	var req moveItemsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": gin.H{"message": "Invalid request body: " + err.Error(), "code": "VALIDATION_ERROR"},
+		})
+		return
+	}
+
+	if req.CollectionID == 0 || len(req.UUIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": gin.H{"message": "collection_id and uuid_arr are required", "code": "VALIDATION_ERROR"},
+		})
+		return
+	}
+
+	// Get collection to compute target folder path
+	col, err := h.colDB.Get(req.CollectionID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": gin.H{"message": err.Error(), "code": "INTERNAL_ERROR"},
+		})
+		return
+	}
+
+	// Compute target folder absolute path
+	targetDir := h.organizer.AlbumFolderAbsPath(col, req.TargetAlbumDate, req.TargetAlbumName)
+
+	// Ensure target directory exists
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": gin.H{"message": "Failed to create target directory: " + err.Error(), "code": "INTERNAL_ERROR"},
+		})
+		return
+	}
+
+	// Get filenames for all uuids
+	filenames, err := h.indexer.DB().GetFileNames(req.UUIDs)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": gin.H{"message": err.Error(), "code": "INTERNAL_ERROR"},
+		})
+		return
+	}
+
+	// Move each file and update DB
+	for _, uuid := range req.UUIDs {
+		srcPath, ok := filenames[uuid]
+		if !ok {
+			continue
+		}
+
+		destPath := filepath.Join(targetDir, filepath.Base(srcPath))
+
+		// Move the file
+		if err := h.organizer.MoveItem(req.CollectionID, srcPath, destPath, false); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": gin.H{"message": fmt.Sprintf("Failed to move %s: %s", uuid, err.Error()), "code": "MOVE_ERROR"},
+			})
+			return
+		}
+
+		// Update DB: album_date, album_name, filename
+		if err := h.indexer.DB().UpdateAlbumForItem(uuid, req.TargetAlbumDate, req.TargetAlbumName, destPath); err != nil {
+			h.logger.Error("failed to update DB after move", "uuid", uuid, "error", err)
+		}
+	}
+
+	c.Status(http.StatusOK)
 }

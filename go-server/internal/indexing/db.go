@@ -93,8 +93,7 @@ func (d *IndexingDB) UpdateMetadata(row map[string]interface{}) error {
 			continue // skip uuid in SET clause
 		}
 		if col == "indexed_at" {
-			setClauses = append(setClauses, "indexed_at = datetime('now','localtime')")
-			continue
+			continue // indexed_at is only set on INSERT, never on UPDATE
 		}
 		if val, ok := row[col]; ok {
 			setClauses = append(setClauses, col+" = ?")
@@ -215,7 +214,7 @@ func (d *IndexingDB) GetFileNames(uuids []string) (map[string]string, error) {
 // TrashItem marks an item as trashed by updating its filename to the trash path.
 func (d *IndexingDB) TrashItem(uuid, trashFilename string) error {
 	_, err := d.db.Exec(
-		"UPDATE metadata SET filename = ?, trashed = 1 WHERE uuid = ?",
+		"UPDATE metadata SET filename = ?, is_trashed = 1, trashed_at = datetime('now','localtime') WHERE uuid = ?",
 		trashFilename, uuid,
 	)
 	if err != nil {
@@ -227,7 +226,7 @@ func (d *IndexingDB) TrashItem(uuid, trashFilename string) error {
 // UntrashItem restores a trashed item by updating its filename.
 func (d *IndexingDB) UntrashItem(uuid, restoredFilename string) error {
 	_, err := d.db.Exec(
-		"UPDATE metadata SET filename = ?, trashed = 0 WHERE uuid = ?",
+		"UPDATE metadata SET filename = ?, is_trashed = 0, trashed_at = null WHERE uuid = ?",
 		restoredFilename, uuid,
 	)
 	if err != nil {
@@ -239,7 +238,7 @@ func (d *IndexingDB) UntrashItem(uuid, restoredFilename string) error {
 // MarkPrivate marks an item as private by updating its filename.
 func (d *IndexingDB) MarkPrivate(uuid, newFilename string) error {
 	_, err := d.db.Exec(
-		"UPDATE metadata SET filename = ?, private = 1 WHERE uuid = ?",
+		"UPDATE metadata SET filename = ?, is_private = 1 WHERE uuid = ?",
 		newFilename, uuid,
 	)
 	if err != nil {
@@ -251,7 +250,7 @@ func (d *IndexingDB) MarkPrivate(uuid, newFilename string) error {
 // UnmarkPrivate removes the private flag from an item and updates its filename.
 func (d *IndexingDB) UnmarkPrivate(uuid, newFilename string) error {
 	_, err := d.db.Exec(
-		"UPDATE metadata SET filename = ?, private = 0 WHERE uuid = ?",
+		"UPDATE metadata SET filename = ?, is_private = 0 WHERE uuid = ?",
 		newFilename, uuid,
 	)
 	if err != nil {
@@ -328,7 +327,7 @@ func (d *IndexingDB) ScheduleExif(uuids []string, newExifJSON string) error {
 	defer tx.Rollback()
 
 	stmt, err := tx.Prepare(
-		"INSERT INTO exif_updates (uuid, updates_json, created_at) VALUES (?, ?, datetime('now','localtime'))",
+		"INSERT INTO exif_updates (uuid, new_exif_json) VALUES (?, ?)",
 	)
 	if err != nil {
 		return fmt.Errorf("preparing exif schedule statement: %w", err)
@@ -351,7 +350,7 @@ func (d *IndexingDB) ScheduleExif(uuids []string, newExifJSON string) error {
 // FileAudit logs a single file operation to the file_audit table.
 func (d *IndexingDB) FileAudit(collectionID int64, action, path1 string, path2 *string) error {
 	_, err := d.db.Exec(
-		"INSERT INTO file_audit (collection_id, action, path1, path2, created_at) VALUES (?, ?, ?, ?, datetime('now','localtime'))",
+		"INSERT INTO file_audit_log (collection_id, action, path1, path2) VALUES (?, ?, ?, ?)",
 		collectionID, action, path1, path2,
 	)
 	if err != nil {
@@ -373,7 +372,7 @@ func (d *IndexingDB) FileAuditBatch(collectionID int64, entries []AuditEntry) er
 	defer tx.Rollback()
 
 	stmt, err := tx.Prepare(
-		"INSERT INTO file_audit (collection_id, action, path1, path2, created_at) VALUES (?, ?, ?, ?, datetime('now','localtime'))",
+		"INSERT INTO file_audit_log (collection_id, action, path1, path2) VALUES (?, ?, ?, ?)",
 	)
 	if err != nil {
 		return fmt.Errorf("preparing file audit statement: %w", err)
@@ -394,5 +393,17 @@ func (d *IndexingDB) FileAuditBatch(collectionID int64, entries []AuditEntry) er
 		return fmt.Errorf("committing file audit batch: %w", err)
 	}
 
+	return nil
+}
+
+// UpdateAlbumForItem updates the album_date, album_name, and filename for a single item.
+func (d *IndexingDB) UpdateAlbumForItem(uuid, albumDate, albumName, filename string) error {
+	_, err := d.db.Exec(
+		"UPDATE metadata SET album_date = ?, album_name = ?, filename = ? WHERE uuid = ?",
+		albumDate, albumName, filename, uuid,
+	)
+	if err != nil {
+		return fmt.Errorf("updating album for item %s: %w", uuid, err)
+	}
 	return nil
 }

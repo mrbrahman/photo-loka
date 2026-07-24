@@ -2,6 +2,7 @@ package admin
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -15,19 +16,21 @@ import (
 
 // JobsHandler handles job monitoring and control endpoints.
 type JobsHandler struct {
-	scheduler    *scheduler.Scheduler
-	fileWatcher  *jobs.FileWatcher
-	colDB        *collections.CollectionsDB
-	frameManager *frames.Manager
+	scheduler         *scheduler.Scheduler
+	fileWatcher       *jobs.FileWatcher
+	scheduledIndexing *jobs.ScheduledIndexing
+	colDB             *collections.CollectionsDB
+	frameManager      *frames.Manager
 }
 
 // NewJobsHandler creates a new JobsHandler.
-func NewJobsHandler(sched *scheduler.Scheduler, fw *jobs.FileWatcher, colDB *collections.CollectionsDB, fm *frames.Manager) *JobsHandler {
+func NewJobsHandler(sched *scheduler.Scheduler, fw *jobs.FileWatcher, si *jobs.ScheduledIndexing, colDB *collections.CollectionsDB, fm *frames.Manager) *JobsHandler {
 	return &JobsHandler{
-		scheduler:    sched,
-		fileWatcher:  fw,
-		colDB:        colDB,
-		frameManager: fm,
+		scheduler:         sched,
+		fileWatcher:       fw,
+		scheduledIndexing: si,
+		colDB:             colDB,
+		frameManager:      fm,
 	}
 }
 
@@ -36,6 +39,8 @@ func (h *JobsHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.GET("/jobs", h.getJobs)
 	rg.POST("/startAllWatchers", h.startAllWatchers)
 	rg.POST("/stopAllWatchers", h.stopAllWatchers)
+	rg.POST("/startScheduledIndexing", h.startScheduledIndexing)
+	rg.POST("/stopScheduledIndexing", h.stopScheduledIndexing)
 }
 
 // watcherStatus describes an intake watcher and its current state.
@@ -43,15 +48,18 @@ type watcherStatus struct {
 	CollectionID   int64  `json:"collection_id"`
 	CollectionName string `json:"collection_name"`
 	IntakePath     string `json:"intake_path"`
+	IntakeIndex    int    `json:"intake_index"`
 	Status         string `json:"status"` // "active" or "stopped"
 }
 
 // scheduledJobStatus describes a scheduled intake job and its current state.
 type scheduledJobStatus struct {
+	Name           string `json:"name"`
 	CollectionID   int64  `json:"collection_id"`
 	CollectionName string `json:"collection_name"`
 	IntakePath     string `json:"intake_path"`
-	Schedule       string `json:"schedule"`
+	IntakeIndex    int    `json:"intake_index"`
+	Pattern        string `json:"pattern"`
 	Status         string `json:"status"` // "active" or "stopped"
 }
 
@@ -100,7 +108,8 @@ func (h *JobsHandler) getJobs(c *gin.Context) {
 	activeWatchers := h.fileWatcher.ListAll()
 	activeWatcherPaths := make(map[string]bool)
 	for _, w := range activeWatchers {
-		activeWatcherPaths[w.IntakePath] = true
+		key := fmt.Sprintf("%d:%s", w.CollectionID, w.IntakePath)
+		activeWatcherPaths[key] = true
 	}
 
 	// Build a set of active scheduled jobs from the scheduler
@@ -123,17 +132,19 @@ func (h *JobsHandler) getJobs(c *gin.Context) {
 			continue
 		}
 
-		for _, intake := range intakes {
+		for i, intake := range intakes {
 			switch intake.Method {
 			case "immediate":
+				key := fmt.Sprintf("%d:%s", col.CollectionID, intake.Path)
 				status := "stopped"
-				if activeWatcherPaths[intake.Path] {
+				if activeWatcherPaths[key] {
 					status = "active"
 				}
 				watchers = append(watchers, watcherStatus{
 					CollectionID:   col.CollectionID,
 					CollectionName: col.CollectionName,
 					IntakePath:     intake.Path,
+					IntakeIndex:    i,
 					Status:         status,
 				})
 
@@ -142,22 +153,23 @@ func (h *JobsHandler) getJobs(c *gin.Context) {
 				if intake.Config != nil {
 					_ = json.Unmarshal(intake.Config, &cfg)
 				}
+				if cfg.Schedule == "" {
+					cfg.Schedule = "0 1 * * *"
+				}
 
-				// Check if this job is in the scheduler
+				jobName := fmt.Sprintf("cron-c%d-i%d", col.CollectionID, i)
 				status := "stopped"
-				for name := range activeScheduledNames {
-					// Job names follow pattern "intake_{collectionID}_{index}"
-					if strings.HasPrefix(name, "intake_") && activeScheduledNames[name] == cfg.Schedule {
-						status = "active"
-						break
-					}
+				if _, ok := activeScheduledNames[jobName]; ok {
+					status = "active"
 				}
 
 				scheduled = append(scheduled, scheduledJobStatus{
+					Name:           jobName,
 					CollectionID:   col.CollectionID,
 					CollectionName: col.CollectionName,
 					IntakePath:     intake.Path,
-					Schedule:       cfg.Schedule,
+					IntakeIndex:    i,
+					Pattern:        cfg.Schedule,
 					Status:         status,
 				})
 			}
@@ -225,4 +237,21 @@ func (h *JobsHandler) startAllWatchers(c *gin.Context) {
 func (h *JobsHandler) stopAllWatchers(c *gin.Context) {
 	h.fileWatcher.StopAll()
 	c.JSON(http.StatusOK, gin.H{"message": "All watchers stopped"})
+}
+
+// startScheduledIndexing schedules all cron jobs for scheduled intake paths.
+func (h *JobsHandler) startScheduledIndexing(c *gin.Context) {
+	if err := h.scheduledIndexing.ScheduleAll(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": gin.H{"message": err.Error(), "code": "INTERNAL_ERROR"},
+		})
+		return
+	}
+	c.Status(http.StatusOK)
+}
+
+// stopScheduledIndexing stops all scheduled indexing cron jobs.
+func (h *JobsHandler) stopScheduledIndexing(c *gin.Context) {
+	h.scheduledIndexing.StopAll()
+	c.Status(http.StatusOK)
 }

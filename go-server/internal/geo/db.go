@@ -47,7 +47,11 @@ func NewGeoDB(conn *sql.DB) *GeoDB {
 func (g *GeoDB) GetGeoContext(uuid string) (*GeoContext, error) {
 	ctx := &GeoContext{}
 	err := g.db.QueryRow(
-		`SELECT gps_lat, gps_lng, country_code FROM metadata WHERE uuid = ?`,
+		`SELECT m.gps_lat, m.gps_lng,
+			json_extract(gl.response_json, '$.GeolocationCountryCode') AS country_code
+		 FROM metadata m
+		 LEFT JOIN geo_lookups gl ON gl.uuid = m.uuid AND gl.api_name = 'geolocation'
+		 WHERE m.uuid = ?`,
 		uuid,
 	).Scan(&ctx.GPSLat, &ctx.GPSLng, &ctx.CountryCode)
 	if err != nil {
@@ -62,7 +66,7 @@ func (g *GeoDB) GetExiftoolGeoLookup(uuid string) (string, error) {
 	var responseJSON sql.NullString
 	err := g.db.QueryRow(
 		`SELECT response_json FROM geo_lookups
-		 WHERE uuid = ? AND source = 'exiftool' AND api_name = 'geolocation'`,
+		 WHERE uuid = ? AND api_name = 'geolocation'`,
 		uuid,
 	).Scan(&responseJSON)
 	if err == sql.ErrNoRows {
@@ -107,12 +111,15 @@ func (g *GeoDB) FindExactGeoMatch(lat, lng float64) (*GeoMatch, error) {
 func (g *GeoDB) FindProximityGeoMatch(lat, lng float64) (*GeoMatch, error) {
 	// Haversine formula in SQL - distance in meters
 	// 6371000 = earth radius in meters
+	// Pre-filter with ABS bounds check (~10m box) to avoid full-table trig computation
 	query := `
 		SELECT uuid, geo_address, geo_city, geo_region, geo_country, geo_country_code
 		FROM metadata
 		WHERE geo_address IS NOT NULL
 		  AND gps_lat IS NOT NULL
 		  AND gps_lng IS NOT NULL
+		  AND ABS(gps_lat - ?) < 0.00009
+		  AND ABS(gps_lng - ?) < 0.00009
 		  AND (
 		    6371000 * 2 * ASIN(SQRT(
 		      POWER(SIN((RADIANS(gps_lat) - RADIANS(?)) / 2), 2) +
@@ -123,7 +130,7 @@ func (g *GeoDB) FindProximityGeoMatch(lat, lng float64) (*GeoMatch, error) {
 		LIMIT 1`
 
 	match := &GeoMatch{}
-	err := g.db.QueryRow(query, lat, lat, lng).Scan(
+	err := g.db.QueryRow(query, lat, lng, lat, lat, lng).Scan(
 		&match.UUID, &match.GeoAddress, &match.GeoCity, &match.GeoRegion, &match.GeoCountry, &match.GeoCountryCode,
 	)
 	if err == sql.ErrNoRows {
@@ -141,8 +148,8 @@ func (g *GeoDB) FindPostalCodeMatch(postalcode, country string) (string, error) 
 	err := g.db.QueryRow(
 		`SELECT response_json FROM geo_lookups
 		 WHERE api_name = 'postalCodeLookup'
-		   AND request_params LIKE '%' || ? || '%'
-		   AND request_params LIKE '%' || ? || '%'
+		   AND json_extract(request_params, '$.postalcode') = ?
+		   AND json_extract(request_params, '$.country') = ?
 		 LIMIT 1`,
 		postalcode, country,
 	).Scan(&responseJSON)
@@ -161,8 +168,8 @@ func (g *GeoDB) FindPostalCodeMatch(postalcode, country string) (string, error) 
 // InsertGeoLookup inserts a record into the geo_lookups table.
 func (g *GeoDB) InsertGeoLookup(uuid, source, apiName string, requestParams, responseJSON *string) error {
 	_, err := g.db.Exec(
-		`INSERT INTO geo_lookups (uuid, source, api_name, request_params, response_json)
-		 VALUES (?, ?, ?, ?, ?)`,
+		`INSERT OR REPLACE INTO geo_lookups (uuid, source, api_name, request_params, response_json, fetched_at)
+		 VALUES (?, ?, ?, ?, ?, datetime('now','localtime'))`,
 		uuid, source, apiName, requestParams, responseJSON,
 	)
 	return err

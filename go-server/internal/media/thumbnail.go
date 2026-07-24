@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+
+	"github.com/davidbyttow/govips/v2/vips"
 )
 
 // thumbSize defines a thumbnail dimension and scaling mode.
@@ -23,43 +25,91 @@ var thumbSizes = []thumbSize{
 	{Width: 50, Height: 50, Suffix: "center"},
 }
 
-// CreateImageThumbnails generates all standard thumbnail sizes for an image.
-// Output files are stored in thumbsDir/u[0]/u[1]/u[2]/uuid_<height>_<suffix>.jpg
+// InitVips initializes the govips library. Call once at startup.
+func InitVips() {
+	vips.LoggingSettings(nil, vips.LogLevelWarning)
+	vips.Startup(nil)
+}
+
+// ShutdownVips cleans up govips resources. Call at shutdown.
+func ShutdownVips() {
+	vips.Shutdown()
+}
+
+// CreateImageThumbnails generates all standard thumbnail sizes for an image
+// using libvips (via govips). Output files are stored in
+// thumbsDir/u[0]/u[1]/u[2]/uuid_<height>_<suffix>.jpg
 func CreateImageThumbnails(uuid, filePath, thumbsDir string) error {
 	dir := thumbDir(uuid, thumbsDir)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("failed to create thumbnail directory %s: %w", dir, err)
 	}
 
+	// Load the image once
+	img, err := vips.NewImageFromFile(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to load image %s: %w", filePath, err)
+	}
+	defer img.Close()
+
+	// Auto-rotate based on EXIF orientation
+	if err := img.AutoRotate(); err != nil {
+		slog.Warn("auto-rotate failed, continuing without rotation", "uuid", uuid, "error", err)
+	}
+
 	for _, size := range thumbSizes {
 		outputPath := thumbnailPath(uuid, thumbsDir, size)
 
-		var vf string
+		// Create a copy for each size (govips mutates the image)
+		thumb, err := img.Copy()
+		if err != nil {
+			slog.Error("failed to copy image for thumbnail", "uuid", uuid, "error", err)
+			continue
+		}
+
 		if size.Suffix == "center" {
-			// Crop to fill: scale to cover the target, then crop to exact dimensions
-			vf = fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d",
-				size.Width, size.Height, size.Width, size.Height)
+			// Crop to fill: resize to cover, then smart-crop to exact dimensions
+			scale := maxFloat(float64(size.Width)/float64(thumb.Width()), float64(size.Height)/float64(thumb.Height()))
+			if err := thumb.Resize(scale, vips.KernelLanczos3); err != nil {
+				thumb.Close()
+				slog.Error("resize failed", "uuid", uuid, "size", size, "error", err)
+				continue
+			}
+			if err := thumb.SmartCrop(size.Width, size.Height, vips.InterestingAttention); err != nil {
+				// Fallback: simple crop from center if smart crop fails
+				left := (thumb.Width() - size.Width) / 2
+				top := (thumb.Height() - size.Height) / 2
+				if left < 0 {
+					left = 0
+				}
+				if top < 0 {
+					top = 0
+				}
+				_ = thumb.ExtractArea(left, top, size.Width, size.Height)
+			}
 		} else {
-			// Fit: scale proportionally to the target height
-			vf = fmt.Sprintf("scale=-1:%d", size.Height)
+			// Fit: scale proportionally to target height
+			scale := float64(size.Height) / float64(thumb.Height())
+			if scale < 1 {
+				if err := thumb.Resize(scale, vips.KernelLanczos3); err != nil {
+					thumb.Close()
+					slog.Error("resize failed", "uuid", uuid, "size", size, "error", err)
+					continue
+				}
+			}
 		}
 
-		args := []string{
-			"-i", filePath,
-			"-vf", vf,
-			"-frames:v", "1",
-			"-q:v", "3",
-			"-y",
-			outputPath,
+		// Export as JPEG
+		bytes, _, err := thumb.ExportJpeg(&vips.JpegExportParams{Quality: 80})
+		thumb.Close()
+		if err != nil {
+			slog.Error("JPEG export failed", "uuid", uuid, "size", size, "error", err)
+			continue
 		}
 
-		if err := runFFmpeg(args); err != nil {
-			slog.Error("thumbnail generation failed",
-				"uuid", uuid,
-				"size", fmt.Sprintf("%dx%d_%s", size.Width, size.Height, size.Suffix),
-				"error", err,
-			)
-			return fmt.Errorf("failed to create thumbnail %s for %s: %w", size.Suffix, uuid, err)
+		if err := os.WriteFile(outputPath, bytes, 0644); err != nil {
+			slog.Error("failed to write thumbnail", "path", outputPath, "error", err)
+			continue
 		}
 	}
 
@@ -67,8 +117,43 @@ func CreateImageThumbnails(uuid, filePath, thumbsDir string) error {
 	return nil
 }
 
-// GenerateVideoThumbnail extracts a single frame from a video file to use as
-// its thumbnail. Returns the path to the generated thumbnail.
+// ResizeImage resizes an image to fit within maxWidth x maxHeight,
+// preserving aspect ratio. Returns JPEG bytes. Used for on-the-fly
+// image serving (getImage endpoint).
+func ResizeImage(filePath string, maxWidth, maxHeight int) ([]byte, error) {
+	img, err := vips.NewImageFromFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load image: %w", err)
+	}
+	defer img.Close()
+
+	// Auto-rotate based on EXIF orientation
+	if err := img.AutoRotate(); err != nil {
+		slog.Warn("auto-rotate failed", "file", filePath, "error", err)
+	}
+
+	// Only downscale, never upscale
+	scaleW := float64(maxWidth) / float64(img.Width())
+	scaleH := float64(maxHeight) / float64(img.Height())
+	scale := minFloat(scaleW, scaleH)
+
+	if scale < 1 {
+		if err := img.Resize(scale, vips.KernelLanczos3); err != nil {
+			return nil, fmt.Errorf("resize failed: %w", err)
+		}
+	}
+
+	bytes, _, err := img.ExportJpeg(&vips.JpegExportParams{Quality: 85})
+	if err != nil {
+		return nil, fmt.Errorf("JPEG export failed: %w", err)
+	}
+
+	return bytes, nil
+}
+
+// GenerateVideoThumbnail extracts a single frame from a video file using ffmpeg.
+// Returns the path to the generated frame image. After this, call
+// CreateImageThumbnails with the frame image to generate all sizes.
 func GenerateVideoThumbnail(uuid, videoFilePath, thumbsDir string) (string, error) {
 	dir := thumbDir(uuid, thumbsDir)
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -114,8 +199,6 @@ func DeleteThumbnails(uuid, thumbsDir string) {
 }
 
 // thumbDir returns the directory path for a uuid's thumbnails.
-// Uses the first 3 characters of the uuid as subdirectory levels:
-// thumbsDir/u[0]/u[1]/u[2]/
 func thumbDir(uuid, thumbsDir string) string {
 	if len(uuid) < 3 {
 		return filepath.Join(thumbsDir, uuid)
@@ -131,11 +214,20 @@ func thumbDir(uuid, thumbsDir string) string {
 // thumbnailPath returns the output file path for a specific thumbnail size.
 func thumbnailPath(uuid, thumbsDir string, size thumbSize) string {
 	dir := thumbDir(uuid, thumbsDir)
-	var filename string
-	if size.Suffix == "center" {
-		filename = fmt.Sprintf("%s_%d_%s.jpg", uuid, size.Height, size.Suffix)
-	} else {
-		filename = fmt.Sprintf("%s_%d_%s.jpg", uuid, size.Height, size.Suffix)
-	}
+	filename := fmt.Sprintf("%s_%d_%s.jpg", uuid, size.Height, size.Suffix)
 	return filepath.Join(dir, filename)
+}
+
+func maxFloat(a, b float64) float64 {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func minFloat(a, b float64) float64 {
+	if a < b {
+		return a
+	}
+	return b
 }

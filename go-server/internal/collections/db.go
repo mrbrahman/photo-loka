@@ -76,7 +76,6 @@ func (c *CollectionsDB) Update(collectionID int64, col *Collection) error {
 	query := `
 		UPDATE collections SET
 			collection_name = ?,
-			collection_path = ?,
 			album_type = ?,
 			intake_configs = json(?),
 			apply_folder_pattern = ?,
@@ -88,7 +87,6 @@ func (c *CollectionsDB) Update(collectionID int64, col *Collection) error {
 
 	result, err := c.db.Exec(query,
 		col.CollectionName,
-		col.CollectionPath,
 		col.AlbumType,
 		string(col.IntakeConfigs),
 		col.ApplyFolderPattern,
@@ -328,8 +326,15 @@ func (c *CollectionsDB) SetAllIntakeStatus(collectionID int64, status string) er
 		return fmt.Errorf("parsing intake_configs: %w", err)
 	}
 
-	// Update each entry's status
-	for i := range configs {
+	// Update each entry's status, skipping on-demand intakes
+	for i, raw := range configs {
+		var entry map[string]interface{}
+		if err := json.Unmarshal(raw, &entry); err != nil {
+			continue
+		}
+		if method, _ := entry["method"].(string); method == "on-demand" {
+			continue // on-demand intakes have no background process to stop/start
+		}
 		if err := c.SetIntakeStatusByIndex(collectionID, i, status); err != nil {
 			return err
 		}

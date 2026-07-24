@@ -16,6 +16,59 @@ func NewMLDB(conn *sql.DB) *MLDB {
 	return &MLDB{db: conn}
 }
 
+// jsonOrNull returns a JSON string or nil if the value is nil.
+func jsonOrNull(val interface{}) interface{} {
+	if val == nil {
+		return nil
+	}
+	b, err := json.Marshal(val)
+	if err != nil {
+		return nil
+	}
+	return string(b)
+}
+
+// intOrNull converts a bool-like value to 1/0/nil for INTEGER columns.
+func intOrNull(val interface{}) interface{} {
+	if val == nil {
+		return nil
+	}
+	switch v := val.(type) {
+	case bool:
+		if v {
+			return 1
+		}
+		return 0
+	case float64:
+		return int(v)
+	}
+	return nil
+}
+
+// ItemForRecognition holds the fields needed to call the ML face recognition service.
+type ItemForRecognition struct {
+	Filename    string
+	Orientation int
+	Xmpregion   *string
+}
+
+// GetItemForRecognition retrieves the filename, orientation, and xmpregion for a uuid.
+func (m *MLDB) GetItemForRecognition(uuid string) (*ItemForRecognition, error) {
+	item := &ItemForRecognition{}
+	var xmpregion sql.NullString
+	err := m.db.QueryRow(
+		`SELECT filename, COALESCE(orientation, 1), xmpregion FROM metadata WHERE uuid = ?`,
+		uuid,
+	).Scan(&item.Filename, &item.Orientation, &xmpregion)
+	if err != nil {
+		return nil, fmt.Errorf("getting item for recognition %s: %w", uuid, err)
+	}
+	if xmpregion.Valid {
+		item.Xmpregion = &xmpregion.String
+	}
+	return item, nil
+}
+
 // SaveFaceResults deletes old face data for a uuid, inserts new faces and unmatched entries,
 // and updates the metadata.faces field.
 func (m *MLDB) SaveFaceResults(uuid string, faces []map[string]interface{}, unmatched []map[string]interface{}) error {
@@ -25,52 +78,78 @@ func (m *MLDB) SaveFaceResults(uuid string, faces []map[string]interface{}, unma
 	}
 	defer tx.Rollback()
 
-	// Delete old face records for this uuid
+	// Delete old records for this uuid
 	if _, err := tx.Exec(`DELETE FROM face_recognition WHERE uuid = ?`, uuid); err != nil {
 		return fmt.Errorf("failed to delete old face records: %w", err)
 	}
+	if _, err := tx.Exec(`DELETE FROM face_recognition_unmatched WHERE uuid = ?`, uuid); err != nil {
+		return fmt.Errorf("failed to delete old unmatched records: %w", err)
+	}
 
-	// Insert matched faces
-	for _, face := range faces {
-		clusterID, _ := face["cluster_id"].(string)
-		name, _ := face["name"].(string)
-		confidence, _ := face["confidence"].(float64)
-		bbox, _ := json.Marshal(face["bbox"])
+	// Insert detected faces
+	for i, f := range faces {
+		cluster, _ := f["cluster"].(map[string]interface{})
+		inputMatch, _ := f["input_face_match"].(map[string]interface{})
 
-		_, err := tx.Exec(
-			`INSERT INTO face_recognition (uuid, cluster_id, name, confidence, bbox, status)
-			 VALUES (?, ?, ?, ?, ?, 'matched')`,
-			uuid, clusterID, name, confidence, string(bbox),
+		_, err := tx.Exec(`
+			INSERT INTO face_recognition (
+				uuid, face_idx, person_name, gender, age, confidence,
+				bbox, landmarks, pose,
+				cluster_id, cluster_name, cluster_confidence,
+				cluster_consensus_count, cluster_reference_image_ids,
+				cluster_is_new, cluster_centroid,
+				input_face_matched, input_face_name, input_face_confidence,
+				input_face_match_strategy, input_face_bbox, input_face_centroid,
+				name_mismatch
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			uuid,
+			i,
+			f["person_name"],
+			f["gender"],
+			f["age"],
+			f["confidence"],
+			jsonOrNull(f["bbox"]),
+			jsonOrNull(f["landmarks"]),
+			jsonOrNull(f["pose"]),
+			cluster["cluster_id"],
+			cluster["name"],
+			cluster["confidence"],
+			cluster["consensus_count"],
+			jsonOrNull(cluster["reference_image_ids"]),
+			intOrNull(cluster["is_new_cluster"]),
+			jsonOrNull(cluster["centroid"]),
+			intOrNull(inputMatch["matched"]),
+			inputMatch["name"],
+			inputMatch["confidence"],
+			inputMatch["match_strategy"],
+			jsonOrNull(inputMatch["input_bbox"]),
+			jsonOrNull(inputMatch["centroid"]),
+			intOrNull(f["name_mismatch"]),
 		)
 		if err != nil {
-			return fmt.Errorf("failed to insert face record: %w", err)
+			return fmt.Errorf("failed to insert face record %d: %w", i, err)
 		}
 	}
 
-	// Insert unmatched faces
-	for _, face := range unmatched {
-		clusterID, _ := face["cluster_id"].(string)
-		confidence, _ := face["confidence"].(float64)
-		bbox, _ := json.Marshal(face["bbox"])
-
-		_, err := tx.Exec(
-			`INSERT INTO face_recognition (uuid, cluster_id, name, confidence, bbox, status)
-			 VALUES (?, ?, NULL, ?, ?, 'unmatched')`,
-			uuid, clusterID, confidence, string(bbox),
+	// Insert unmatched input faces
+	for i, u := range unmatched {
+		_, err := tx.Exec(`
+			INSERT INTO face_recognition_unmatched (uuid, face_idx, name, x, y, w, h, centroid)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			uuid, i, u["name"], u["x"], u["y"], u["w"], u["h"], jsonOrNull(u["centroid"]),
 		)
 		if err != nil {
-			return fmt.Errorf("failed to insert unmatched face record: %w", err)
+			return fmt.Errorf("failed to insert unmatched face record %d: %w", i, err)
 		}
 	}
 
-	// Update metadata.faces with the names of recognized faces
+	// Update metadata.faces with recognized person names
 	var faceNames []string
 	for _, face := range faces {
-		if name, ok := face["name"].(string); ok && name != "" {
+		if name, ok := face["person_name"].(string); ok && name != "" {
 			faceNames = append(faceNames, name)
 		}
 	}
-
 	facesJSON, _ := json.Marshal(faceNames)
 	if _, err := tx.Exec(`UPDATE metadata SET faces = ? WHERE uuid = ?`, string(facesJSON), uuid); err != nil {
 		return fmt.Errorf("failed to update metadata.faces: %w", err)
@@ -82,8 +161,12 @@ func (m *MLDB) SaveFaceResults(uuid string, faces []map[string]interface{}, unma
 // GetFacesByUUID returns all face records for a given uuid.
 func (m *MLDB) GetFacesByUUID(uuid string) ([]map[string]interface{}, error) {
 	rows, err := m.db.Query(
-		`SELECT cluster_id, name, confidence, bbox, status
-		 FROM face_recognition WHERE uuid = ?`,
+		`SELECT face_idx, person_name, gender, age, confidence, bbox,
+				cluster_id, cluster_name, cluster_confidence
+		 FROM face_recognition
+		 WHERE uuid = ?
+		   AND cluster_id NOT IN (SELECT cluster_id FROM face_dismissed_clusters)
+		 ORDER BY face_idx`,
 		uuid,
 	)
 	if err != nil {
@@ -93,29 +176,44 @@ func (m *MLDB) GetFacesByUUID(uuid string) ([]map[string]interface{}, error) {
 
 	var results []map[string]interface{}
 	for rows.Next() {
-		var clusterID string
-		var name sql.NullString
-		var confidence float64
-		var bboxStr string
-		var status string
+		var faceIdx int
+		var personName, gender sql.NullString
+		var age sql.NullInt64
+		var confidence sql.NullFloat64
+		var bboxStr sql.NullString
+		var clusterID, clusterName sql.NullString
+		var clusterConfidence sql.NullFloat64
 
-		if err := rows.Scan(&clusterID, &name, &confidence, &bboxStr, &status); err != nil {
+		if err := rows.Scan(&faceIdx, &personName, &gender, &age, &confidence, &bboxStr,
+			&clusterID, &clusterName, &clusterConfidence); err != nil {
 			return nil, err
 		}
 
 		face := map[string]interface{}{
-			"cluster_id": clusterID,
-			"confidence": confidence,
-			"status":     status,
+			"face_idx":   faceIdx,
+			"cluster_id": nullStr(clusterID),
+			"confidence": nullFloat(confidence),
 		}
-
-		if name.Valid {
-			face["name"] = name.String
+		if personName.Valid {
+			face["person_name"] = personName.String
 		}
-
-		var bbox interface{}
-		if json.Unmarshal([]byte(bboxStr), &bbox) == nil {
-			face["bbox"] = bbox
+		if gender.Valid {
+			face["gender"] = gender.String
+		}
+		if age.Valid {
+			face["age"] = age.Int64
+		}
+		if clusterName.Valid {
+			face["cluster_name"] = clusterName.String
+		}
+		if clusterConfidence.Valid {
+			face["cluster_confidence"] = clusterConfidence.Float64
+		}
+		if bboxStr.Valid {
+			var bbox interface{}
+			if json.Unmarshal([]byte(bboxStr.String), &bbox) == nil {
+				face["bbox"] = bbox
+			}
 		}
 
 		results = append(results, face)
@@ -127,9 +225,9 @@ func (m *MLDB) GetFacesByUUID(uuid string) ([]map[string]interface{}, error) {
 // GetFacesByPerson returns all face records for a given person name.
 func (m *MLDB) GetFacesByPerson(name string) ([]map[string]interface{}, error) {
 	rows, err := m.db.Query(
-		`SELECT fr.uuid, fr.cluster_id, fr.confidence, fr.bbox
-		 FROM face_recognition fr
-		 WHERE fr.name = ?`,
+		`SELECT uuid, face_idx, cluster_id, confidence, bbox
+		 FROM face_recognition
+		 WHERE person_name = ?`,
 		name,
 	)
 	if err != nil {
@@ -139,22 +237,27 @@ func (m *MLDB) GetFacesByPerson(name string) ([]map[string]interface{}, error) {
 
 	var results []map[string]interface{}
 	for rows.Next() {
-		var uuid, clusterID, bboxStr string
-		var confidence float64
+		var uuid, clusterID string
+		var faceIdx int
+		var confidence sql.NullFloat64
+		var bboxStr sql.NullString
 
-		if err := rows.Scan(&uuid, &clusterID, &confidence, &bboxStr); err != nil {
+		if err := rows.Scan(&uuid, &faceIdx, &clusterID, &confidence, &bboxStr); err != nil {
 			return nil, err
 		}
 
 		face := map[string]interface{}{
 			"uuid":       uuid,
+			"face_idx":   faceIdx,
 			"cluster_id": clusterID,
-			"confidence": confidence,
+			"confidence": nullFloat(confidence),
 		}
 
-		var bbox interface{}
-		if json.Unmarshal([]byte(bboxStr), &bbox) == nil {
-			face["bbox"] = bbox
+		if bboxStr.Valid {
+			var bbox interface{}
+			if json.Unmarshal([]byte(bboxStr.String), &bbox) == nil {
+				face["bbox"] = bbox
+			}
 		}
 
 		results = append(results, face)
@@ -163,8 +266,8 @@ func (m *MLDB) GetFacesByPerson(name string) ([]map[string]interface{}, error) {
 	return results, rows.Err()
 }
 
-// NameFaceCluster assigns a name to all face records with a given cluster_id.
-// Returns the number of rows affected.
+// NameFaceCluster assigns a person_name to all face records with a given cluster_id.
+// Also updates cluster_name on the records. Returns the number of rows affected.
 func (m *MLDB) NameFaceCluster(clusterID, name string) (int64, error) {
 	tx, err := m.db.Begin()
 	if err != nil {
@@ -172,32 +275,25 @@ func (m *MLDB) NameFaceCluster(clusterID, name string) (int64, error) {
 	}
 	defer tx.Rollback()
 
-	// Update face_recognition table
+	// Update face_recognition: set person_name
 	result, err := tx.Exec(
-		`UPDATE face_recognition SET name = ?, status = 'matched' WHERE cluster_id = ?`,
+		`UPDATE face_recognition SET person_name = ? WHERE cluster_id = ?`,
 		name, clusterID,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("failed to update face_recognition: %w", err)
 	}
-
 	rowsAffected, _ := result.RowsAffected()
 
 	// Update metadata.faces for all affected UUIDs
-	rows, err := tx.Query(`SELECT DISTINCT uuid FROM face_recognition WHERE cluster_id = ?`, clusterID)
-	if err != nil {
-		return 0, fmt.Errorf("failed to query affected uuids: %w", err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var uuid string
-		if err := rows.Scan(&uuid); err != nil {
-			return 0, err
-		}
-		if err := m.updateMetadataFaces(tx, uuid); err != nil {
-			return 0, err
-		}
+	if _, err := tx.Exec(`
+		UPDATE metadata SET faces = (
+			SELECT json_group_array(person_name)
+			FROM face_recognition
+			WHERE uuid = metadata.uuid AND person_name IS NOT NULL
+		) WHERE uuid IN (SELECT DISTINCT uuid FROM face_recognition WHERE cluster_id = ?)
+	`, clusterID); err != nil {
+		return 0, fmt.Errorf("failed to update metadata.faces: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -216,32 +312,25 @@ func (m *MLDB) UpdatePersonName(oldName, newName string) (int64, error) {
 	}
 	defer tx.Rollback()
 
-	// Update face_recognition table
+	// Update face_recognition
 	result, err := tx.Exec(
-		`UPDATE face_recognition SET name = ? WHERE name = ?`,
+		`UPDATE face_recognition SET person_name = ? WHERE person_name = ?`,
 		newName, oldName,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("failed to update face_recognition: %w", err)
 	}
-
 	rowsAffected, _ := result.RowsAffected()
 
 	// Update metadata.faces for all affected UUIDs
-	rows, err := tx.Query(`SELECT DISTINCT uuid FROM face_recognition WHERE name = ?`, newName)
-	if err != nil {
-		return 0, fmt.Errorf("failed to query affected uuids: %w", err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var uuid string
-		if err := rows.Scan(&uuid); err != nil {
-			return 0, err
-		}
-		if err := m.updateMetadataFaces(tx, uuid); err != nil {
-			return 0, err
-		}
+	if _, err := tx.Exec(`
+		UPDATE metadata SET faces = (
+			SELECT json_group_array(person_name)
+			FROM face_recognition
+			WHERE uuid = metadata.uuid AND person_name IS NOT NULL
+		) WHERE uuid IN (SELECT DISTINCT uuid FROM face_recognition WHERE person_name = ?)
+	`, newName); err != nil {
+		return 0, fmt.Errorf("failed to update metadata.faces: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -251,15 +340,15 @@ func (m *MLDB) UpdatePersonName(oldName, newName string) (int64, error) {
 	return rowsAffected, nil
 }
 
-// SearchPersonNames searches for person names matching the query string (LIKE).
+// SearchPersonNames searches for person names matching the query (prefix LIKE).
 // Returns up to 20 results.
 func (m *MLDB) SearchPersonNames(query string) ([]string, error) {
 	rows, err := m.db.Query(
-		`SELECT DISTINCT name FROM face_recognition
-		 WHERE name IS NOT NULL AND name LIKE ?
-		 ORDER BY name
+		`SELECT DISTINCT person_name FROM face_recognition
+		 WHERE person_name IS NOT NULL AND person_name LIKE ? || '%'
+		 ORDER BY person_name
 		 LIMIT 20`,
-		"%"+query+"%",
+		query,
 	)
 	if err != nil {
 		return nil, err
@@ -278,19 +367,19 @@ func (m *MLDB) SearchPersonNames(query string) ([]string, error) {
 	return names, rows.Err()
 }
 
-// DismissCluster marks a face cluster as dismissed.
+// DismissCluster inserts a cluster_id into the face_dismissed_clusters table.
 func (m *MLDB) DismissCluster(clusterID string) error {
 	_, err := m.db.Exec(
-		`UPDATE face_recognition SET status = 'dismissed' WHERE cluster_id = ?`,
+		`INSERT OR IGNORE INTO face_dismissed_clusters (cluster_id) VALUES (?)`,
 		clusterID,
 	)
 	return err
 }
 
-// UndismissCluster marks a dismissed face cluster back to unmatched.
+// UndismissCluster removes a cluster_id from the face_dismissed_clusters table.
 func (m *MLDB) UndismissCluster(clusterID string) error {
 	_, err := m.db.Exec(
-		`UPDATE face_recognition SET status = 'unmatched' WHERE cluster_id = ? AND status = 'dismissed'`,
+		`DELETE FROM face_dismissed_clusters WHERE cluster_id = ?`,
 		clusterID,
 	)
 	return err
@@ -311,11 +400,13 @@ func (m *MLDB) DeleteFaceData(uuid string) ([]string, error) {
 
 	var clusterIDs []string
 	for rows.Next() {
-		var id string
+		var id sql.NullString
 		if err := rows.Scan(&id); err != nil {
 			return nil, err
 		}
-		clusterIDs = append(clusterIDs, id)
+		if id.Valid {
+			clusterIDs = append(clusterIDs, id.String)
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -323,6 +414,10 @@ func (m *MLDB) DeleteFaceData(uuid string) ([]string, error) {
 
 	// Delete face records
 	if _, err := m.db.Exec(`DELETE FROM face_recognition WHERE uuid = ?`, uuid); err != nil {
+		return nil, err
+	}
+	// Delete unmatched records
+	if _, err := m.db.Exec(`DELETE FROM face_recognition_unmatched WHERE uuid = ?`, uuid); err != nil {
 		return nil, err
 	}
 
@@ -334,31 +429,18 @@ func (m *MLDB) DeleteFaceData(uuid string) ([]string, error) {
 	return clusterIDs, nil
 }
 
-// updateMetadataFaces rebuilds the metadata.faces JSON array for a uuid
-// from current face_recognition records.
-func (m *MLDB) updateMetadataFaces(tx *sql.Tx, uuid string) error {
-	rows, err := tx.Query(
-		`SELECT name FROM face_recognition WHERE uuid = ? AND name IS NOT NULL AND status = 'matched'`,
-		uuid,
-	)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
+// Helper functions for nullable types
 
-	var names []string
-	for rows.Next() {
-		var name string
-		if err := rows.Scan(&name); err != nil {
-			return err
-		}
-		names = append(names, name)
+func nullStr(ns sql.NullString) interface{} {
+	if ns.Valid {
+		return ns.String
 	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
+	return nil
+}
 
-	facesJSON, _ := json.Marshal(names)
-	_, err = tx.Exec(`UPDATE metadata SET faces = ? WHERE uuid = ?`, string(facesJSON), uuid)
-	return err
+func nullFloat(nf sql.NullFloat64) interface{} {
+	if nf.Valid {
+		return nf.Float64
+	}
+	return nil
 }
