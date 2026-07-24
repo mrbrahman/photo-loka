@@ -1,0 +1,181 @@
+package dashboard
+
+import (
+	"database/sql"
+	"fmt"
+	"net/http"
+	"syscall"
+
+	"github.com/gin-gonic/gin"
+)
+
+// Handler provides HTTP handlers for the admin dashboard.
+type Handler struct {
+	db *sql.DB
+}
+
+// LibraryStats holds the overall library statistics.
+type LibraryStats struct {
+	TotalItems   int64                  `json:"totalItems"`
+	TotalSize    int64                  `json:"totalSize"`
+	Albums       int64                  `json:"albums"`
+	TrashedItems int64                  `json:"trashedItems"`
+	ByType       map[string]TypeStat    `json:"byType"`
+	Collections  []CollectionStat       `json:"collections"`
+}
+
+// TypeStat holds count and size for a media type.
+type TypeStat struct {
+	Count int64 `json:"count"`
+	Size  int64 `json:"size"`
+}
+
+// CollectionStat holds per-collection stats.
+type CollectionStat struct {
+	CollectionID   int64  `json:"collection_id"`
+	CollectionName string `json:"collection_name"`
+	CollectionPath string `json:"collection_path"`
+	Items          int64  `json:"items"`
+	TotalSize      int64  `json:"totalSize"`
+	FreeSpace      *int64 `json:"freeSpace"`
+}
+
+// NewHandler creates a new dashboard Handler.
+func NewHandler(conn *sql.DB) *Handler {
+	return &Handler{db: conn}
+}
+
+// RegisterRoutes registers dashboard routes on the given router group.
+func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
+	rg.GET("/getStats", h.getStats)
+}
+
+// getStats returns library and collection statistics.
+func (h *Handler) getStats(c *gin.Context) {
+	stats, err := h.queryLibraryStats()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": gin.H{"message": err.Error(), "code": "INTERNAL_ERROR"},
+		})
+		return
+	}
+
+	collStats, err := h.queryCollectionStats()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": gin.H{"message": err.Error(), "code": "INTERNAL_ERROR"},
+		})
+		return
+	}
+
+	stats.Collections = collStats
+
+	c.JSON(http.StatusOK, stats)
+}
+
+// queryLibraryStats runs the aggregate query for overall library stats.
+func (h *Handler) queryLibraryStats() (*LibraryStats, error) {
+	query := `
+		SELECT
+			count(CASE WHEN coalesce(is_trashed, 0) = 0 THEN 1 END) as totalItems,
+			coalesce(sum(CASE WHEN coalesce(is_trashed, 0) = 0 THEN filesize END), 0) as totalSize,
+			count(DISTINCT CASE WHEN coalesce(is_trashed, 0) = 0 THEN album_date || '|' || coalesce(album_name, '') END) as albums,
+			count(CASE WHEN coalesce(is_trashed, 0) = 1 THEN 1 END) as trashedItems,
+			count(CASE WHEN coalesce(is_trashed, 0) = 0 AND mediatype = 'image' THEN 1 END) as imageCount,
+			coalesce(sum(CASE WHEN coalesce(is_trashed, 0) = 0 AND mediatype = 'image' THEN filesize END), 0) as imageSize,
+			count(CASE WHEN coalesce(is_trashed, 0) = 0 AND mediatype = 'video' THEN 1 END) as videoCount,
+			coalesce(sum(CASE WHEN coalesce(is_trashed, 0) = 0 AND mediatype = 'video' THEN filesize END), 0) as videoSize,
+			count(CASE WHEN coalesce(is_trashed, 0) = 0 AND mediatype = 'audio' THEN 1 END) as audioCount,
+			coalesce(sum(CASE WHEN coalesce(is_trashed, 0) = 0 AND mediatype = 'audio' THEN filesize END), 0) as audioSize
+		FROM metadata`
+
+	var stats LibraryStats
+	var imageCount, imageSize, videoCount, videoSize, audioCount, audioSize int64
+
+	err := h.db.QueryRow(query).Scan(
+		&stats.TotalItems,
+		&stats.TotalSize,
+		&stats.Albums,
+		&stats.TrashedItems,
+		&imageCount,
+		&imageSize,
+		&videoCount,
+		&videoSize,
+		&audioCount,
+		&audioSize,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("querying library stats: %w", err)
+	}
+
+	stats.ByType = map[string]TypeStat{
+		"image": {Count: imageCount, Size: imageSize},
+		"video": {Count: videoCount, Size: videoSize},
+		"audio": {Count: audioCount, Size: audioSize},
+	}
+
+	return &stats, nil
+}
+
+// queryCollectionStats returns per-collection item counts and disk info.
+func (h *Handler) queryCollectionStats() ([]CollectionStat, error) {
+	query := `
+		SELECT
+			c.collection_id,
+			c.collection_name,
+			c.collection_path,
+			count(CASE WHEN coalesce(m.is_trashed, 0) = 0 THEN 1 END) as items,
+			coalesce(sum(CASE WHEN coalesce(m.is_trashed, 0) = 0 THEN m.filesize END), 0) as totalSize
+		FROM collections c
+		LEFT JOIN metadata m ON m.collection_id = c.collection_id
+		GROUP BY c.collection_id, c.collection_name, c.collection_path`
+
+	rows, err := h.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("querying collection stats: %w", err)
+	}
+	defer rows.Close()
+
+	var results []CollectionStat
+	for rows.Next() {
+		var cs CollectionStat
+		if err := rows.Scan(
+			&cs.CollectionID,
+			&cs.CollectionName,
+			&cs.CollectionPath,
+			&cs.Items,
+			&cs.TotalSize,
+		); err != nil {
+			return nil, fmt.Errorf("scanning collection stat: %w", err)
+		}
+
+		// Compute free disk space for the collection path
+		freeSpace := getDiskFreeSpace(cs.CollectionPath)
+		if freeSpace >= 0 {
+			cs.FreeSpace = &freeSpace
+		}
+
+		results = append(results, cs)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating collection stats: %w", err)
+	}
+
+	if results == nil {
+		results = []CollectionStat{}
+	}
+
+	return results, nil
+}
+
+// getDiskFreeSpace returns the available bytes on the filesystem containing path.
+// Returns -1 if the stat call fails.
+func getDiskFreeSpace(path string) int64 {
+	var stat syscall.Statfs_t
+	if err := syscall.Statfs(path, &stat); err != nil {
+		return -1
+	}
+	// Available blocks * block size
+	return int64(stat.Bavail) * int64(stat.Bsize)
+}
