@@ -80,7 +80,9 @@ func FormatPattern(values map[string]string, pattern string) (string, error) {
 
 // ParsePattern attempts to match an input string against the given pattern
 // and extract token values. Returns nil if the input does not match.
-// The {{album}} token matches greedily (.*).
+// The {{album}} token matches greedily (.*), including empty string.
+// If the pattern has a literal space before {{album}} and the input has no
+// trailing content after the date, we retry without the trailing " {{album}}" part.
 func ParsePattern(input, pattern string) map[string]string {
 	if err := validatePattern(pattern); err != nil {
 		return nil
@@ -96,6 +98,27 @@ func ParsePattern(input, pattern string) map[string]string {
 
 	matches := re.FindStringSubmatch(input)
 	if matches == nil {
+		// Retry: if pattern ends with " {{album}}", try matching without it
+		// This handles folders like "2025-09-15" that have no album name
+		trimmedPattern := strings.TrimSuffix(pattern, " {{album}}")
+		if trimmedPattern != pattern {
+			trimmedSegments := tokenize(trimmedPattern)
+			trimmedRegex := buildRegex(trimmedSegments)
+			reT, err := regexp.Compile("^" + trimmedRegex + "$")
+			if err == nil {
+				matches = reT.FindStringSubmatch(input)
+				if matches != nil {
+					result := make(map[string]string)
+					for i, name := range reT.SubexpNames() {
+						if name != "" && i < len(matches) {
+							result[name] = matches[i]
+						}
+					}
+					result["album"] = ""
+					return result
+				}
+			}
+		}
 		return nil
 	}
 
@@ -167,9 +190,11 @@ func validatePattern(pattern string) error {
 	return nil
 }
 
-// buildRegex converts tokenized segments into a regex string with named groups.
+// buildRegex converts tokenized segments into a regex string with numbered groups.
+// Returns the regex and the ordered list of token names for each capture group.
 func buildRegex(segments []segment) string {
 	var b strings.Builder
+	seen := make(map[string]bool)
 
 	for _, seg := range segments {
 		if seg.kind == literal {
@@ -179,13 +204,34 @@ func buildRegex(segments []segment) string {
 
 		switch seg.value {
 		case tokenYYYY:
-			b.WriteString(`(?P<yyyy>\d{4})`)
+			if seen["yyyy"] {
+				// Duplicate: use non-capturing group
+				b.WriteString(`\d{4}`)
+			} else {
+				b.WriteString(`(?P<yyyy>\d{4})`)
+				seen["yyyy"] = true
+			}
 		case tokenYY:
-			b.WriteString(`(?P<yy>\d{2})`)
+			if seen["yy"] {
+				b.WriteString(`\d{2}`)
+			} else {
+				b.WriteString(`(?P<yy>\d{2})`)
+				seen["yy"] = true
+			}
 		case tokenMM:
-			b.WriteString(`(?P<mm>\d{2})`)
+			if seen["mm"] {
+				b.WriteString(`\d{2}`)
+			} else {
+				b.WriteString(`(?P<mm>\d{2})`)
+				seen["mm"] = true
+			}
 		case tokenDD:
-			b.WriteString(`(?P<dd>\d{2})`)
+			if seen["dd"] {
+				b.WriteString(`\d{2}`)
+			} else {
+				b.WriteString(`(?P<dd>\d{2})`)
+				seen["dd"] = true
+			}
 		case tokenAlbum:
 			// Greedy match for album (last token).
 			b.WriteString(`(?P<album>.*)`)

@@ -3,21 +3,25 @@ package ml
 import (
 	"fmt"
 	"log/slog"
+
+	"photo-loka/internal/media"
 )
 
 // Service orchestrates ML operations including face recognition and semantic search.
 type Service struct {
-	client *Client
-	db     *MLDB
-	logger *slog.Logger
+	client   *Client
+	db       *MLDB
+	facesDir string
+	logger   *slog.Logger
 }
 
 // NewService creates a new ML Service.
-func NewService(client *Client, db *MLDB) *Service {
+func NewService(client *Client, db *MLDB, facesDir string) *Service {
 	return &Service{
-		client: client,
-		db:     db,
-		logger: slog.Default().With("component", "ml-service"),
+		client:   client,
+		db:       db,
+		facesDir: facesDir,
+		logger:   slog.Default().With("component", "ml-service"),
 	}
 }
 
@@ -53,7 +57,7 @@ func (s *Service) ProcessFaceRecognition(uuid string) (map[string]interface{}, e
 		}
 	}
 
-	if u, ok := result["unmatched"].([]interface{}); ok {
+	if u, ok := result["unmatched_input_faces"].([]interface{}); ok {
 		for _, item := range u {
 			if m, ok := item.(map[string]interface{}); ok {
 				unmatched = append(unmatched, m)
@@ -64,6 +68,13 @@ func (s *Service) ProcessFaceRecognition(uuid string) (map[string]interface{}, e
 	// Save results to DB
 	if err := s.db.SaveFaceResults(uuid, faces, unmatched); err != nil {
 		return nil, fmt.Errorf("failed to save face results for %s: %w", uuid, err)
+	}
+
+	// Extract face thumbnails from the image (crop each detected face)
+	if len(faces) > 0 {
+		if err := media.ExtractFaceThumbnails(uuid, item.Filename, faces, s.facesDir); err != nil {
+			s.logger.Warn("face thumbnail extraction failed", "uuid", uuid, "error", err)
+		}
 	}
 
 	s.logger.Info("face recognition complete", "uuid", uuid, "faces", len(faces), "unmatched", len(unmatched))

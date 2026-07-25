@@ -32,7 +32,7 @@ func NewClient(baseURL string) *Client {
 // RecognizeFaces sends an image to the ML service for face detection and recognition.
 func (c *Client) RecognizeFaces(uuid, imagePath string, orientation int, xmpRegions interface{}) (map[string]interface{}, error) {
 	body := map[string]interface{}{
-		"uuid":        uuid,
+		"image_id":    uuid,
 		"image_path":  imagePath,
 		"orientation": orientation,
 	}

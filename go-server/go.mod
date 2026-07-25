@@ -3,6 +3,7 @@ module photo-loka
 go 1.25.0
 
 require (
+	github.com/barasher/go-exiftool v1.10.0
 	github.com/davidbyttow/govips/v2 v2.18.0
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/gin-gonic/gin v1.10.0

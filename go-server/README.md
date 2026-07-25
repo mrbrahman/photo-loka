@@ -8,20 +8,21 @@ Install these on the machine where Photo-Loka runs:
 
 ```bash
 # Ubuntu/Debian
-sudo apt install libvips ffmpeg exiftool
+sudo apt install ffmpeg exiftool
 
 # Fedora
-sudo dnf install vips ffmpeg perl-Image-ExifTool
+sudo dnf install ffmpeg perl-Image-ExifTool
 
 # macOS
-brew install vips ffmpeg exiftool
+brew install ffmpeg exiftool
 ```
 
 | Dependency | Purpose |
 |-----------|---------|
-| `libvips` | Fast image resizing for thumbnails and on-the-fly resize (same library sharp uses in Node.js) |
 | `ffmpeg` | Video thumbnail extraction (frame grab) and video compression |
 | `exiftool` | EXIF metadata extraction and writing back to files |
+
+Note: `libvips` is linked at build time (compiled into the binary), so it is not needed on the machine where the binary runs — only where it is built.
 
 ## Build
 
@@ -115,4 +116,84 @@ go mod tidy
 
 # Run
 DATA_DIR=/path/to/data JWT_SECRET=secret GEONAMES_USERNAME=user ./photo-loka serve
+```
+
+### Cross-platform builds
+
+Due to CGO (SQLite + govips require C compilation), the binary is platform-specific. You must build on the target OS — cross-compilation from Linux to Mac (or vice versa) is not straightforward.
+
+| Platform | How to build |
+|----------|-------------|
+| Linux x86_64 | Build on any Linux x86_64 machine (dev or prod) |
+| Linux ARM64 | Build on an ARM64 machine (Raspberry Pi, ARM server) |
+| macOS | Build on a Mac: `brew install go pkg-config libvips && ./build.sh` |
+
+If dev and prod are the same architecture (e.g. both Linux x86_64), the binary built on dev runs directly on prod without rebuilding.
+
+## Deployment
+
+### Option 1: Build on prod (simplest)
+
+If Go and build deps are installed on your prod box:
+
+```bash
+cd ~/photo-loka/go-server
+git pull
+./build.sh
+systemctl --user restart photo-loka
+```
+
+### Option 2: Build locally, copy binary
+
+Build on your dev machine and transfer the binary. No Go or build tools needed on prod (only runtime deps: libvips, ffmpeg, exiftool).
+
+```bash
+# On dev machine
+cd go-server
+./build.sh
+scp photo-loka prod-server:~/photo-loka/
+
+# On prod
+systemctl --user restart photo-loka
+```
+
+### Option 3: GitHub Releases
+
+Attach the binary to a GitHub release, then pull on prod with curl:
+
+```bash
+# On dev: create a release
+git tag v0.1.0
+git push origin v0.1.0
+gh release create v0.1.0 ./go-server/photo-loka --title "v0.1.0" --notes "Release notes"
+
+# On prod: download and restart
+curl -L -o photo-loka https://github.com/mrbrahman/photo-loka/releases/download/v0.1.0/photo-loka
+chmod +x photo-loka
+systemctl --user restart photo-loka
+```
+
+### systemd service file
+
+Place in `~/.config/systemd/user/photo-loka.service`:
+
+```ini
+[Unit]
+Description=Photo-Loka Server
+
+[Service]
+ExecStart=%h/photo-loka/photo-loka
+WorkingDirectory=%h/photo-loka
+EnvironmentFile=%h/photo-loka/.env
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+```
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable photo-loka
+systemctl --user start photo-loka
 ```

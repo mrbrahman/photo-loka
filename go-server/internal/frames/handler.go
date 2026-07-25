@@ -56,11 +56,11 @@ func (h *Handler) getNext(c *gin.Context) {
 	}
 
 	if item == nil {
-		c.JSON(http.StatusOK, gin.H{"item": nil, "message": "no items available"})
+		c.JSON(http.StatusOK, nil)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"item": item})
+	c.JSON(http.StatusOK, item)
 }
 
 // getPrev returns the previous item for the requesting frame.
@@ -78,11 +78,11 @@ func (h *Handler) getPrev(c *gin.Context) {
 	}
 
 	if item == nil {
-		c.JSON(http.StatusOK, gin.H{"item": nil, "message": "no items available"})
+		c.JSON(http.StatusOK, nil)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"item": item})
+	c.JSON(http.StatusOK, item)
 }
 
 // events is the SSE endpoint for frame push notifications.

@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/lmittmann/tint"
@@ -71,6 +73,9 @@ func runServe() {
 
 	fmt.Print(banner)
 
+	// Check runtime dependencies
+	checkDependencies()
+
 	// Load startup config
 	cfg, err := config.LoadStartupConfig()
 	if err != nil {
@@ -88,6 +93,13 @@ func runServe() {
 	// Initialize libvips for image processing
 	media.InitVips()
 	defer media.ShutdownVips()
+
+	// Initialize persistent exiftool process
+	if err := media.InitExiftool(); err != nil {
+		slog.Error("failed to initialize exiftool", "error", err)
+		os.Exit(1)
+	}
+	defer media.CloseExiftool()
 
 	// Open database
 	db, err := database.Open(cfg.DBFile)
@@ -152,8 +164,12 @@ func runServe() {
 
 	// Create ML components
 	mlDB := ml.NewMLDB(db.Conn)
-	mlService := ml.NewService(mlClient, mlDB)
+	mlService := ml.NewService(mlClient, mlDB, cfg.FacesDir)
 	mlHandler := ml.NewHandler(mlService)
+
+	// Wire geo and ML services into the indexer for post-indexing enrichments
+	indexer.SetGeoService(geoService)
+	indexer.SetMLService(mlService)
 
 	// Create items handler
 	itemsHandler := items.NewHandler(indexer, organizer, mlService, collectionsDB, rtCfg, cfg.ThumbsDir)
@@ -365,4 +381,49 @@ func initLogging() {
 
 	handler := tint.NewHandler(os.Stderr, opts)
 	slog.SetDefault(slog.New(handler))
+}
+
+// checkDependencies verifies that required external tools are installed.
+func checkDependencies() {
+	deps := []struct {
+		name    string
+		checkCmd string
+		help    string
+	}{
+		{"ffmpeg", "ffmpeg", "apt install ffmpeg / dnf install ffmpeg / brew install ffmpeg"},
+		{"exiftool", "exiftool", "apt install exiftool / dnf install perl-Image-ExifTool / brew install exiftool"},
+	}
+
+	var missing []string
+	for _, dep := range deps {
+		_, err := exec.LookPath(dep.checkCmd)
+		if err != nil {
+			missing = append(missing, fmt.Sprintf("  - %s (install: %s)", dep.name, dep.help))
+		}
+	}
+
+	if len(missing) > 0 {
+		slog.Error("missing required dependencies:\n" + strings.Join(missing, "\n"))
+		os.Exit(1)
+	}
+
+	// Check exiftool version (geolocation requires 12.78+)
+	out, err := exec.Command("exiftool", "-ver").Output()
+	if err == nil {
+		version := strings.TrimSpace(string(out))
+		parts := strings.Split(version, ".")
+		if len(parts) >= 2 {
+			major := 0
+			minor := 0
+			fmt.Sscanf(parts[0], "%d", &major)
+			fmt.Sscanf(parts[1], "%d", &minor)
+			if major < 12 || (major == 12 && minor < 78) {
+				slog.Warn("exiftool version is below 12.78; geolocation features (timezone resolution from GPS, reverse geocoding via exiftool) will not be available",
+					"installed", version,
+					"recommended", "12.78+",
+					"install_latest", "https://exiftool.org",
+				)
+			}
+		}
+	}
 }

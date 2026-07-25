@@ -130,20 +130,20 @@ func (h *Handler) startIntakeFileIndexing(c *gin.Context) {
 // getIndexerStatus returns the current status of both queues.
 // GET /getIndexerStatus
 func (h *Handler) getIndexerStatus(c *gin.Context) {
-	indexStatus := h.indexQueue.GetStatus()
-	videoStatus := h.videoQueue.GetStatus()
+	status := h.indexQueue.GetStatus()
+	high, normal, low := h.indexQueue.QueueSizes()
 
 	c.JSON(http.StatusOK, gin.H{
-		"processingCnt": indexStatus.Active + videoStatus.Active,
-		"pendingCnt":    indexStatus.Pending + videoStatus.Pending,
-		"completedCnt":  indexStatus.Completed + videoStatus.Completed,
-		"failedCnt":     indexStatus.Failed + videoStatus.Failed,
-		"paused":        indexStatus.IsPaused,
-		"maxConcurrency": indexStatus.MaxConcurrency,
+		"processingCnt":  status.Active,
+		"pendingCnt":     status.Pending,
+		"completedCnt":   status.Completed,
+		"failedCnt":      status.Failed,
+		"paused":         status.IsPaused,
+		"maxConcurrency": status.MaxConcurrency,
 		"queueSizes": gin.H{
-			"high":   0, // tracked within indexQueue internally
-			"normal": indexStatus.Pending,
-			"low":    videoStatus.Pending,
+			"high":   high,
+			"normal": normal,
+			"low":    low,
 		},
 	})
 }

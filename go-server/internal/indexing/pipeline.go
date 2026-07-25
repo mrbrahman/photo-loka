@@ -1,6 +1,7 @@
 package indexing
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -10,7 +11,9 @@ import (
 
 	"photo-loka/internal/collections"
 	"photo-loka/internal/config"
+	"photo-loka/internal/geo"
 	"photo-loka/internal/media"
+	"photo-loka/internal/ml"
 	"photo-loka/internal/queue"
 )
 
@@ -23,6 +26,8 @@ type Indexer struct {
 	thumbsDir     string
 	config        *config.RuntimeConfig
 	collectionsDB *collections.CollectionsDB
+	geoService    *geo.Service
+	mlService     *ml.Service
 	logger        *slog.Logger
 }
 
@@ -38,6 +43,16 @@ func NewIndexer(db *IndexingDB, org *Organizer, indexQueue, videoQueue *queue.Qu
 		collectionsDB: colDB,
 		logger:        slog.Default().With("component", "indexer"),
 	}
+}
+
+// SetGeoService sets the geo service for geo finalization after indexing.
+func (idx *Indexer) SetGeoService(gs *geo.Service) {
+	idx.geoService = gs
+}
+
+// SetMLService sets the ML service for face recognition after indexing.
+func (idx *Indexer) SetMLService(ms *ml.Service) {
+	idx.mlService = ms
 }
 
 // DB returns the IndexingDB instance for direct access by other packages.
@@ -66,6 +81,17 @@ func (idx *Indexer) IndexFile(collection *collections.Collection, sourceFile str
 	exifData, err := media.ExtractMetadata(sourceFile)
 	if err != nil {
 		return fmt.Errorf("extracting metadata from %s: %w", sourceFile, err)
+	}
+
+	// Audio fallback: audio files typically lack EXIF date fields.
+	// For intake audio files, use file_modified_at for folder placement.
+	if exifData.CaptureDateTime == nil && !inPlace && exifData.Mediatype == "audio" {
+		if exifData.FileModifiedAt != nil {
+			exifData.CapturedAt = exifData.FileModifiedAt
+			// Parse file_modified_at to build CaptureDateTime for folder placement
+			exifData.CaptureDateTime = parseDateToCaptureDateTime(*exifData.FileModifiedAt)
+			idx.logger.Info("audio file without EXIF date, using file_modified_at for placement", "file", sourceFile)
+		}
 	}
 
 	// Step 2: Place file in collection
@@ -111,13 +137,16 @@ func (idx *Indexer) IndexFile(collection *collections.Collection, sourceFile str
 				idx.logger.Warn("thumbnail creation from video frame failed", "file", finalFile, "error", err)
 			}
 		}
-	} else if exifData.Mediatype == "photo" {
+	} else if exifData.Mediatype == "image" {
 		if err := media.CreateImageThumbnails(fileUUID, finalFile, idx.thumbsDir); err != nil {
 			idx.logger.Warn("thumbnail creation failed", "file", finalFile, "error", err)
 		}
 	}
 
 	// Step 6: Queue video compression if enabled
+	// NOTE: Node.js checks for an existing _compressed_video.webm file beside the source
+	// and moves it to the thumbs dir instead of re-encoding. Not implemented here;
+	// videos will always be enqueued for compression if the collection has compress_videos enabled.
 	if exifData.Mediatype == "video" && collection.CompressVideos != nil && *collection.CompressVideos == 1 {
 		encoder := idx.config.VideoEncoder
 		if encoder == "" {
@@ -126,8 +155,8 @@ func (idx *Indexer) IndexFile(collection *collections.Collection, sourceFile str
 
 		vidUUID := fileUUID
 		vidFile := finalFile
-		idx.videoQueue.Enqueue(queue.Task{
-			Priority:    queue.Normal,
+		idx.indexQueue.Enqueue(queue.Task{
+			Priority:    queue.Low,
 			Description: vidFile,
 			Fn: func() error {
 				return media.CompressVideo(vidUUID, vidFile, idx.thumbsDir, encoder)
@@ -150,7 +179,55 @@ func (idx *Indexer) IndexFile(collection *collections.Collection, sourceFile str
 		}
 	}
 
-	// Step 8: Log completion
+	// Step 8: Store exiftool geo data and enqueue geo finalization
+	if exifData.GPSLat != nil && exifData.GPSLng != nil {
+		// Store exiftool geolocation data in geo_lookups for the finalizer to use
+		if exifData.ExiftoolGeoJSON != nil {
+			hasData := false
+			for _, v := range exifData.ExiftoolGeoJSON {
+				if v != nil {
+					hasData = true
+					break
+				}
+			}
+			if hasData {
+				geoJSON, _ := json.Marshal(exifData.ExiftoolGeoJSON)
+				if err := idx.db.InsertGeoLookup(fileUUID, "exiftool", "geolocation", string(geoJSON)); err != nil {
+					idx.logger.Warn("failed to store exiftool geo data", "uuid", fileUUID, "error", err)
+				}
+			}
+		}
+
+		// Enqueue geo finalization
+		if idx.geoService != nil {
+			opts := map[string]interface{}{
+				"gps_lat": *exifData.GPSLat,
+				"gps_lng": *exifData.GPSLng,
+			}
+			if exifData.ExiftoolGeoJSON != nil {
+				if cc, ok := exifData.ExiftoolGeoJSON["GeolocationCountryCode"].(string); ok {
+					opts["country_code"] = cc
+				}
+			}
+			idx.geoService.Enqueue(fileUUID, opts)
+		}
+	}
+
+	// Step 9: Enqueue face recognition for images
+	if exifData.Mediatype == "image" && idx.mlService != nil && idx.config.PerformFaceRecognition {
+		mlSvc := idx.mlService
+		faceUUID := fileUUID
+		idx.indexQueue.Enqueue(queue.Task{
+			Priority:    queue.Normal,
+			Description: "face:" + faceUUID,
+			Fn: func() error {
+				_, err := mlSvc.ProcessFaceRecognition(faceUUID)
+				return err
+			},
+		})
+	}
+
+	// Step 10: Log completion
 	duration := time.Since(start)
 	idx.logger.Info("file indexed",
 		"uuid", fileUUID,
@@ -360,16 +437,47 @@ func buildMetadataRow(collection *collections.Collection, fileUUID string, place
 	return row
 }
 
-// joinStrings joins a string slice with commas for DB storage.
+// joinStrings serializes a string slice as a JSON array for DB storage.
+// Node.js stores keywords and faces as JSON arrays: ["tag1","tag2"]
 func joinStrings(ss []string) string {
-	result := ""
-	for i, s := range ss {
-		if i > 0 {
-			result += ", "
-		}
-		result += s
+	if len(ss) == 0 {
+		return "[]"
 	}
-	return result
+	b, _ := json.Marshal(ss)
+	return string(b)
+}
+
+// parseDateToCaptureDateTime attempts to parse a date string into CaptureDateTime.
+// Handles formats like "2025:09:15 11:33:34-04:00" or "2025-09-15T11:33:34-04:00"
+func parseDateToCaptureDateTime(dateStr string) *media.CaptureDateTime {
+	// Try common exiftool date formats
+	formats := []string{
+		"2006:01:02 15:04:05-07:00",
+		"2006:01:02 15:04:05",
+		"2006-01-02T15:04:05-07:00",
+		"2006-01-02T15:04:05",
+		"2006-01-02 15:04:05",
+	}
+
+	for _, fmt := range formats {
+		if t, err := time.Parse(fmt, dateStr); err == nil {
+			dt := &media.CaptureDateTime{
+				Year:   t.Year(),
+				Month:  int(t.Month()),
+				Day:    t.Day(),
+				Hour:   t.Hour(),
+				Minute: t.Minute(),
+				Second: t.Second(),
+			}
+			_, offset := t.Zone()
+			if offset != 0 {
+				offsetMin := offset / 60
+				dt.TzOffsetMinutes = &offsetMin
+			}
+			return dt
+		}
+	}
+	return nil
 }
 
 // formatTzOffset formats a timezone offset in minutes to "+HH:MM" or "-HH:MM".

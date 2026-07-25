@@ -231,3 +231,119 @@ func minFloat(a, b float64) float64 {
 	}
 	return b
 }
+
+// ExtractFaceThumbnails crops face regions from an image and saves them
+// as individual thumbnails in facesDir/<cluster_id>/<uuid>.jpg.
+// Uses bounding boxes from the ML service response.
+func ExtractFaceThumbnails(uuid, imagePath string, faces []map[string]interface{}, facesDir string) error {
+	// Load and auto-rotate the image (ML bbox is in rotated space)
+	img, err := vips.NewImageFromFile(imagePath)
+	if err != nil {
+		return fmt.Errorf("loading image for face extraction: %w", err)
+	}
+	defer img.Close()
+
+	if err := img.AutoRotate(); err != nil {
+		slog.Warn("auto-rotate failed for face extraction", "uuid", uuid, "error", err)
+	}
+
+	imgW := img.Width()
+	imgH := img.Height()
+
+	for _, face := range faces {
+		cluster, ok := face["cluster"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		clusterID, _ := cluster["cluster_id"].(string)
+		if clusterID == "" {
+			continue
+		}
+
+		// Get bbox [x1, y1, x2, y2]
+		bboxRaw, ok := face["bbox"].([]interface{})
+		if !ok || len(bboxRaw) < 4 {
+			continue
+		}
+		x1 := toFloat(bboxRaw[0])
+		y1 := toFloat(bboxRaw[1])
+		x2 := toFloat(bboxRaw[2])
+		y2 := toFloat(bboxRaw[3])
+
+		bw := x2 - x1
+		bh := y2 - y1
+
+		// Pad by 40% of max dimension, then square up
+		pad := max64(bw, bh) * 0.4
+		cx := (x1 + x2) / 2
+		cy := (y1 + y2) / 2
+		half := (max64(bw, bh) + pad*2) / 2
+
+		left := int(max64(0, cx-half))
+		top := int(max64(0, cy-half))
+		right := int(min64(float64(imgW), cx+half))
+		bottom := int(min64(float64(imgH), cy+half))
+
+		width := right - left
+		height := bottom - top
+		if width <= 0 || height <= 0 {
+			continue
+		}
+
+		// Create face directory
+		faceDir := filepath.Join(facesDir, clusterID)
+		if err := os.MkdirAll(faceDir, 0755); err != nil {
+			slog.Warn("failed to create face dir", "dir", faceDir, "error", err)
+			continue
+		}
+
+		// Copy image and extract the face region
+		faceCopy, err := img.Copy()
+		if err != nil {
+			continue
+		}
+
+		if err := faceCopy.ExtractArea(left, top, width, height); err != nil {
+			faceCopy.Close()
+			continue
+		}
+
+		bytes, _, err := faceCopy.ExportJpeg(&vips.JpegExportParams{Quality: 80})
+		faceCopy.Close()
+		if err != nil {
+			continue
+		}
+
+		outputPath := filepath.Join(faceDir, uuid+".jpg")
+		if err := os.WriteFile(outputPath, bytes, 0644); err != nil {
+			slog.Warn("failed to write face thumbnail", "path", outputPath, "error", err)
+		}
+	}
+
+	slog.Debug("face thumbnails extracted", "uuid", uuid, "count", len(faces))
+	return nil
+}
+
+func toFloat(v interface{}) float64 {
+	switch n := v.(type) {
+	case float64:
+		return n
+	case int:
+		return float64(n)
+	}
+	return 0
+}
+
+func max64(a, b float64) float64 {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func min64(a, b float64) float64 {
+	if a < b {
+		return a
+	}
+	return b
+}

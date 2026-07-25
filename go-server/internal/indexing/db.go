@@ -407,3 +407,16 @@ func (d *IndexingDB) UpdateAlbumForItem(uuid, albumDate, albumName, filename str
 	}
 	return nil
 }
+
+// InsertGeoLookup stores exiftool geolocation data in the geo_lookups table.
+func (d *IndexingDB) InsertGeoLookup(uuid, source, apiName string, responseJSON string) error {
+	_, err := d.db.Exec(
+		`INSERT OR REPLACE INTO geo_lookups (uuid, source, api_name, response_json, fetched_at)
+		 VALUES (?, ?, ?, ?, datetime('now','localtime'))`,
+		uuid, source, apiName, responseJSON,
+	)
+	if err != nil {
+		return fmt.Errorf("inserting geo lookup for %s: %w", uuid, err)
+	}
+	return nil
+}

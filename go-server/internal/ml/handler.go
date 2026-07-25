@@ -141,7 +141,7 @@ func (h *Handler) nameFaceCluster(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "cluster named", "rows_affected": rowsAffected})
+	c.JSON(http.StatusOK, gin.H{"success": true, "count": rowsAffected})
 }
 
 // updatePersonName renames a person across all face records.
@@ -169,7 +169,7 @@ func (h *Handler) updatePersonName(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "person name updated", "rows_affected": rowsAffected})
+	c.JSON(http.StatusOK, gin.H{"success": true, "count": rowsAffected})
 }
 
 // faceSuggestions returns name suggestions for a face cluster from the ML service.

@@ -179,6 +179,13 @@ func (q *Queue) GetStatus() Status {
 	}
 }
 
+// QueueSizes returns the number of pending tasks at each priority level.
+func (q *Queue) QueueSizes() (high, normal, low int) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return len(q.high), len(q.normal), len(q.low)
+}
+
 // GetErrors returns the most recent errors (up to maxErrors).
 func (q *Queue) GetErrors() []Error {
 	q.errorsMu.Lock()

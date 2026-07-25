@@ -8,7 +8,43 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+
+	exiftool "github.com/barasher/go-exiftool"
 )
+
+// Persistent exiftool instance (stay_open mode for performance).
+// Initialized via InitExiftool(), shared across all indexing goroutines.
+var (
+	et     *exiftool.Exiftool
+	etOnce sync.Once
+	etMu   sync.Mutex
+)
+
+// InitExiftool starts the persistent exiftool process.
+// Call once at startup. Uses -n (numeric), -G (group names), -struct.
+func InitExiftool() error {
+	var initErr error
+	etOnce.Do(func() {
+		var err error
+		et, err = exiftool.NewExiftool(
+			exiftool.NoPrintConversion(),
+			exiftool.PrintGroupNames("0"),
+			exiftool.Api("geolocation"),
+		)
+		if err != nil {
+			initErr = fmt.Errorf("failed to initialize exiftool: %w", err)
+		}
+	})
+	return initErr
+}
+
+// CloseExiftool shuts down the persistent exiftool process.
+func CloseExiftool() {
+	if et != nil {
+		et.Close()
+	}
+}
 
 // ExifData holds extracted metadata from a media file.
 type ExifData struct {
@@ -51,25 +87,27 @@ type CaptureDateTime struct {
 	TzOffsetMinutes *int `json:"tz_offset_minutes,omitempty"`
 }
 
-// ExtractMetadata shells out to exiftool to extract metadata from a file.
+// ExtractMetadata uses the persistent exiftool process to extract metadata.
 // It returns a populated ExifData struct or an error.
 func ExtractMetadata(filePath string) (*ExifData, error) {
-	cmd := exec.Command("exiftool", "-json", "-n", "-G", "-struct", filePath)
-	output, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("exiftool execution failed for %s: %w", filePath, err)
+	if et == nil {
+		return nil, fmt.Errorf("exiftool not initialized (call InitExiftool first)")
 	}
 
-	var results []map[string]interface{}
-	if err := json.Unmarshal(output, &results); err != nil {
-		return nil, fmt.Errorf("failed to parse exiftool JSON for %s: %w", filePath, err)
-	}
+	etMu.Lock()
+	fileInfos := et.ExtractMetadata(filePath)
+	etMu.Unlock()
 
-	if len(results) == 0 {
+	if len(fileInfos) == 0 {
 		return nil, fmt.Errorf("exiftool returned no results for %s", filePath)
 	}
 
-	raw := results[0]
+	fi := fileInfos[0]
+	if fi.Err != nil {
+		return nil, fmt.Errorf("exiftool error for %s: %w", filePath, fi.Err)
+	}
+
+	raw := fi.Fields
 	data := &ExifData{}
 
 	// File info
@@ -82,7 +120,7 @@ func ExtractMetadata(filePath string) (*ExifData, error) {
 	if data.Mimetype != nil {
 		mime := *data.Mimetype
 		if strings.HasPrefix(mime, "image/") {
-			data.Mediatype = "photo"
+			data.Mediatype = "image"
 		} else if strings.HasPrefix(mime, "video/") {
 			data.Mediatype = "video"
 		} else if strings.HasPrefix(mime, "audio/") {
@@ -108,16 +146,28 @@ func ExtractMetadata(filePath string) (*ExifData, error) {
 	// Dimensions
 	data.ImageWidth = getIntField(raw, "EXIF:ImageWidth", "File:ImageWidth", "QuickTime:ImageWidth")
 	data.ImageHeight = getIntField(raw, "EXIF:ImageHeight", "File:ImageHeight", "QuickTime:ImageHeight")
-	data.Orientation = getIntField(raw, "EXIF:Orientation")
+	// Orientation: for images use EXIF:Orientation, for videos use Composite:Rotation
+	if data.Mediatype == "video" {
+		data.Orientation = getIntField(raw, "Composite:Rotation")
+	} else {
+		data.Orientation = getIntField(raw, "EXIF:Orientation")
+	}
 
 	// Calculate aspect ratio with orientation correction
 	if data.ImageWidth != nil && data.ImageHeight != nil && *data.ImageHeight > 0 {
 		w := float64(*data.ImageWidth)
 		h := float64(*data.ImageHeight)
 
-		// Orientations 5-8 swap width and height
-		if data.Orientation != nil && *data.Orientation >= 5 && *data.Orientation <= 8 {
-			w, h = h, w
+		if data.Mediatype == "image" {
+			// Orientations 6 and 8 are 90/270 degree rotations that swap width and height
+			if data.Orientation != nil && (*data.Orientation == 6 || *data.Orientation == 8) {
+				w, h = h, w
+			}
+		} else if data.Mediatype == "video" {
+			// Rotations 90 and 270 swap width and height
+			if data.Orientation != nil && (*data.Orientation == 90 || *data.Orientation == 270) {
+				w, h = h, w
+			}
 		}
 
 		data.Aspectratio = math.Round(w/h*100) / 100
@@ -127,9 +177,9 @@ func ExtractMetadata(filePath string) (*ExifData, error) {
 	data.Duration = getFloatField(raw, "QuickTime:Duration", "EXIF:Duration")
 
 	// GPS
-	data.GPSLat = getFloatField(raw, "EXIF:GPSLatitude", "Composite:GPSLatitude")
-	data.GPSLng = getFloatField(raw, "EXIF:GPSLongitude", "Composite:GPSLongitude")
-	data.GPSAlt = getFloatField(raw, "EXIF:GPSAltitude")
+	data.GPSLat = getFloatFieldRounded(raw, 6, "Composite:GPSLatitude", "EXIF:GPSLatitude")
+	data.GPSLng = getFloatFieldRounded(raw, 6, "Composite:GPSLongitude", "EXIF:GPSLongitude")
+	data.GPSAlt = getFloatField(raw, "Composite:GPSAltitude", "EXIF:GPSAltitude")
 
 	// Rating
 	if r := getIntField(raw, "XMP:Rating", "EXIF:Rating"); r != nil {
@@ -151,34 +201,104 @@ func ExtractMetadata(filePath string) (*ExifData, error) {
 	// Extract face names from XMP regions
 	data.Faces = extractFaceNames(raw)
 
-	// Capture date/time
+	// -------------------------------------------------------------------------
+	// Capture date/time and timezone resolution
+	// -------------------------------------------------------------------------
+	// In Node.js, exiftool-vendored provides an ExifDateTime class that:
+	//   1. Parses EXIF date strings into structured components (year, month, ...)
+	//   2. Resolves the photographer's local timezone using GPS coordinates
+	//      (via @photostructure/tz-lookup or exiftool's GeolocationTimeZone)
+	//   3. Converts UTC-only dates (common in videos) to local time
+	//   4. Exposes .tzoffsetMinutes for the UTC offset
+	//
+	// In Go, we replicate this behavior using exiftool's Composite tags:
+	//
+	//   Composite:SubSecDateTimeOriginal (or SubSecCreateDate)
+	//     - exiftool combines the raw EXIF date + OffsetTimeOriginal (if present)
+	//       OR derives the offset from GeolocationTimeZone (if -api geolocation is
+	//       enabled and GPS coordinates exist)
+	//     - Result: "2025:09:14 13:33:31.186-04:00" — local time with offset
+	//     - For videos with only UTC dates and GPS, exiftool converts to local time
+	//
+	//   Composite:GeolocationTimeZone
+	//     - IANA timezone name (e.g. "America/New_York") derived from GPS coords
+	//     - Used by the frontend to display timezone abbreviations (EST, IST, etc.)
+	//     - Requires exiftool 12.78+ with -api geolocation enabled
+	//
+	// Fallback: if Composite dates are unavailable (old exiftool, no GPS), we use
+	// raw EXIF:DateTimeOriginal which has no timezone info. In this case,
+	// capture_tz_offset and capture_tz_name will be empty.
+	//
+	// The resulting fields stored in DB:
+	//   captured_at       -> ISO 8601 string: "2025-09-14T13:33:31.186-04:00"
+	//   capture_date      -> "2025-09-14" (derived in pipeline.go from CaptureDateTime)
+	//   capture_time      -> "13:33:31"   (derived in pipeline.go from CaptureDateTime)
+	//   capture_tz_offset -> "-04:00"     (derived in pipeline.go from CaptureDateTime.TzOffsetMinutes)
+	//   capture_tz_name   -> "America/New_York" (from GeolocationTimeZone)
+	// -------------------------------------------------------------------------
+
 	data.ExifDatetimeOriginalRef = getStringField(raw, "EXIF:DateTimeOriginal")
 	data.ExifCreateDateRef = getStringField(raw, "EXIF:CreateDate", "QuickTime:CreateDate")
 
-	// Use DateTimeOriginal first, fallback to CreateDate
-	dateStr := data.ExifDatetimeOriginalRef
-	if dateStr == nil {
-		dateStr = data.ExifCreateDateRef
-	}
-	if dateStr != nil {
-		data.CapturedAt = dateStr
-		data.CaptureDateTime = parseCaptureDateTime(*dateStr)
-	}
-
-	// Timezone
-	data.CaptureTzName = getStringField(raw, "EXIF:OffsetTimeOriginal", "EXIF:OffsetTime")
-
-	// Geo JSON from exiftool (if present)
-	if geoJSON, ok := raw["Composite:GPSPosition"]; ok {
-		if geoMap, ok := geoJSON.(map[string]interface{}); ok {
-			data.ExiftoolGeoJSON = geoMap
+	// Prefer Composite dates (include timezone) over raw EXIF dates
+	compositeDate := getStringField(raw, "Composite:SubSecDateTimeOriginal", "Composite:SubSecCreateDate")
+	if compositeDate != nil {
+		// Convert exiftool format to ISO 8601: "2025:09:14 13:33:31.186-04:00" -> "2025-09-14T13:33:31.186-04:00"
+		isoStr := exifDateToISO(*compositeDate)
+		data.CapturedAt = &isoStr
+		data.CaptureDateTime = parseCaptureDateTime(*compositeDate)
+	} else {
+		// Fallback to raw EXIF dates (no timezone info)
+		dateStr := data.ExifDatetimeOriginalRef
+		if dateStr == nil {
+			dateStr = data.ExifCreateDateRef
+		}
+		if dateStr != nil {
+			data.CapturedAt = dateStr
+			data.CaptureDateTime = parseCaptureDateTime(*dateStr)
 		}
 	}
 
+	// Timezone name: prefer GeolocationTimeZone (IANA name like "America/New_York")
+	data.CaptureTzName = getStringField(raw, "Composite:GeolocationTimeZone")
+
+	// Geolocation JSON from exiftool's built-in geolocation database
+	// (requires exiftool 12.78+ with -api geolocation)
+	geoFields := map[string]string{
+		"GeolocationCity":        "Composite:GeolocationCity",
+		"GeolocationRegion":      "Composite:GeolocationRegion",
+		"GeolocationSubregion":   "Composite:GeolocationSubregion",
+		"GeolocationCountryCode": "Composite:GeolocationCountryCode",
+		"GeolocationCountry":     "Composite:GeolocationCountry",
+		"GeolocationTimeZone":    "Composite:GeolocationTimeZone",
+		"GeolocationFeatureCode": "Composite:GeolocationFeatureCode",
+		"GeolocationFeatureType": "Composite:GeolocationFeatureType",
+		"GeolocationPopulation":  "Composite:GeolocationPopulation",
+		"GeolocationPosition":    "Composite:GeolocationPosition",
+		"GeolocationDistance":    "Composite:GeolocationDistance",
+		"GeolocationBearing":     "Composite:GeolocationBearing",
+	}
+	geoJSON := make(map[string]interface{})
+	hasGeo := false
+	for field, key := range geoFields {
+		if v, ok := raw[key]; ok && v != nil {
+			geoJSON[field] = v
+			hasGeo = true
+		} else {
+			geoJSON[field] = nil
+		}
+	}
+	if hasGeo {
+		data.ExiftoolGeoJSON = geoJSON
+	}
+
+	// Timezone name from geolocation
 	return data, nil
 }
 
-// WriteMetadata shells out to exiftool to write metadata fields to a file.
+// WriteMetadata uses exiftool to write metadata fields to a file.
+// Uses exec.Command for writes since they are infrequent and go-exiftool's
+// write API is more limited.
 func WriteMetadata(filePath string, updates map[string]interface{}) error {
 	if len(updates) == 0 {
 		return nil
@@ -246,6 +366,17 @@ func getFloatField(raw map[string]interface{}, keys ...string) *float64 {
 		}
 	}
 	return nil
+}
+
+// getFloatFieldRounded extracts a float value and rounds to the specified decimal places.
+func getFloatFieldRounded(raw map[string]interface{}, decimals int, keys ...string) *float64 {
+	val := getFloatField(raw, keys...)
+	if val == nil {
+		return nil
+	}
+	factor := math.Pow(10, float64(decimals))
+	rounded := math.Round(*val*factor) / factor
+	return &rounded
 }
 
 // getIntField safely extracts an int value from the raw exiftool map.
@@ -341,6 +472,20 @@ func extractFaceNames(raw map[string]interface{}) []string {
 	}
 
 	return faces
+}
+
+// exifDateToISO converts exiftool date format to ISO 8601.
+// "2025:09:14 13:33:31.186-04:00" -> "2025-09-14T13:33:31.186-04:00"
+// "2025:09:14 13:33:31" -> "2025-09-14T13:33:31"
+func exifDateToISO(exifDate string) string {
+	if len(exifDate) < 10 {
+		return exifDate
+	}
+	// Replace first two colons in date portion with dashes
+	iso := strings.Replace(exifDate, ":", "-", 2)
+	// Replace the space between date and time with T
+	iso = strings.Replace(iso, " ", "T", 1)
+	return iso
 }
 
 // parseCaptureDateTime parses an EXIF date/time string into components.

@@ -95,7 +95,7 @@ func (h *Handler) createNewCollection(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"collection_id": id})
+	c.JSON(http.StatusCreated, id)
 }
 
 // updateCollection updates an existing collection (admin).
@@ -246,8 +246,7 @@ func (h *Handler) validateFolderPattern(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"valid":   true,
-		"sample":  sample,
-		"tokens":  tokens,
+		"example": sample,
 	})
 }
 

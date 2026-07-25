@@ -42,7 +42,7 @@ func (h *UsersHandler) getUsers(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, users)
+	c.JSON(http.StatusOK, gin.H{"users": users})
 }
 
 // createUser creates a new user.
