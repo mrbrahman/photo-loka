@@ -220,10 +220,11 @@ func ExtractMetadata(filePath string) (*ExifData, error) {
 	//     - Result: "2025:09:14 13:33:31.186-04:00" — local time with offset
 	//     - For videos with only UTC dates and GPS, exiftool converts to local time
 	//
-	//   Composite:GeolocationTimeZone
+	//   ExifTool:GeolocationTimeZone
 	//     - IANA timezone name (e.g. "America/New_York") derived from GPS coords
 	//     - Used by the frontend to display timezone abbreviations (EST, IST, etc.)
 	//     - Requires exiftool 12.78+ with -api geolocation enabled
+	//     - Note: with -G0, geolocation fields are in the "ExifTool" group (not "Composite")
 	//
 	// Fallback: if Composite dates are unavailable (old exiftool, no GPS), we use
 	// raw EXIF:DateTimeOriginal which has no timezone info. In this case,
@@ -260,23 +261,23 @@ func ExtractMetadata(filePath string) (*ExifData, error) {
 	}
 
 	// Timezone name: prefer GeolocationTimeZone (IANA name like "America/New_York")
-	data.CaptureTzName = getStringField(raw, "Composite:GeolocationTimeZone")
+	data.CaptureTzName = getStringField(raw, "ExifTool:GeolocationTimeZone")
 
 	// Geolocation JSON from exiftool's built-in geolocation database
 	// (requires exiftool 12.78+ with -api geolocation)
 	geoFields := map[string]string{
-		"GeolocationCity":        "Composite:GeolocationCity",
-		"GeolocationRegion":      "Composite:GeolocationRegion",
-		"GeolocationSubregion":   "Composite:GeolocationSubregion",
-		"GeolocationCountryCode": "Composite:GeolocationCountryCode",
-		"GeolocationCountry":     "Composite:GeolocationCountry",
-		"GeolocationTimeZone":    "Composite:GeolocationTimeZone",
-		"GeolocationFeatureCode": "Composite:GeolocationFeatureCode",
-		"GeolocationFeatureType": "Composite:GeolocationFeatureType",
-		"GeolocationPopulation":  "Composite:GeolocationPopulation",
-		"GeolocationPosition":    "Composite:GeolocationPosition",
-		"GeolocationDistance":    "Composite:GeolocationDistance",
-		"GeolocationBearing":     "Composite:GeolocationBearing",
+		"GeolocationCity":        "ExifTool:GeolocationCity",
+		"GeolocationRegion":      "ExifTool:GeolocationRegion",
+		"GeolocationSubregion":   "ExifTool:GeolocationSubregion",
+		"GeolocationCountryCode": "ExifTool:GeolocationCountryCode",
+		"GeolocationCountry":     "ExifTool:GeolocationCountry",
+		"GeolocationTimeZone":    "ExifTool:GeolocationTimeZone",
+		"GeolocationFeatureCode": "ExifTool:GeolocationFeatureCode",
+		"GeolocationFeatureType": "ExifTool:GeolocationFeatureType",
+		"GeolocationPopulation":  "ExifTool:GeolocationPopulation",
+		"GeolocationPosition":    "ExifTool:GeolocationPosition",
+		"GeolocationDistance":    "ExifTool:GeolocationDistance",
+		"GeolocationBearing":     "ExifTool:GeolocationBearing",
 	}
 	geoJSON := make(map[string]interface{})
 	hasGeo := false

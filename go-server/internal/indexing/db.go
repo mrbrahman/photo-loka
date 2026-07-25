@@ -315,6 +315,10 @@ func (d *IndexingDB) UpdateRating(uuids []string, rating int, fileModifyDate str
 }
 
 // ScheduleExif inserts rows into the exif_updates table to schedule exif writes.
+// NOTE: The actual write-back job (reading pending updates and calling exiftool to
+// write them back to the files) is not implemented. Node.js also has the table and
+// insert logic but never implemented the processing job (getPendingExifUpdates exists
+// but is never called). Updates accumulate in the table for future implementation.
 func (d *IndexingDB) ScheduleExif(uuids []string, newExifJSON string) error {
 	if len(uuids) == 0 {
 		return nil

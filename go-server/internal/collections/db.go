@@ -378,3 +378,25 @@ func scanCollections(rows *sql.Rows) ([]Collection, error) {
 
 	return results, nil
 }
+
+// SetIntakeStatusByMethod updates the status of all intake entries matching a given method
+// across all collections. Skips on-demand intakes.
+func (c *CollectionsDB) SetIntakeStatusByMethod(method, status string) {
+	_, _ = c.db.Exec(`
+		UPDATE collections
+		SET intake_configs = (
+			SELECT json_group_array(
+				CASE
+					WHEN json_extract(value, '$.method') = ?
+					THEN json_set(value, '$.status', ?)
+					ELSE value
+				END
+			)
+			FROM json_each(intake_configs)
+		)
+		WHERE EXISTS (
+			SELECT 1 FROM json_each(intake_configs)
+			WHERE json_extract(value, '$.method') = ?
+		)
+	`, method, status, method)
+}

@@ -585,3 +585,20 @@ func parseTimeComponent(s string) int {
 	}
 	return val
 }
+
+// ScheduleAllFrameJobs schedules cron jobs (reset, pause/resume) for all loaded frames.
+func (m *Manager) ScheduleAllFrameJobs() {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	frames, err := m.db.GetAll()
+	if err != nil {
+		m.logger.Error("failed to get frames for job scheduling", "error", err)
+		return
+	}
+
+	for i := range frames {
+		m.scheduleJobsForFrame(&frames[i])
+	}
+	m.logger.Info("frame jobs scheduled", "count", len(frames))
+}

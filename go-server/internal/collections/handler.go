@@ -13,7 +13,8 @@ import (
 
 // Handler provides HTTP handlers for collections.
 type Handler struct {
-	service *Service
+	service              *Service
+	OnCollectionChanged  func(collectionID int64) // Called after create/update to restart watchers/cron
 }
 
 // NewHandler creates a new collections Handler.
@@ -96,6 +97,11 @@ func (h *Handler) createNewCollection(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, id)
+
+	// Restart watchers/cron for the new collection
+	if h.OnCollectionChanged != nil {
+		go h.OnCollectionChanged(id)
+	}
 }
 
 // updateCollection updates an existing collection (admin).
@@ -131,6 +137,11 @@ func (h *Handler) updateCollection(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true})
+
+	// Restart watchers/cron for the updated collection
+	if h.OnCollectionChanged != nil {
+		go h.OnCollectionChanged(collectionID)
+	}
 }
 
 // listSubDirs lists subdirectories of a given path (admin).

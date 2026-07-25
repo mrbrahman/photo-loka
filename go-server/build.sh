@@ -1,2 +1,2 @@
 #!/bin/bash
-go build -tags "fts5" -o photo-loka .
+go build -tags "fts5 sqlite_math_functions" -o photo-loka .

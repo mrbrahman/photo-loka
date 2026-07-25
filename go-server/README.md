@@ -8,19 +8,39 @@ Install these on the machine where Photo-Loka runs:
 
 ```bash
 # Ubuntu/Debian
-sudo apt install ffmpeg exiftool
+sudo apt install ffmpeg
 
 # Fedora
-sudo dnf install ffmpeg perl-Image-ExifTool
+sudo dnf install ffmpeg
 
 # macOS
 brew install ffmpeg exiftool
 ```
 
+### exiftool (version 12.78+ required)
+
+The system package (`apt install exiftool`) is often outdated. Photo-Loka requires exiftool 12.78+ for GPS-based timezone resolution and geolocation features.
+
+Install the latest version directly:
+
+```bash
+# Download
+curl -L "https://sourceforge.net/projects/exiftool/files/Image-ExifTool-13.59.tar.gz/download" -o Image-ExifTool-13.59.tar.gz
+
+# Extract
+tar -xzf Image-ExifTool-13.59.tar.gz
+
+# Add to PATH (add to ~/.bashrc for persistence)
+export PATH=/path/to/Image-ExifTool-13.59:$PATH
+
+# Verify
+exiftool -ver  # should show 13.59
+```
+
 | Dependency | Purpose |
 |-----------|---------|
 | `ffmpeg` | Video thumbnail extraction (frame grab) and video compression |
-| `exiftool` | EXIF metadata extraction and writing back to files |
+| `exiftool` (12.78+) | EXIF metadata extraction, writing, GPS timezone resolution, and geolocation |
 
 Note: `libvips` is linked at build time (compiled into the binary), so it is not needed on the machine where the binary runs — only where it is built.
 

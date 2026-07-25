@@ -77,9 +77,9 @@ func (f *Finalizer) finalizeNonUS(uuid string) error {
 		return fmt.Errorf("failed to parse exiftool geo JSON for %s: %w", uuid, err)
 	}
 
-	// Build address string from available fields
+	// Build address string from available fields (matching Node.js geo-finalizer format)
 	var parts []string
-	for _, key := range []string{"city", "region", "country"} {
+	for _, key := range []string{"GeolocationCity", "GeolocationSubregion", "GeolocationRegion", "GeolocationCountryCode", "GeolocationCountry"} {
 		if v, ok := data[key]; ok && v != nil {
 			if s, ok := v.(string); ok && s != "" {
 				parts = append(parts, s)
@@ -93,16 +93,16 @@ func (f *Finalizer) finalizeNonUS(uuid string) error {
 	}
 
 	var city, region, country, countryCode *string
-	if v, ok := data["city"].(string); ok && v != "" {
+	if v, ok := data["GeolocationCity"].(string); ok && v != "" {
 		city = &v
 	}
-	if v, ok := data["region"].(string); ok && v != "" {
+	if v, ok := data["GeolocationRegion"].(string); ok && v != "" {
 		region = &v
 	}
-	if v, ok := data["country"].(string); ok && v != "" {
+	if v, ok := data["GeolocationCountry"].(string); ok && v != "" {
 		country = &v
 	}
-	if v, ok := data["country_code"].(string); ok && v != "" {
+	if v, ok := data["GeolocationCountryCode"].(string); ok && v != "" {
 		countryCode = &v
 	}
 

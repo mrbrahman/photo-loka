@@ -3,15 +3,56 @@ package database
 import (
 	"database/sql"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/mattn/go-sqlite3"
 )
 
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
+
+// Register custom SQLite driver with extensions (once at init)
+var registerOnce sync.Once
+
+func registerDriver() {
+	registerOnce.Do(func() {
+		sql.Register("sqlite3_photo_loka", &sqlite3.SQLiteDriver{
+			ConnectHook: func(conn *sqlite3.SQLiteConn) error {
+				// json_patch_agg: merges multiple JSON objects into one (like json_patch).
+				// Used by getPendingExifUpdates to combine all pending exif changes for a file.
+				// NOTE: Currently unused because the exif write-back job is not implemented.
+				return conn.RegisterAggregator("json_patch_agg", newJsonPatchAgg, true)
+			},
+		})
+	})
+}
+
+// jsonPatchAgg implements a custom SQLite aggregate that merges JSON objects.
+type jsonPatchAgg struct {
+	result map[string]interface{}
+}
+
+func newJsonPatchAgg() *jsonPatchAgg {
+	return &jsonPatchAgg{result: make(map[string]interface{})}
+}
+
+func (a *jsonPatchAgg) Step(input string) {
+	var patch map[string]interface{}
+	if json.Unmarshal([]byte(input), &patch) == nil {
+		for k, v := range patch {
+			a.result[k] = v
+		}
+	}
+}
+
+func (a *jsonPatchAgg) Done() string {
+	b, _ := json.Marshal(a.result)
+	return string(b)
+}
 
 // DB wraps a *sql.DB connection to SQLite.
 type DB struct {
@@ -20,6 +61,9 @@ type DB struct {
 
 // Open opens the SQLite database, creates parent directories if needed, and runs migrations.
 func Open(dbFile string) (*DB, error) {
+	// Register custom driver with aggregate functions
+	registerDriver()
+
 	// Create parent directory if it doesn't exist
 	dir := filepath.Dir(dbFile)
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -27,7 +71,7 @@ func Open(dbFile string) (*DB, error) {
 	}
 
 	dsn := fmt.Sprintf("file:%s?_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL", dbFile)
-	conn, err := sql.Open("sqlite3", dsn)
+	conn, err := sql.Open("sqlite3_photo_loka", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("opening database: %w", err)
 	}

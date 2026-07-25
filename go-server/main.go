@@ -157,7 +157,7 @@ func runServe() {
 	geoQueue := queue.New(1) // geo runs single-threaded due to rate limits
 	geoDB := geo.NewGeoDB(db.Conn)
 	rateLimitStateFile := filepath.Join(cfg.DataDir, "rate_limit_state.json")
-	rateLimiter := geo.NewRateLimiter(rtCfg.GeonamesHourlyLimit, rtCfg.GeonamesDailyLimit, rateLimitStateFile)
+	rateLimiter := geo.NewRateLimiter(rtCfg, rateLimitStateFile)
 	geoFinalizer := geo.NewFinalizer(geoDB, rateLimiter, cfg.GeonamesUsername)
 	geoService := geo.NewService(geoFinalizer, geoQueue)
 	geoHandler := geo.NewHandler(geoService)
@@ -185,6 +185,18 @@ func runServe() {
 	// Jobs
 	fileWatcher := jobs.NewFileWatcher(indexer, collectionsDB)
 	scheduledIndexing := jobs.NewScheduledIndexing(sched, indexer, collectionsDB)
+
+	// Wire collection change callback to restart watchers/cron
+	collectionsHandler.OnCollectionChanged = func(collectionID int64) {
+		col, err := collectionsDB.Get(collectionID)
+		if err != nil || col == nil {
+			return
+		}
+		fileWatcher.StopForCollection(collectionID)
+		scheduledIndexing.StopForCollection(collectionID)
+		fileWatcher.StartForCollection(col)
+		scheduledIndexing.ScheduleForCollection(col)
+	}
 
 	// Admin handlers
 	configHandler := admin.NewConfigHandler(rtCfg)
@@ -219,15 +231,45 @@ func runServe() {
 		if err := fileWatcher.StartForAllCollections(); err != nil {
 			slog.Error("failed to start file watchers", "error", err)
 		}
+	} else {
+		// Mark immediate intakes as stopped in DB when watchers are disabled
+		collectionsDB.SetIntakeStatusByMethod("immediate", "stopped")
+		slog.Info("file watcher at startup disabled - marked immediate intakes as stopped")
 	}
 	if rtCfg.StartScheduledIndexingAtStartup {
 		if err := scheduledIndexing.ScheduleAll(); err != nil {
 			slog.Error("failed to schedule intake indexing", "error", err)
 		}
+	} else {
+		// Mark scheduled intakes as stopped in DB when scheduling is disabled
+		collectionsDB.SetIntakeStatusByMethod("scheduled", "stopped")
+		slog.Info("scheduled indexing at startup disabled - marked scheduled intakes as stopped")
+	}
+	if rtCfg.ScanFilesForChangesAndIndexAtStartup {
+		go func() {
+			cols, err := collectionsDB.GetAll()
+			if err != nil {
+				slog.Error("failed to get collections for scan", "error", err)
+				return
+			}
+			for _, col := range cols {
+				if err := indexer.ScanForChanges(col.CollectionID); err != nil {
+					slog.Error("scan for changes failed", "collection_id", col.CollectionID, "error", err)
+				}
+			}
+		}()
 	}
 	if err := frameManager.LoadAllFrames(); err != nil {
 		slog.Error("failed to load frames", "error", err)
 	}
+
+	// Schedule frame cron jobs (reset, pause/resume)
+	frameManager.ScheduleAllFrameJobs()
+
+	// Schedule token cleanup (daily at 3am)
+	sched.AddJob("token-cleanup", "0 3 * * *", func() {
+		authSvc.CleanupExpiredTokens()
+	})
 
 	if err := srv.Run(); err != nil {
 		slog.Error("server error", "error", err)
@@ -238,6 +280,7 @@ func runServe() {
 	sched.Stop()
 	fileWatcher.StopAll()
 	scheduledIndexing.StopAll()
+	rateLimiter.Save() // persist rate limit counters for next startup
 	indexQueue.Stop()
 	videoQueue.Stop()
 	geoQueue.Stop()

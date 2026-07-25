@@ -5,6 +5,8 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"photo-loka/internal/config"
 )
 
 // RateLimiter enforces hourly and daily limits for geonames API calls.
@@ -14,8 +16,7 @@ type RateLimiter struct {
 	dailyCount  int
 	currentHour int
 	currentDay  int
-	hourlyLimit int
-	dailyLimit  int
+	rtConfig    *config.RuntimeConfig
 	stateFile   string
 }
 
@@ -30,11 +31,10 @@ type rateLimiterState struct {
 // NewRateLimiter creates a new RateLimiter with the given limits.
 // If a state file exists and the saved hour/day match the current time,
 // the counters are restored from disk.
-func NewRateLimiter(hourlyLimit, dailyLimit int, stateFile string) *RateLimiter {
+func NewRateLimiter(rtConfig *config.RuntimeConfig, stateFile string) *RateLimiter {
 	now := time.Now()
 	rl := &RateLimiter{
-		hourlyLimit: hourlyLimit,
-		dailyLimit:  dailyLimit,
+		rtConfig:    rtConfig,
 		stateFile:   stateFile,
 		currentHour: now.Hour(),
 		currentDay:  now.YearDay(),
@@ -81,7 +81,7 @@ func (r *RateLimiter) Check() bool {
 		r.currentDay = now.YearDay()
 	}
 
-	return r.hourlyCount < r.hourlyLimit && r.dailyCount < r.dailyLimit
+	return r.hourlyCount < r.rtConfig.GeonamesHourlyLimit && r.dailyCount < r.rtConfig.GeonamesDailyLimit
 }
 
 // Increment increases both hourly and daily counters by one.
@@ -122,9 +122,9 @@ func (r *RateLimiter) Status() map[string]interface{} {
 
 	return map[string]interface{}{
 		"hourly_count": r.hourlyCount,
-		"hourly_limit": r.hourlyLimit,
+		"hourly_limit": r.rtConfig.GeonamesHourlyLimit,
 		"daily_count":  r.dailyCount,
-		"daily_limit":  r.dailyLimit,
+		"daily_limit":  r.rtConfig.GeonamesDailyLimit,
 		"current_hour": r.currentHour,
 		"current_day":  r.currentDay,
 	}
