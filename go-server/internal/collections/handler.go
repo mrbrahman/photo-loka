@@ -2,13 +2,12 @@ package collections
 
 import (
 	"net/http"
-	"regexp"
 	"strconv"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 
 	"photo-loka/internal/auth"
+	"photo-loka/internal/utils"
 )
 
 // Handler provides HTTP handlers for collections.
@@ -204,60 +203,27 @@ func (h *Handler) validateFolderPattern(c *gin.Context) {
 		return
 	}
 
-	// Validate that pattern contains valid tokens
-	validTokens := regexp.MustCompile(`\{\{(yyyy|mm|dd|album)\}\}`)
-	tokens := validTokens.FindAllString(req.Pattern, -1)
-
-	// Check for invalid tokens (anything matching {{ ... }} that is not a valid token)
-	allTokens := regexp.MustCompile(`\{\{[^}]*\}\}`)
-	allFound := allTokens.FindAllString(req.Pattern, -1)
-
-	var invalidTokens []string
-	for _, t := range allFound {
-		if !validTokens.MatchString(t) {
-			invalidTokens = append(invalidTokens, t)
-		}
+	// Use the actual pattern engine to validate. If FormatPattern succeeds, the pattern is valid.
+	sampleValues := map[string]string{
+		"yyyy":  "2021",
+		"yy":    "21",
+		"mm":    "10",
+		"dd":    "01",
+		"album": "Trip to SVBF",
 	}
 
-	if len(invalidTokens) > 0 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": gin.H{
-				"message": "Invalid tokens in pattern: " + strings.Join(invalidTokens, ", "),
-				"code":    "VALIDATION_ERROR",
-			},
+	example, err := utils.FormatPattern(sampleValues, req.Pattern)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"valid": false,
+			"error": err.Error(),
 		})
 		return
 	}
 
-	// album token must be last
-	if len(tokens) > 0 {
-		lastToken := tokens[len(tokens)-1]
-		if lastToken != "{{album}}" {
-			// Check if album token exists but is not last
-			for _, t := range tokens {
-				if t == "{{album}}" {
-					c.JSON(http.StatusBadRequest, gin.H{
-						"error": gin.H{
-							"message": "{{album}} must be the last token in the pattern",
-							"code":    "VALIDATION_ERROR",
-						},
-					})
-					return
-				}
-			}
-		}
-	}
-
-	// Generate a sample expansion
-	sample := req.Pattern
-	sample = strings.ReplaceAll(sample, "{{yyyy}}", "2021")
-	sample = strings.ReplaceAll(sample, "{{mm}}", "10")
-	sample = strings.ReplaceAll(sample, "{{dd}}", "01")
-	sample = strings.ReplaceAll(sample, "{{album}}", "Trip to SVBF")
-
 	c.JSON(http.StatusOK, gin.H{
 		"valid":   true,
-		"example": sample,
+		"example": example,
 	})
 }
 
@@ -298,6 +264,11 @@ func (h *Handler) setIntakeStatus(c *gin.Context) {
 		return
 	}
 
+	// Restart watchers/cron to reflect the status change
+	if h.OnCollectionChanged != nil {
+		go h.OnCollectionChanged(collectionID)
+	}
+
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
@@ -327,6 +298,11 @@ func (h *Handler) setAllIntakeStatus(c *gin.Context) {
 			"error": gin.H{"message": err.Error(), "code": "INTERNAL_ERROR"},
 		})
 		return
+	}
+
+	// Restart watchers/cron to reflect the status change
+	if h.OnCollectionChanged != nil {
+		go h.OnCollectionChanged(collectionID)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true})

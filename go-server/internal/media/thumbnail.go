@@ -160,7 +160,7 @@ func GenerateVideoThumbnail(uuid, videoFilePath, thumbsDir string) (string, erro
 		return "", fmt.Errorf("failed to create thumbnail directory %s: %w", dir, err)
 	}
 
-	outputPath := filepath.Join(dir, uuid+"_video_frame.jpg")
+	outputPath := filepath.Join(dir, uuid+".jpg")
 
 	args := []string{
 		"-i", videoFilePath,

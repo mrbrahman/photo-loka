@@ -78,7 +78,7 @@ func (s *Service) Login(username, password string) (*TokenPair, error) {
 
 	// Check if account is locked
 	if user.LockedAt != nil {
-		return nil, ErrAccountLocked
+		return nil, ErrAccountAlreadyLocked
 	}
 
 	// Verify password

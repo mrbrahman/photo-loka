@@ -97,3 +97,8 @@ func (s *Service) EnqueueMany(entries []map[string]interface{}) {
 func (s *Service) Status() queue.Status {
 	return s.queue.GetStatus()
 }
+
+// QueueSizes returns the pending task counts by priority.
+func (s *Service) QueueSizes() (high, normal, low int) {
+	return s.queue.QueueSizes()
+}

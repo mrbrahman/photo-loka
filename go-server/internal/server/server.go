@@ -36,6 +36,7 @@ type Server struct {
 	Config             *config.StartupConfig
 	DB                 *database.DB
 	AuthService        *auth.Service
+	FrameIPChecker     auth.FrameIPChecker
 	CollectionsHandler *collections.Handler
 	AlbumsHandler      *albums.Handler
 	SearchHandler      *search.Handler
@@ -68,6 +69,7 @@ func New(cfg *config.StartupConfig, db *database.DB, authSvc *auth.Service,
 	usersHandler *admin.UsersHandler,
 	jobsHandler *admin.JobsHandler,
 	authnHandler *authn.Handler,
+	frameIPChecker auth.FrameIPChecker,
 ) *Server {
 	gin.SetMode(gin.ReleaseMode)
 
@@ -85,6 +87,7 @@ func New(cfg *config.StartupConfig, db *database.DB, authSvc *auth.Service,
 		Config:             cfg,
 		DB:                 db,
 		AuthService:        authSvc,
+		FrameIPChecker:     frameIPChecker,
 		CollectionsHandler: collectionsHandler,
 		AlbumsHandler:      albumsHandler,
 		SearchHandler:      searchHandler,
@@ -136,11 +139,17 @@ func (s *Server) setupRoutes() {
 	apiGroup.Use(auth.AuthMiddleware(s.AuthService))
 	{
 		s.SearchHandler.RegisterRoutes(apiGroup)
-		s.MediaHandler.RegisterRoutes(apiGroup)
 		s.AlbumsHandler.RegisterRoutes(apiGroup)
 		s.ItemsHandler.RegisterRoutes(apiGroup)
 		s.GeoHandler.RegisterRoutes(apiGroup)
 		s.MLHandler.RegisterRoutes(apiGroup)
+	}
+
+	// Media routes (with frame IP bypass)
+	mediaGroup := s.Router.Group("/api")
+	mediaGroup.Use(auth.MediaAuthMiddleware(s.AuthService, s.FrameIPChecker))
+	{
+		s.MediaHandler.RegisterRoutes(mediaGroup)
 	}
 
 	// Admin routes

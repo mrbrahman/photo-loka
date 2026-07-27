@@ -50,7 +50,7 @@ func (f *Finalizer) FinalizeGeo(uuid string, gpsLat, gpsLng *float64, countryCod
 
 	// No GPS coordinates - nothing we can do
 	if gpsLat == nil || gpsLng == nil {
-		return f.db.UpdateGeoStatus(uuid, "no_gps")
+		return f.db.UpdateGeoStatus(uuid, "NO_GPS")
 	}
 
 	// Route based on country
@@ -69,7 +69,7 @@ func (f *Finalizer) finalizeNonUS(uuid string) error {
 	}
 
 	if responseJSON == "" {
-		return f.db.UpdateGeoStatus(uuid, "no_exiftool_data")
+		return f.db.UpdateGeoStatus(uuid, "NO_EXIFTOOL_DATA")
 	}
 
 	var data map[string]interface{}
@@ -89,7 +89,7 @@ func (f *Finalizer) finalizeNonUS(uuid string) error {
 
 	geoAddress := strings.Join(parts, ", ")
 	if geoAddress == "" {
-		return f.db.UpdateGeoStatus(uuid, "no_address_data")
+		return f.db.UpdateGeoStatus(uuid, "NO_ADDRESS_DATA")
 	}
 
 	var city, region, country, countryCode *string
@@ -112,7 +112,7 @@ func (f *Finalizer) finalizeNonUS(uuid string) error {
 		GeoRegion:      region,
 		GeoCountry:     country,
 		GeoCountryCode: countryCode,
-		GeoStatus:      "done_exiftool",
+		GeoStatus:      "RESOLVED_FROM_EXIFTOOL",
 	}
 
 	return f.db.UpdateGeoFields(uuid, fields)
@@ -134,7 +134,7 @@ func (f *Finalizer) finalizeUS(uuid string, lat, lng float64) error {
 			GeoRegion:      match.GeoRegion,
 			GeoCountry:     match.GeoCountry,
 			GeoCountryCode: match.GeoCountryCode,
-			GeoStatus:      "done_exact_match",
+			GeoStatus:      "FOUND_DB_EXACT_MATCH",
 			GeoMatchedUUID: &matchedUUID,
 		}
 		return f.db.UpdateGeoFields(uuid, fields)
@@ -153,7 +153,7 @@ func (f *Finalizer) finalizeUS(uuid string, lat, lng float64) error {
 			GeoRegion:      match.GeoRegion,
 			GeoCountry:     match.GeoCountry,
 			GeoCountryCode: match.GeoCountryCode,
-			GeoStatus:      "done_proximity_match",
+			GeoStatus:      "FOUND_DB_PROXIMITY_MATCH",
 			GeoMatchedUUID: &matchedUUID,
 		}
 		return f.db.UpdateGeoFields(uuid, fields)
@@ -166,7 +166,7 @@ func (f *Finalizer) finalizeUS(uuid string, lat, lng float64) error {
 // lookupGeonames calls the geonames findNearestAddressJSON API and stores the result.
 func (f *Finalizer) lookupGeonames(uuid string, lat, lng float64) error {
 	if !f.rateLimiter.Check() {
-		return f.db.UpdateGeoStatus(uuid, "rate_limited")
+		return f.db.UpdateGeoStatus(uuid, "RATE_LIMITED")
 	}
 
 	apiURL := fmt.Sprintf(
@@ -193,10 +193,10 @@ func (f *Finalizer) lookupGeonames(uuid string, lat, lng float64) error {
 	}
 
 	responseStr := string(body)
-	requestParams := fmt.Sprintf("lat=%f&lng=%f", lat, lng)
+	requestParams := fmt.Sprintf(`{"lat":%f,"lng":%f}`, lat, lng)
 
 	// Store the lookup result
-	if err := f.db.InsertGeoLookup(uuid, "geonames", "findNearestAddressJSON", &requestParams, &responseStr); err != nil {
+	if err := f.db.InsertGeoLookup(uuid, "geonames", "findNearestAddress", &requestParams, &responseStr); err != nil {
 		f.logger.Error("failed to insert geo lookup", "uuid", uuid, "error", err)
 	}
 
@@ -209,34 +209,41 @@ func (f *Finalizer) lookupGeonames(uuid string, lat, lng float64) error {
 	// Extract address from response
 	address, ok := result["address"].(map[string]interface{})
 	if !ok {
-		return f.db.UpdateGeoStatus(uuid, "no_address_in_response")
+		return f.db.UpdateGeoStatus(uuid, "NO_ADDRESS_FOUND")
 	}
 
-	return f.resolveFromAddress(uuid, address, "done_geonames", nil)
+	return f.resolveFromAddress(uuid, address, "FOUND_VIA_API", nil)
 }
 
 // resolveFromAddress builds geo fields from a parsed address object and updates the DB.
 func (f *Finalizer) resolveFromAddress(uuid string, address map[string]interface{}, status string, matchedUUID *string) error {
-	// Build address string from street, city, state
+	// Build address string matching Node.js format:
+	// [streetNumber, street, city || adminName2, adminName1, countryCode]
 	var parts []string
+	if streetNumber, ok := address["streetNumber"].(string); ok && streetNumber != "" {
+		parts = append(parts, streetNumber)
+	}
 	if street, ok := address["street"].(string); ok && street != "" {
-		if streetNumber, ok := address["streetNumber"].(string); ok && streetNumber != "" {
-			parts = append(parts, streetNumber+" "+street)
-		} else {
-			parts = append(parts, street)
-		}
+		parts = append(parts, street)
 	}
 
 	cityStr := ""
 	if city, ok := address["placename"].(string); ok && city != "" {
 		parts = append(parts, city)
 		cityStr = city
+	} else if county, ok := address["adminName2"].(string); ok && county != "" {
+		// Fall back to county when no city
+		parts = append(parts, county)
 	}
 
 	regionStr := ""
 	if region, ok := address["adminName1"].(string); ok && region != "" {
 		parts = append(parts, region)
 		regionStr = region
+	}
+
+	if cc, ok := address["countryCode"].(string); ok && cc != "" {
+		parts = append(parts, cc)
 	}
 
 	geoAddress := strings.Join(parts, ", ")
@@ -323,7 +330,7 @@ func (f *Finalizer) resolveCity(uuid, postalcode, country string) (string, error
 	}
 
 	responseStr := string(body)
-	requestParams := fmt.Sprintf("postalcode=%s&country=%s", postalcode, country)
+	requestParams := fmt.Sprintf(`{"postalcode":"%s","country":"%s"}`, postalcode, country)
 
 	// Store the lookup
 	if err := f.db.InsertGeoLookup(uuid, "geonames", "postalCodeLookup", &requestParams, &responseStr); err != nil {

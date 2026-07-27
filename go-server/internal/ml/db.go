@@ -161,11 +161,14 @@ func (m *MLDB) SaveFaceResults(uuid string, faces []map[string]interface{}, unma
 // GetFacesByUUID returns all face records for a given uuid.
 func (m *MLDB) GetFacesByUUID(uuid string) ([]map[string]interface{}, error) {
 	rows, err := m.db.Query(
-		`SELECT face_idx, person_name, gender, age, confidence, bbox,
-				cluster_id, cluster_name, cluster_confidence
+		`SELECT uuid, face_idx, person_name, gender, age, confidence, bbox,
+				landmarks, pose, cluster_id, cluster_name, cluster_confidence,
+				cluster_consensus_count, cluster_reference_image_ids, cluster_is_new,
+				cluster_centroid, input_face_matched, input_face_name,
+				input_face_confidence, input_face_match_strategy, input_face_bbox,
+				input_face_centroid, name_mismatch, created_at
 		 FROM face_recognition
 		 WHERE uuid = ?
-		   AND cluster_id NOT IN (SELECT cluster_id FROM face_dismissed_clusters)
 		 ORDER BY face_idx`,
 		uuid,
 	)
@@ -174,58 +177,18 @@ func (m *MLDB) GetFacesByUUID(uuid string) ([]map[string]interface{}, error) {
 	}
 	defer rows.Close()
 
-	var results []map[string]interface{}
-	for rows.Next() {
-		var faceIdx int
-		var personName, gender sql.NullString
-		var age sql.NullInt64
-		var confidence sql.NullFloat64
-		var bboxStr sql.NullString
-		var clusterID, clusterName sql.NullString
-		var clusterConfidence sql.NullFloat64
-
-		if err := rows.Scan(&faceIdx, &personName, &gender, &age, &confidence, &bboxStr,
-			&clusterID, &clusterName, &clusterConfidence); err != nil {
-			return nil, err
-		}
-
-		face := map[string]interface{}{
-			"face_idx":   faceIdx,
-			"cluster_id": nullStr(clusterID),
-			"confidence": nullFloat(confidence),
-		}
-		if personName.Valid {
-			face["person_name"] = personName.String
-		}
-		if gender.Valid {
-			face["gender"] = gender.String
-		}
-		if age.Valid {
-			face["age"] = age.Int64
-		}
-		if clusterName.Valid {
-			face["cluster_name"] = clusterName.String
-		}
-		if clusterConfidence.Valid {
-			face["cluster_confidence"] = clusterConfidence.Float64
-		}
-		if bboxStr.Valid {
-			var bbox interface{}
-			if json.Unmarshal([]byte(bboxStr.String), &bbox) == nil {
-				face["bbox"] = bbox
-			}
-		}
-
-		results = append(results, face)
-	}
-
-	return results, rows.Err()
+	return scanRowsToMaps(rows)
 }
 
 // GetFacesByPerson returns all face records for a given person name.
 func (m *MLDB) GetFacesByPerson(name string) ([]map[string]interface{}, error) {
 	rows, err := m.db.Query(
-		`SELECT uuid, face_idx, cluster_id, confidence, bbox
+		`SELECT uuid, face_idx, person_name, gender, age, confidence, bbox,
+				landmarks, pose, cluster_id, cluster_name, cluster_confidence,
+				cluster_consensus_count, cluster_reference_image_ids, cluster_is_new,
+				cluster_centroid, input_face_matched, input_face_name,
+				input_face_confidence, input_face_match_strategy, input_face_bbox,
+				input_face_centroid, name_mismatch, created_at
 		 FROM face_recognition
 		 WHERE person_name = ?`,
 		name,
@@ -235,37 +198,8 @@ func (m *MLDB) GetFacesByPerson(name string) ([]map[string]interface{}, error) {
 	}
 	defer rows.Close()
 
-	var results []map[string]interface{}
-	for rows.Next() {
-		var uuid, clusterID string
-		var faceIdx int
-		var confidence sql.NullFloat64
-		var bboxStr sql.NullString
-
-		if err := rows.Scan(&uuid, &faceIdx, &clusterID, &confidence, &bboxStr); err != nil {
-			return nil, err
-		}
-
-		face := map[string]interface{}{
-			"uuid":       uuid,
-			"face_idx":   faceIdx,
-			"cluster_id": clusterID,
-			"confidence": nullFloat(confidence),
-		}
-
-		if bboxStr.Valid {
-			var bbox interface{}
-			if json.Unmarshal([]byte(bboxStr.String), &bbox) == nil {
-				face["bbox"] = bbox
-			}
-		}
-
-		results = append(results, face)
-	}
-
-	return results, rows.Err()
+	return scanRowsToMaps(rows)
 }
-
 // NameFaceCluster assigns a person_name to all face records with a given cluster_id.
 // Also updates cluster_name on the records. Returns the number of rows affected.
 func (m *MLDB) NameFaceCluster(clusterID, name string) (int64, error) {
@@ -443,4 +377,43 @@ func nullFloat(nf sql.NullFloat64) interface{} {
 		return nf.Float64
 	}
 	return nil
+}
+
+// scanRowsToMaps converts SQL rows into a slice of maps with column names as keys.
+func scanRowsToMaps(rows *sql.Rows) ([]map[string]interface{}, error) {
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+
+	var results []map[string]interface{}
+	for rows.Next() {
+		values := make([]interface{}, len(columns))
+		valuePtrs := make([]interface{}, len(columns))
+		for i := range values {
+			valuePtrs[i] = &values[i]
+		}
+
+		if err := rows.Scan(valuePtrs...); err != nil {
+			return nil, err
+		}
+
+		row := make(map[string]interface{}, len(columns))
+		for i, col := range columns {
+			val := values[i]
+			// Convert []byte to string for readability
+			if b, ok := val.([]byte); ok {
+				row[col] = string(b)
+			} else {
+				row[col] = val
+			}
+		}
+		results = append(results, row)
+	}
+
+	if results == nil {
+		results = []map[string]interface{}{}
+	}
+
+	return results, rows.Err()
 }

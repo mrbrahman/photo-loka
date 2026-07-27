@@ -3,6 +3,7 @@ package admin
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -88,6 +89,15 @@ func (h *UsersHandler) createUser(c *gin.Context) {
 
 	userID, err := h.authService.CreateUser(body.Username, body.Password, body.Role)
 	if err != nil {
+		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+			c.JSON(http.StatusConflict, gin.H{
+				"error": gin.H{
+					"message": "Username already exists",
+					"code":    "USERNAME_EXISTS",
+				},
+			})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{
 				"message": err.Error(),
@@ -122,7 +132,7 @@ func (h *UsersHandler) updateRole(c *gin.Context) {
 	// Prevent self-role-change
 	currentUserID, _, _ := auth.GetUserFromContext(c)
 	if currentUserID == targetUserID {
-		c.JSON(http.StatusForbidden, gin.H{
+		c.JSON(http.StatusBadRequest, gin.H{
 			"error": gin.H{
 				"message": "Cannot change your own role",
 				"code":    "SELF_ROLE_CHANGE",
@@ -169,10 +179,7 @@ func (h *UsersHandler) updateRole(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"user_id": targetUserID,
-		"role":    body.Role,
-	})
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
 // unlockUser unlocks a locked user account.
@@ -238,7 +245,7 @@ func (h *UsersHandler) unlockUser(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "User unlocked successfully"})
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
 // generateToken generates a long-lived API token for a user.
@@ -266,7 +273,13 @@ func (h *UsersHandler) generateToken(c *gin.Context) {
 	}
 
 	if body.ExpiresInDays <= 0 {
-		body.ExpiresInDays = 365
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": gin.H{
+				"message": "Expiry days must be a positive number",
+				"code":    "INVALID_EXPIRY",
+			},
+		})
+		return
 	}
 
 	// Look up username by userId

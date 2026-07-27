@@ -20,7 +20,13 @@ var (
 	}
 
 	ErrAccountLocked = &AppError{
-		Message:    "Account is locked due to too many failed login attempts",
+		Message:    "Account locked due to too many failed attempts",
+		Code:       "ACCOUNT_LOCKED",
+		StatusCode: http.StatusForbidden,
+	}
+
+	ErrAccountAlreadyLocked = &AppError{
+		Message:    "Account is locked. Contact administrator.",
 		Code:       "ACCOUNT_LOCKED",
 		StatusCode: http.StatusForbidden,
 	}

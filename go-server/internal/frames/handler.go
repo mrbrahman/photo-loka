@@ -1,6 +1,7 @@
 package frames
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -48,6 +49,13 @@ func (h *Handler) getNext(c *gin.Context) {
 
 	item, err := h.manager.GetNextItem(ip)
 	if err != nil {
+		if errors.Is(err, ErrFramePaused) {
+			c.JSON(http.StatusLocked, gin.H{"error": gin.H{
+				"message": "Frame is paused",
+				"code":    "FRAME_PAUSED",
+			}})
+			return
+		}
 		c.JSON(http.StatusNotFound, gin.H{"error": gin.H{
 			"message": err.Error(),
 			"code":    "FRAME_NOT_FOUND",
@@ -70,6 +78,13 @@ func (h *Handler) getPrev(c *gin.Context) {
 
 	item, err := h.manager.GetPrevItem(ip)
 	if err != nil {
+		if errors.Is(err, ErrFramePaused) {
+			c.JSON(http.StatusLocked, gin.H{"error": gin.H{
+				"message": "Frame is paused",
+				"code":    "FRAME_PAUSED",
+			}})
+			return
+		}
 		c.JSON(http.StatusNotFound, gin.H{"error": gin.H{
 			"message": err.Error(),
 			"code":    "FRAME_NOT_FOUND",
@@ -101,6 +116,10 @@ func (h *Handler) events(c *gin.Context) {
 	defer h.manager.UnregisterSSEClient(ip)
 
 	// Flush headers
+	c.Writer.Flush()
+
+	// Send initial connected event
+	io.WriteString(c.Writer, "data: {\"type\":\"connected\"}\n\n")
 	c.Writer.Flush()
 
 	clientGone := c.Request.Context().Done()
@@ -158,7 +177,7 @@ func (h *Handler) loadAllFrames(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "all frames loaded"})
+	c.Status(http.StatusOK)
 }
 
 // getAllFrames returns all frames with their in-memory state.
@@ -205,7 +224,7 @@ func (h *Handler) updateFrame(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "frame updated"})
+	c.Status(http.StatusOK)
 }
 
 // deleteFrame removes a frame.
@@ -228,7 +247,7 @@ func (h *Handler) deleteFrame(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "frame deleted"})
+	c.Status(http.StatusOK)
 }
 
 // pauseFrame manually pauses a frame.
@@ -257,7 +276,7 @@ func (h *Handler) pauseFrame(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "frame paused"})
+	c.Status(http.StatusOK)
 }
 
 // resumeFrame manually resumes a frame.
@@ -280,7 +299,7 @@ func (h *Handler) resumeFrame(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "frame resumed"})
+	c.Status(http.StatusOK)
 }
 
 // extractClientIP gets the client IP from the request, stripping port if present.

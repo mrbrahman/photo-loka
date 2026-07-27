@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"photo-loka/internal/config"
 	"photo-loka/internal/queue"
 )
 
@@ -14,14 +15,16 @@ type Handler struct {
 	indexer    *Indexer
 	indexQueue *queue.Queue
 	videoQueue *queue.Queue
+	rtConfig   *config.RuntimeConfig
 }
 
 // NewHandler creates a new indexing Handler.
-func NewHandler(indexer *Indexer, indexQueue, videoQueue *queue.Queue) *Handler {
+func NewHandler(indexer *Indexer, indexQueue, videoQueue *queue.Queue, rtConfig *config.RuntimeConfig) *Handler {
 	return &Handler{
 		indexer:    indexer,
 		indexQueue: indexQueue,
 		videoQueue: videoQueue,
+		rtConfig:   rtConfig,
 	}
 }
 
@@ -61,7 +64,7 @@ func (h *Handler) startIndexingFirstTime(c *gin.Context) {
 		}
 	}()
 
-	c.JSON(http.StatusAccepted, gin.H{"message": "indexing started", "collection_id": collectionID})
+	c.Status(http.StatusAccepted)
 }
 
 // scanForChanges scans for file changes and enqueues new/modified files.
@@ -86,16 +89,16 @@ func (h *Handler) scanForChanges(c *gin.Context) {
 		}
 	}()
 
-	c.JSON(http.StatusAccepted, gin.H{"message": "scan started", "collection_id": collectionID})
+	c.Status(http.StatusAccepted)
 }
 
 // startIntakeFileIndexing begins intake indexing for a directory.
 // POST /startIntakeFileIndexing (body: {collection_id, dir, stale_days})
 func (h *Handler) startIntakeFileIndexing(c *gin.Context) {
 	var body struct {
-		CollectionID int64  `json:"collection_id" binding:"required"`
-		Dir          string `json:"dir" binding:"required"`
-		StaleDays    int    `json:"staleDays"`
+		CollectionID *int64  `json:"collection_id"`
+		Dir          *string `json:"dir"`
+		StaleDays    int     `json:"staleDays"`
 	}
 
 	if err := c.ShouldBindJSON(&body); err != nil {
@@ -106,25 +109,36 @@ func (h *Handler) startIntakeFileIndexing(c *gin.Context) {
 		return
 	}
 
+	if body.CollectionID == nil && body.Dir == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
+			"message": "either collection_id or dir must be provided",
+			"code":    "MISSING_PARAMETER",
+		}})
+		return
+	}
+
 	if body.StaleDays <= 0 {
 		body.StaleDays = 1
 	}
 
 	go func() {
-		if err := h.indexer.StartIntakeFileIndexing(body.CollectionID, body.Dir, body.StaleDays); err != nil {
-			h.indexer.logger.Error("intake file indexing failed",
-				"collection_id", body.CollectionID,
-				"dir", body.Dir,
-				"error", err,
-			)
+		var err error
+		if body.CollectionID != nil && body.Dir != nil {
+			// Mode 1: specific dir in specific collection
+			err = h.indexer.StartIntakeFileIndexing(*body.CollectionID, *body.Dir, body.StaleDays)
+		} else if body.Dir != nil {
+			// Mode 2: auto-find collection by intake path
+			err = h.indexer.StartIntakeByDir(*body.Dir, body.StaleDays)
+		} else {
+			// Mode 3: all scheduled intake paths for collection
+			err = h.indexer.StartIntakeForCollection(*body.CollectionID, body.StaleDays)
+		}
+		if err != nil {
+			h.indexer.logger.Error("intake file indexing failed", "error", err)
 		}
 	}()
 
-	c.JSON(http.StatusAccepted, gin.H{
-		"message":       "intake indexing started",
-		"collection_id": body.CollectionID,
-		"dir":           body.Dir,
-	})
+	c.Status(http.StatusAccepted)
 }
 
 // getIndexerStatus returns the current status of both queues.
@@ -134,17 +148,20 @@ func (h *Handler) getIndexerStatus(c *gin.Context) {
 	high, normal, low := h.indexQueue.QueueSizes()
 
 	c.JSON(http.StatusOK, gin.H{
-		"processingCnt":  status.Active,
-		"pendingCnt":     status.Pending,
-		"completedCnt":   status.Completed,
-		"failedCnt":      status.Failed,
-		"paused":         status.IsPaused,
-		"maxConcurrency": status.MaxConcurrency,
+		"processingCnt":              status.Active,
+		"pendingCnt":                 status.Pending,
+		"completedCnt":               status.Completed,
+		"failedCnt":                  status.Failed,
+		"paused":                     status.IsPaused,
+		"isDynamic":                  false,
+		"maxConcurrency":             status.MaxConcurrency,
+		"dynamicTargetConcurrency":   nil,
 		"queueSizes": gin.H{
 			"high":   high,
 			"normal": normal,
 			"low":    low,
 		},
+		"systemMetrics": nil,
 	})
 }
 
@@ -152,14 +169,14 @@ func (h *Handler) getIndexerStatus(c *gin.Context) {
 // PUT /pauseIndexer
 func (h *Handler) pauseIndexer(c *gin.Context) {
 	h.indexQueue.Pause()
-	c.JSON(http.StatusOK, gin.H{"message": "indexer paused"})
+	c.Status(http.StatusOK)
 }
 
 // resumeIndexer resumes the index queue.
 // PUT /resumeIndexer
 func (h *Handler) resumeIndexer(c *gin.Context) {
 	h.indexQueue.Resume()
-	c.JSON(http.StatusOK, gin.H{"message": "indexer resumed"})
+	c.Status(http.StatusOK)
 }
 
 // getIndexerErrors returns recent errors from both queues.
@@ -186,7 +203,17 @@ func (h *Handler) updateIndexerConcurrency(c *gin.Context) {
 	}
 
 	h.indexQueue.SetConcurrency(concurrency)
-	c.JSON(http.StatusOK, gin.H{"message": "concurrency updated", "max_concurrency": concurrency})
+
+	// Persist to runtime config so it survives restart
+	if err := h.rtConfig.Update("maxConcurrency", float64(concurrency)); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
+			"message": "concurrency updated but failed to persist: " + err.Error(),
+			"code":    "PERSIST_ERROR",
+		}})
+		return
+	}
+
+	c.Status(http.StatusOK)
 }
 
 // refreshMetadataForCollection re-extracts metadata for all files in a collection.
@@ -211,7 +238,7 @@ func (h *Handler) refreshMetadataForCollection(c *gin.Context) {
 		}
 	}()
 
-	c.JSON(http.StatusAccepted, gin.H{"message": "metadata refresh started", "collection_id": collectionID})
+	c.Status(http.StatusAccepted)
 }
 
 // refreshMetadataForItem re-extracts metadata for a single item.
@@ -244,5 +271,5 @@ func (h *Handler) refreshMetadataForItem(c *gin.Context) {
 		}
 	}()
 
-	c.JSON(http.StatusAccepted, gin.H{"message": "metadata refresh started", "uuid": itemUUID})
+	c.Status(http.StatusAccepted)
 }

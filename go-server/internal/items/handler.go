@@ -74,7 +74,7 @@ func (h *Handler) updateRating(c *gin.Context) {
 	}
 
 	// file_modified_at is set to now so that the exif write scheduler picks it up
-	fileModifyDate := time.Now().Format("2006-01-02 15:04:05")
+	fileModifyDate := time.Now().Format(time.RFC3339)
 
 	if err := h.indexer.DB().UpdateRating(body.UUIDs, body.NewRating, fileModifyDate); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
@@ -85,13 +85,13 @@ func (h *Handler) updateRating(c *gin.Context) {
 	}
 
 	// Schedule exif write for rating
-	exifUpdate := map[string]interface{}{"Rating": body.NewRating}
+	exifUpdate := map[string]interface{}{"Rating": body.NewRating, "FileModifyDate": fileModifyDate}
 	exifJSON, _ := json.Marshal(exifUpdate)
 	if err := h.indexer.DB().ScheduleExif(body.UUIDs, string(exifJSON)); err != nil {
 		h.logger.Error("failed to schedule exif write for rating", "error", err)
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "rating updated", "count": len(body.UUIDs)})
+	c.Status(http.StatusOK)
 }
 
 // updateDescription updates the description for a single item.
@@ -110,7 +110,7 @@ func (h *Handler) updateDescription(c *gin.Context) {
 		return
 	}
 
-	fileModifyDate := time.Now().Format("2006-01-02 15:04:05")
+	fileModifyDate := time.Now().Format(time.RFC3339)
 
 	if err := h.indexer.DB().UpdateDescription(body.UUID, body.Description, fileModifyDate); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
@@ -121,13 +121,13 @@ func (h *Handler) updateDescription(c *gin.Context) {
 	}
 
 	// Schedule exif write for description
-	exifUpdate := map[string]interface{}{"ImageDescription": body.Description}
+	exifUpdate := map[string]interface{}{"ImageDescription": body.Description, "FileModifyDate": fileModifyDate}
 	exifJSON, _ := json.Marshal(exifUpdate)
 	if err := h.indexer.DB().ScheduleExif([]string{body.UUID}, string(exifJSON)); err != nil {
 		h.logger.Error("failed to schedule exif write for description", "error", err)
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "description updated"})
+	c.Status(http.StatusOK)
 }
 
 // renameFile renames a media file.
@@ -179,7 +179,7 @@ func (h *Handler) renameFile(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "file renamed", "filename": newFilename})
+	c.Status(http.StatusOK)
 }
 
 // refreshThumbs regenerates thumbnails for an item.
@@ -207,6 +207,8 @@ func (h *Handler) refreshThumbs(c *gin.Context) {
 	ext := filepath.Ext(filename)
 	isVideo := isVideoExtension(ext)
 
+	// TODO: When individual queues are implemented for each pipeline step,
+	// this should go through the thumbnail queue instead of a raw goroutine.
 	go func() {
 		if isVideo {
 			// Extract a frame from the video first
@@ -251,6 +253,8 @@ func (h *Handler) compressVideo(c *gin.Context) {
 		return
 	}
 
+	// TODO: When individual queues are implemented for each pipeline step,
+	// this should go through the video compression queue instead of a raw goroutine.
 	go func() {
 		encoder := h.rtConfig.VideoEncoder
 		if err := media.CompressVideo(uuid, filename, h.thumbsDir, encoder); err != nil {
@@ -287,7 +291,7 @@ func (h *Handler) trashItems(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "items trashed", "count": len(body.UUIDs)})
+	c.Status(http.StatusOK)
 }
 
 // togglePrivate marks or unmarks items as private.
@@ -322,7 +326,7 @@ func (h *Handler) togglePrivate(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "private toggled", "count": len(body.UUIDs)})
+	c.Status(http.StatusOK)
 }
 
 // restoreFromTrash restores items from the .trash folder.
@@ -349,7 +353,7 @@ func (h *Handler) restoreFromTrash(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "items restored", "count": len(body.UUIDs)})
+	c.Status(http.StatusOK)
 }
 
 // cleanupTrash permanently deletes specific trashed items and their associated data.
@@ -380,7 +384,7 @@ func (h *Handler) cleanupTrash(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "trash cleaned up", "count": len(body.UUIDs)})
+	c.Status(http.StatusOK)
 }
 
 // permanentlyDeleteItems removes files, thumbnails, face data, and metadata rows.
@@ -492,27 +496,46 @@ func (h *Handler) moveItems(c *gin.Context) {
 		return
 	}
 
-	// Move each file and update DB
+	// Build move plan and attempt all file moves
+	type movePlanEntry struct {
+		uuid string
+		src  string
+		dest string
+	}
+	var plan []movePlanEntry
+
 	for _, uuid := range req.UUIDs {
 		srcPath, ok := filenames[uuid]
 		if !ok {
 			continue
 		}
-
 		destPath := filepath.Join(targetDir, filepath.Base(srcPath))
+		plan = append(plan, movePlanEntry{uuid: uuid, src: srcPath, dest: destPath})
+	}
 
-		// Move the file
-		if err := h.organizer.MoveItem(req.CollectionID, srcPath, destPath, false); err != nil {
+	// Move all files first
+	// TODO: Consider parallelizing file moves (Node.js uses Promise.allSettled).
+	// Sequential is fine for same-device renames; parallelism helps for cross-device copy+delete.
+	for _, entry := range plan {
+		if err := h.organizer.MoveItem(req.CollectionID, entry.src, entry.dest, false); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": gin.H{"message": fmt.Sprintf("Failed to move %s: %s", uuid, err.Error()), "code": "MOVE_ERROR"},
+				"error": gin.H{"message": fmt.Sprintf("Failed to move %s: %s", entry.uuid, err.Error()), "code": "MOVE_ERROR"},
 			})
 			return
 		}
+	}
 
-		// Update DB: album_date, album_name, filename
-		if err := h.indexer.DB().UpdateAlbumForItem(uuid, req.TargetAlbumDate, req.TargetAlbumName, destPath); err != nil {
-			h.logger.Error("failed to update DB after move", "uuid", uuid, "error", err)
-		}
+	// All files moved successfully — batch update DB in a transaction
+	moveEntries := make([]indexing.MoveEntry, len(plan))
+	for i, entry := range plan {
+		moveEntries[i] = indexing.MoveEntry{UUID: entry.uuid, Dest: entry.dest}
+	}
+	if err := h.indexer.DB().UpdateAlbumForItems(moveEntries, req.TargetAlbumDate, req.TargetAlbumName); err != nil {
+		h.logger.Error("failed to update DB after moves", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": gin.H{"message": "Files moved but DB update failed: " + err.Error(), "code": "DB_ERROR"},
+		})
+		return
 	}
 
 	c.Status(http.StatusOK)

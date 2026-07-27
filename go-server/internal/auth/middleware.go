@@ -69,6 +69,33 @@ func AuthMiddleware(authService *Service) gin.HandlerFunc {
 	}
 }
 
+// FrameIPChecker is an interface for checking if an IP is a registered frame.
+type FrameIPChecker interface {
+	AllFrameIPs() map[string]struct{}
+}
+
+// MediaAuthMiddleware returns a Gin middleware that allows frame IPs to bypass
+// authentication for media routes. Non-frame requests fall through to standard auth.
+func MediaAuthMiddleware(authService *Service, frameChecker FrameIPChecker) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Extract client IP, stripping IPv6 prefix if present
+		ip := c.ClientIP()
+		if strings.HasPrefix(ip, "::ffff:") {
+			ip = ip[7:]
+		}
+
+		// If the IP is a registered frame, bypass auth
+		frameIPs := frameChecker.AllFrameIPs()
+		if _, isFrame := frameIPs[ip]; isFrame {
+			c.Next()
+			return
+		}
+
+		// Otherwise, use standard auth
+		AuthMiddleware(authService)(c)
+	}
+}
+
 // AdminMiddleware returns a Gin middleware that requires admin role.
 func AdminMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {

@@ -1,6 +1,7 @@
 package ml
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
 
@@ -35,8 +36,12 @@ func (s *Service) ProcessFaceRecognition(uuid string) (map[string]interface{}, e
 	}
 
 	var xmpRegions interface{}
-	if item.Xmpregion != nil {
-		xmpRegions = *item.Xmpregion
+	if item.Xmpregion != nil && *item.Xmpregion != "" {
+		// Parse the JSON string into an object before sending to ML service
+		if err := json.Unmarshal([]byte(*item.Xmpregion), &xmpRegions); err != nil {
+			// If parsing fails, send nil (ML service will proceed without XMP data)
+			xmpRegions = nil
+		}
 	}
 
 	// Call ML service

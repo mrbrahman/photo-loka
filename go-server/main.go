@@ -118,9 +118,8 @@ func runServe() {
 	collectionsSvc := collections.NewService(collectionsDB)
 	collectionsHandler := collections.NewHandler(collectionsSvc)
 
-	// Create albums handler
+	// Create albums DB (handler created after organizer below)
 	albumsDB := albums.NewAlbumsDB(db.Conn)
-	albumsHandler := albums.NewHandler(albumsDB, collectionsDB)
 
 	// Create search handler
 	searchDB := search.NewSearchDB(db.Conn)
@@ -150,8 +149,9 @@ func runServe() {
 	// Create indexing components
 	indexingDB := indexing.NewIndexingDB(db.Conn)
 	organizer := indexing.NewOrganizer(indexingDB, rtCfg)
+	albumsHandler := albums.NewHandler(albumsDB, collectionsDB, organizer)
 	indexer := indexing.NewIndexer(indexingDB, organizer, indexQueue, videoQueue, cfg.ThumbsDir, rtCfg, collectionsDB)
-	indexingHandler := indexing.NewHandler(indexer, indexQueue, videoQueue)
+	indexingHandler := indexing.NewHandler(indexer, indexQueue, videoQueue, rtCfg)
 
 	// Create geo components
 	geoQueue := queue.New(1) // geo runs single-threaded due to rate limits
@@ -222,6 +222,7 @@ func runServe() {
 		usersHandler,
 		jobsHandler,
 		authnHandler,
+		frameManager,
 	)
 
 	slog.Info("starting Photo-Loka", "port", cfg.Port, "data_dir", cfg.DataDir)

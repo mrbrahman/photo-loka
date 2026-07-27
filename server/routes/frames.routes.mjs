@@ -125,7 +125,7 @@ adminFrameRouter.delete('/deleteFrame/:frame_id', async function(req,res,next){
 
 adminFrameRouter.post('/pauseFrame/:frame_id', async function(req,res,next){
   try {
-    await s.frame.pauseFrame(req.params.frame_id, req.body.pauseEndOverride);
+    await s.frame.pauseFrame(req.params.frame_id, req.body.resumeAtSchedule);
     res.sendStatus(200);
   } catch (error) {
     next(error);

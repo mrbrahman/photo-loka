@@ -26,7 +26,21 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 // getStatus returns the current geo queue status.
 func (h *Handler) getStatus(c *gin.Context) {
 	status := h.service.Status()
-	c.JSON(http.StatusOK, status)
+	high, normal, low := h.service.QueueSizes()
+
+	c.JSON(http.StatusOK, gin.H{
+		"processingCnt":  status.Active,
+		"pendingCnt":     status.Pending,
+		"completedCnt":   status.Completed,
+		"failedCnt":      status.Failed,
+		"paused":         status.IsPaused,
+		"maxConcurrency": status.MaxConcurrency,
+		"queueSizes": gin.H{
+			"high":   high,
+			"normal": normal,
+			"low":    low,
+		},
+	})
 }
 
 // enqueueOne enqueues a single geo resolution task.
@@ -41,7 +55,7 @@ func (h *Handler) enqueueOne(c *gin.Context) {
 	}
 
 	h.service.Enqueue(body.UUID, nil)
-	c.JSON(http.StatusOK, gin.H{"message": "enqueued"})
+	c.Status(http.StatusAccepted)
 }
 
 // enqueueMany enqueues multiple geo resolution tasks.
@@ -54,5 +68,5 @@ func (h *Handler) enqueueMany(c *gin.Context) {
 	}
 
 	h.service.EnqueueMany(entries)
-	c.JSON(http.StatusOK, gin.H{"message": "enqueued", "count": len(entries)})
+	c.Status(http.StatusAccepted)
 }

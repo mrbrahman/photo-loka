@@ -244,5 +244,5 @@ func (h *Handler) dismissFaceCluster(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "cluster dismissed"})
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }

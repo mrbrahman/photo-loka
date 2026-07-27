@@ -231,17 +231,10 @@ func (o *Organizer) MoveFileToTrash(collectionID int64, uuids []string) error {
 			continue
 		}
 
-		// Determine trash path: collection_path/.trash/basename
+		// Rename file in-place with '.Trash_' prefix on the basename
 		dir := filepath.Dir(filename)
-		collectionPath := findCollectionRoot(dir)
-		trashDir := filepath.Join(collectionPath, ".trash")
-		if err := os.MkdirAll(trashDir, 0755); err != nil {
-			return fmt.Errorf("creating trash directory: %w", err)
-		}
-
 		baseName := filepath.Base(filename)
-		trashPath := filepath.Join(trashDir, baseName)
-		trashPath = resolveNameCollision(trashPath)
+		trashPath := filepath.Join(dir, ".Trash_"+baseName)
 
 		if err := moveFile(filename, trashPath); err != nil {
 			return fmt.Errorf("moving %s to trash: %w", filename, err)
@@ -257,7 +250,7 @@ func (o *Organizer) MoveFileToTrash(collectionID int64, uuids []string) error {
 	return nil
 }
 
-// RestoreFromTrash restores items from the .trash folder back to their original location.
+// RestoreFromTrash restores trashed items by removing the '.Trash_' prefix.
 func (o *Organizer) RestoreFromTrash(collectionID int64, uuids []string) error {
 	filenames, err := o.db.GetFileNames(uuids)
 	if err != nil {
@@ -271,14 +264,11 @@ func (o *Organizer) RestoreFromTrash(collectionID int64, uuids []string) error {
 			continue
 		}
 
-		// Restore to the directory above .trash with the same basename
-		trashDir := filepath.Dir(trashPath)
-		collectionPath := filepath.Dir(trashDir) // parent of .trash
+		// Remove '.Trash_' prefix from the basename to restore in-place
+		dir := filepath.Dir(trashPath)
 		baseName := filepath.Base(trashPath)
-
-		// TODO: ideally restore to original album folder; for now place in collection root
-		restoredPath := filepath.Join(collectionPath, baseName)
-		restoredPath = resolveNameCollision(restoredPath)
+		restoredName := strings.TrimPrefix(baseName, ".Trash_")
+		restoredPath := filepath.Join(dir, restoredName)
 
 		if err := moveFile(trashPath, restoredPath); err != nil {
 			return fmt.Errorf("restoring %s from trash: %w", trashPath, err)
@@ -310,7 +300,7 @@ func (o *Organizer) MarkFilePrivate(collectionID int64, uuids []string) error {
 
 		dir := filepath.Dir(filename)
 		baseName := filepath.Base(filename)
-		newName := "private_" + baseName
+		newName := "." + baseName
 		newPath := filepath.Join(dir, newName)
 
 		if err := os.Rename(filename, newPath); err != nil {
@@ -327,7 +317,7 @@ func (o *Organizer) MarkFilePrivate(collectionID int64, uuids []string) error {
 	return nil
 }
 
-// UnmarkFilePrivate removes the "private_" prefix from filenames.
+// UnmarkFilePrivate removes the leading dot from filenames.
 func (o *Organizer) UnmarkFilePrivate(collectionID int64, uuids []string) error {
 	filenames, err := o.db.GetFileNames(uuids)
 	if err != nil {
@@ -343,10 +333,10 @@ func (o *Organizer) UnmarkFilePrivate(collectionID int64, uuids []string) error 
 
 		dir := filepath.Dir(filename)
 		baseName := filepath.Base(filename)
-		newName := strings.TrimPrefix(baseName, "private_")
-		if newName == baseName {
+		if !strings.HasPrefix(baseName, ".") {
 			continue // not prefixed, nothing to do
 		}
+		newName := strings.TrimPrefix(baseName, ".")
 		newPath := filepath.Join(dir, newName)
 
 		if err := os.Rename(filename, newPath); err != nil {
@@ -472,6 +462,12 @@ func moveFile(src, dest string) error {
 		return fmt.Errorf("cross-device copy: %w", err)
 	}
 
+	// Preserve timestamps from source
+	srcInfo, statErr := os.Stat(src)
+	if statErr == nil {
+		os.Chtimes(dest, srcInfo.ModTime(), srcInfo.ModTime())
+	}
+
 	if err := os.Remove(src); err != nil {
 		// File was copied but original not removed - log but don't fail
 		slog.Warn("cross-device move: copied but failed to remove source", "src", src, "error", err)
@@ -526,11 +522,4 @@ func resolveNameCollision(targetPath string) string {
 	return fmt.Sprintf("%s_9999%s", base, ext)
 }
 
-// findCollectionRoot walks up from a directory to find a plausible collection root.
-// For now, returns the grandparent (assumes pattern like yyyy/yyyy-mm-dd album/).
-func findCollectionRoot(dir string) string {
-	// Walk up to find the root (heuristic: stop at a directory that contains .trash or is 2 levels up)
-	parent := filepath.Dir(dir)
-	grandparent := filepath.Dir(parent)
-	return grandparent
-}
+

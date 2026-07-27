@@ -35,7 +35,21 @@ func LoadRuntimeConfig(dataDir string) (*RuntimeConfig, error) {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			// Return default config if file doesn't exist
+			// File missing - populate with sensible defaults and create it
+			rc.StartFileWatcherAtStartup = true
+			rc.StartScheduledIndexingAtStartup = true
+			rc.ScanFilesForChangesAndIndexAtStartup = false
+			rc.FilesDeletedThreshold = 5
+			rc.AuditFiles = true
+			rc.GeonamesHourlyLimit = 1000
+			rc.GeonamesDailyLimit = 10000
+			rc.VideoEncoder = "libvpx-vp9"
+			rc.MaxConcurrency = 4
+			rc.PerformFaceRecognition = true
+
+			if saveErr := rc.Save(dataDir); saveErr != nil {
+				return nil, fmt.Errorf("creating default runtime config: %w", saveErr)
+			}
 			return rc, nil
 		}
 		return nil, fmt.Errorf("reading runtime config: %w", err)
@@ -137,4 +151,26 @@ func (rc *RuntimeConfig) Update(key string, value interface{}) error {
 	}
 
 	return nil
+}
+
+// Get retrieves the current value of a config field by its JSON key name.
+func (rc *RuntimeConfig) Get(key string) (interface{}, error) {
+	rc.mu.RLock()
+	defer rc.mu.RUnlock()
+
+	rv := reflect.ValueOf(rc).Elem()
+	rt := rv.Type()
+
+	for i := 0; i < rt.NumField(); i++ {
+		field := rt.Field(i)
+		tag := field.Tag.Get("json")
+		if tag == "" || tag == "-" {
+			continue
+		}
+		if tag == key {
+			return rv.Field(i).Interface(), nil
+		}
+	}
+
+	return nil, fmt.Errorf("unknown config key: %q", key)
 }

@@ -1,6 +1,7 @@
 package frames
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -10,6 +11,9 @@ import (
 	"photo-loka/internal/scheduler"
 	"photo-loka/internal/search"
 )
+
+// ErrFramePaused is returned when a frame is paused and cannot advance.
+var ErrFramePaused = errors.New("Frame is paused")
 
 // PauseState represents the automatic pause state of a frame.
 type PauseState struct {
@@ -69,7 +73,7 @@ func (m *Manager) LoadAllFrames() error {
 		m.mu.Lock()
 		m.frames[frame.FrameIPAddr] = &FrameState{
 			Items:   make([]interface{}, 0),
-			CurrIdx: 0,
+			CurrIdx: -1,
 		}
 		m.mu.Unlock()
 
@@ -125,10 +129,10 @@ func (m *Manager) GetAllFrames() ([]map[string]interface{}, error) {
 		}
 
 		if state, ok := m.frames[frame.FrameIPAddr]; ok {
-			item["items_count"] = len(state.Items)
-			item["curr_idx"] = state.CurrIdx
-			item["auto_pause"] = state.AutoPause
-			item["manual_pause"] = state.ManualPause
+			item["numItems"] = len(state.Items)
+			item["currIdx"] = state.CurrIdx
+			item["autoPause"] = state.AutoPause
+			item["manualPause"] = state.ManualPause
 		}
 
 		results = append(results, item)
@@ -149,7 +153,7 @@ func (m *Manager) CreateFrame(frame *Frame) (int64, error) {
 	m.mu.Lock()
 	m.frames[frame.FrameIPAddr] = &FrameState{
 		Items:   make([]interface{}, 0),
-		CurrIdx: 0,
+		CurrIdx: -1,
 	}
 	m.mu.Unlock()
 
@@ -189,7 +193,7 @@ func (m *Manager) UpdateFrame(frameID int64, frame *Frame) error {
 	}
 	m.frames[frame.FrameIPAddr] = &FrameState{
 		Items:   make([]interface{}, 0),
-		CurrIdx: 0,
+		CurrIdx: -1,
 	}
 	m.mu.Unlock()
 
@@ -294,7 +298,7 @@ func (m *Manager) GetNextItem(ip string) (interface{}, error) {
 	// Check if paused (either auto or manual)
 	if state.AutoPause.Paused || state.ManualPause.Paused {
 		m.mu.Unlock()
-		return map[string]interface{}{"paused": true}, nil
+		return nil, ErrFramePaused
 	}
 
 	if len(state.Items) == 0 {
@@ -322,7 +326,7 @@ func (m *Manager) GetPrevItem(ip string) (interface{}, error) {
 	// Check if paused
 	if state.AutoPause.Paused || state.ManualPause.Paused {
 		m.mu.Unlock()
-		return map[string]interface{}{"paused": true}, nil
+		return nil, ErrFramePaused
 	}
 
 	if len(state.Items) == 0 {
@@ -360,12 +364,20 @@ func (m *Manager) SetAutoPause(frameID int64, paused bool) error {
 	state.AutoPause.Paused = paused
 	if !paused {
 		state.AutoPause.PauseEndTime = nil
+		// If auto-resuming and currently manually paused with resumeAtSchedule, clear the manual pause
+		if state.ManualPause.Paused && state.ManualPause.ResumeAtSchedule != nil && *state.ManualPause.ResumeAtSchedule {
+			state.ManualPause.Paused = false
+			state.ManualPause.ResumeAtSchedule = nil
+		}
 	}
+	// Determine if frame is still paused after state changes
+	stillPaused := state.AutoPause.Paused || state.ManualPause.Paused
 	m.mu.Unlock()
 
 	if paused {
 		m.notifySSE(frame.FrameIPAddr, "pause")
-	} else {
+	} else if !stillPaused {
+		// Only send resume if the frame is truly unpaused (not still manually paused)
 		m.notifySSE(frame.FrameIPAddr, "resume")
 	}
 

@@ -61,7 +61,14 @@ func (h *Handler) login(c *gin.Context) {
 	}
 
 	// Set refresh token as httponly cookie (30 days)
-	c.SetCookie("refreshToken", tokenPair.RefreshToken, 30*24*3600, "/", "", false, true)
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     "refreshToken",
+		Value:    tokenPair.RefreshToken,
+		MaxAge:   30 * 24 * 3600,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+	})
 
 	c.JSON(http.StatusOK, gin.H{
 		"accessToken": tokenPair.AccessToken,
@@ -93,7 +100,14 @@ func (h *Handler) refresh(c *gin.Context) {
 		}
 
 		// Clear the invalid cookie
-		c.SetCookie("refreshToken", "", -1, "/", "", false, true)
+		http.SetCookie(c.Writer, &http.Cookie{
+			Name:     "refreshToken",
+			Value:    "",
+			MaxAge:   -1,
+			Path:     "/",
+			HttpOnly: true,
+			SameSite: http.SameSiteStrictMode,
+		})
 
 		c.JSON(statusCode, gin.H{
 			"error": gin.H{
@@ -105,7 +119,14 @@ func (h *Handler) refresh(c *gin.Context) {
 	}
 
 	// Set new refresh token cookie (30 days)
-	c.SetCookie("refreshToken", tokenPair.RefreshToken, 30*24*3600, "/", "", false, true)
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     "refreshToken",
+		Value:    tokenPair.RefreshToken,
+		MaxAge:   30 * 24 * 3600,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+	})
 
 	c.JSON(http.StatusOK, gin.H{
 		"accessToken": tokenPair.AccessToken,
@@ -122,7 +143,14 @@ func (h *Handler) logout(c *gin.Context) {
 	}
 
 	// Clear the cookie
-	c.SetCookie("refreshToken", "", -1, "/", "", false, true)
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     "refreshToken",
+		Value:    "",
+		MaxAge:   -1,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+	})
 
-	c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
+	c.Status(http.StatusOK)
 }

@@ -58,8 +58,10 @@ func (h *ConfigHandler) updateConfig(c *gin.Context) {
 		return
 	}
 
+	// Return the actual stored value (after type conversion) rather than the raw input
+	storedValue, _ := h.rtConfig.Get(body.Key)
 	c.JSON(http.StatusOK, gin.H{
 		"key":   body.Key,
-		"value": body.Value,
+		"value": storedValue,
 	})
 }

@@ -74,6 +74,7 @@ func (c *Client) GetFaceSuggestions(clusterID string) (map[string]interface{}, e
 func (c *Client) SearchByText(query string) (map[string]interface{}, error) {
 	body := map[string]interface{}{
 		"query": query,
+		"limit": 1000,
 	}
 
 	return c.doJSONRequest(http.MethodPost, "/search/text", body)

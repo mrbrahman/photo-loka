@@ -412,6 +412,38 @@ func (d *IndexingDB) UpdateAlbumForItem(uuid, albumDate, albumName, filename str
 	return nil
 }
 
+// MoveEntry represents a single item move for batch DB updates.
+type MoveEntry struct {
+	UUID string
+	Dest string
+}
+
+// UpdateAlbumForItems updates album_date, album_name, and filename for multiple items in a transaction.
+func (d *IndexingDB) UpdateAlbumForItems(entries []MoveEntry, albumDate, albumName string) error {
+	tx, err := d.db.Begin()
+	if err != nil {
+		return fmt.Errorf("beginning transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare("UPDATE metadata SET album_date = ?, album_name = ?, filename = ? WHERE uuid = ?")
+	if err != nil {
+		return fmt.Errorf("preparing statement: %w", err)
+	}
+	defer stmt.Close()
+
+	for _, entry := range entries {
+		if _, err := stmt.Exec(albumDate, albumName, entry.Dest, entry.UUID); err != nil {
+			return fmt.Errorf("updating item %s: %w", entry.UUID, err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing move updates: %w", err)
+	}
+	return nil
+}
+
 // InsertGeoLookup stores exiftool geolocation data in the geo_lookups table.
 func (d *IndexingDB) InsertGeoLookup(uuid, source, apiName string, responseJSON string) error {
 	_, err := d.db.Exec(

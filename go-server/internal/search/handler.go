@@ -61,9 +61,9 @@ func (h *Handler) getAll(c *gin.Context) {
 	}
 	collectionID := &cid
 
-	// Default date range: last 365 days
+	// Default date range: last 365 days, no upper bound
 	now := time.Now()
-	toDate := c.DefaultQuery("to", now.Format("2006-01-02"))
+	toDate := c.Query("to")
 	fromDate := c.DefaultQuery("from", now.AddDate(-1, 0, 0).Format("2006-01-02"))
 
 	dateRange := &DateRange{

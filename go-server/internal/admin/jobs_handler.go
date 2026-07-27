@@ -73,7 +73,7 @@ type cronJobInfo struct {
 type jobsResponse struct {
 	Watchers  []watcherStatus      `json:"watchers"`
 	Scheduled []scheduledJobStatus `json:"scheduled"`
-	Frame     []cronJobInfo        `json:"frame"`
+	Frame     []gin.H              `json:"frame"`
 	System    []cronJobInfo        `json:"system"`
 }
 
@@ -177,15 +177,31 @@ func (h *JobsHandler) getJobs(c *gin.Context) {
 	}
 
 	// Categorize scheduler jobs into frame and system
-	var frameJobs []cronJobInfo
+	var frameJobs []gin.H
 	var systemJobs []cronJobInfo
 
 	for _, j := range allSchedulerJobs {
-		if strings.HasPrefix(j.Name, "frame-") {
-			frameJobs = append(frameJobs, cronJobInfo{
-				Name:    j.Name,
-				Pattern: j.Pattern,
-			})
+		if strings.HasPrefix(j.Name, "frame_") {
+			// Parse job name: frame_<id>_<type> (e.g., "frame_1_reset")
+			parts := strings.SplitN(j.Name, "_", 3)
+			frameJob := gin.H{
+				"name":    j.Name,
+				"pattern": j.Pattern,
+			}
+			if len(parts) == 3 {
+				frameJob["frame_id"] = parts[1]
+				frameJob["type"] = parts[2]
+				// Look up frame name from DB via manager
+				if frames, err := h.frameManager.GetAllFrames(); err == nil {
+					for _, f := range frames {
+						if fmt.Sprintf("%v", f["frame_id"]) == parts[1] {
+							frameJob["frame_name"] = f["frame_name"]
+							break
+						}
+					}
+				}
+			}
+			frameJobs = append(frameJobs, frameJob)
 		} else if !strings.HasPrefix(j.Name, "intake_") {
 			systemJobs = append(systemJobs, cronJobInfo{
 				Name:    j.Name,
@@ -202,7 +218,7 @@ func (h *JobsHandler) getJobs(c *gin.Context) {
 		scheduled = []scheduledJobStatus{}
 	}
 	if frameJobs == nil {
-		frameJobs = []cronJobInfo{}
+		frameJobs = []gin.H{}
 	}
 	if systemJobs == nil {
 		systemJobs = []cronJobInfo{}
@@ -229,14 +245,14 @@ func (h *JobsHandler) startAllWatchers(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "All watchers started"})
+	c.Status(http.StatusOK)
 }
 
 // stopAllWatchers stops all active file watchers.
 // POST /api/admin/stopAllWatchers
 func (h *JobsHandler) stopAllWatchers(c *gin.Context) {
 	h.fileWatcher.StopAll()
-	c.JSON(http.StatusOK, gin.H{"message": "All watchers stopped"})
+	c.Status(http.StatusOK)
 }
 
 // startScheduledIndexing schedules all cron jobs for scheduled intake paths.
