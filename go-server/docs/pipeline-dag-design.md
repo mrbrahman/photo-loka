@@ -2,11 +2,13 @@
 
 ## Current State
 
-Two independent queues exist (implemented in Phase 3):
-- `indexQueue` (CPU-1 workers) — handles metadata extraction + thumbnails
-- `videoQueue` (2 workers) — handles video compression
+The indexing pipeline uses a single queue with priority levels (matching Node.js behavior):
+- `indexQueue` (CPU-1 workers) — High: indexFile, Normal: face recognition, Low: video compression
+- `geoQueue` (1 worker) — rate-limited geo API lookups (separate due to rate limiting)
+- `videoQueue` exists but is currently unused (video compression was moved to indexQueue Low priority so it doesn't run concurrently with indexing)
 
-Both use the same `internal/queue/Queue` struct which supports:
+The `internal/queue/Queue` struct supports:
+- Three priority levels (High > Normal > Low, FIFO within each)
 - Independent concurrency (configurable per queue)
 - Pause/resume per queue
 - Status/errors per queue

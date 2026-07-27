@@ -25,7 +25,7 @@ This makes cross-compilation difficult and requires build-time deps (gcc, pkg-co
 1. Replace `mattn/go-sqlite3` with `modernc.org/sqlite` (API is nearly identical, mostly import path changes)
 2. Replace `govips` with `disintegration/imaging` for thumbnail generation
 3. For on-the-fly `getImage` resize: either accept slower resize (~50-100ms instead of ~10-20ms) or pre-generate a "view size" (1920px) thumbnail during indexing so `getImage` just serves a file
-4. Remove `-tags "fts5"` build flag (`modernc.org/sqlite` enables FTS5 by default)
+4. Remove `-tags "fts5 sqlite_math_functions"` build flag (`modernc.org/sqlite` enables FTS5 and math functions by default)
 5. Remove `build-essential`, `pkg-config`, `libvips-dev` from prerequisites
 
 ## When to do this

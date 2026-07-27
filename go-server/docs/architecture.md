@@ -2,9 +2,9 @@
 
 ## Overview
 
-The Go server is a complete port of the Node.js Photo-Loka backend. It compiles to a single 19 MB binary with no runtime dependencies (aside from exiftool and ffmpeg for media processing).
+The Go server is a complete port of the Node.js Photo-Loka backend. It compiles to a single ~21 MB binary with no runtime dependencies (aside from exiftool and ffmpeg for media processing).
 
-**Build:** `go build -tags "fts5" -o photo-loka .`
+**Build:** `./build.sh` (or `go build -tags "fts5 sqlite_math_functions" -o photo-loka .`)
 
 **Run modes:**
 - `./photo-loka serve` - starts the HTTP server (default)
@@ -14,7 +14,9 @@ The Go server is a complete port of the Node.js Photo-Loka backend. It compiles 
 
 **Key dependencies:**
 - `gin` - HTTP framework
-- `mattn/go-sqlite3` - SQLite with FTS5 support (requires `-tags "fts5"`)
+- `mattn/go-sqlite3` - SQLite with FTS5 + math functions (CGO)
+- `davidbyttow/govips` - libvips bindings for image processing (CGO, replaces sharp)
+- `barasher/go-exiftool` - persistent exiftool process wrapper (stay_open mode)
 - `golang-jwt/jwt` - JWT authentication
 - `golang.org/x/crypto/bcrypt` - password hashing
 - `lmittmann/tint` - colored structured logging
@@ -31,14 +33,14 @@ The Go server is a complete port of the Node.js Photo-Loka backend. It compiles 
 
 | File | Purpose |
 |------|---------|
-| `startup.go` | Loads .env via godotenv. Struct: DataDir, ThumbsDir, FacesDir, DBFile, JWTSecret, MLServiceURL, IndexerMode, GeonamesUsername, LogLevel, NoColor, Port. Validates required vars (DATA_DIR, JWT_SECRET). |
+| `startup.go` | Loads .env via godotenv. Struct: DataDir, ThumbsDir, FacesDir, DBFile, JWTSecret, MLServiceURL, IndexerMode, GeonamesUsername, LogLevel, NoColor, Port. Validates required vars (DATA_DIR, JWT_SECRET, GEONAMES_USERNAME). Checks exiftool version (warns if < 12.78). |
 | `runtime.go` | Reads/writes runtime-config.json from DataDir. Thread-safe (RWMutex). Fields: StartFileWatcherAtStartup, StartScheduledIndexingAtStartup, ScanFilesForChangesAndIndexAtStartup, FilesDeletedThreshold, AuditFiles, GeonamesHourlyLimit, GeonamesDailyLimit, VideoEncoder, MaxConcurrency, PerformFaceRecognition. Update() modifies field by JSON key name using reflect and persists to file. |
 
 ### internal/database/
 
 | File | Purpose |
 |------|---------|
-| `database.go` | Opens SQLite with WAL mode, NORMAL sync, 5s busy timeout. Creates parent dir if needed. Runs migrations based on PRAGMA user_version. Embeds SQL files via `//go:embed`. |
+| `database.go` | Registers custom SQLite driver with `json_patch_agg` aggregate function. Opens SQLite with WAL mode, NORMAL sync, 5s busy timeout. Creates parent dir if needed. Runs migrations based on PRAGMA user_version. Embeds SQL files via `//go:embed`. Requires build tags: `fts5 sqlite_math_functions`. |
 | `migrations/010-initial-schema.sql` | Full schema: collections, metadata (with indexes), FTS5 tables (porter + unicode), triggers (ai/ad/au for FTS sync), exif_updates, file_audit_log, backup_status, frames, users, refresh_tokens, face_recognition, face_recognition_unmatched, face_dismissed_clusters. |
 | `migrations/011-geo-lookups.sql` | geo_lookups table (uuid, source, api_name, request_params, response_json). |
 | `migrations/012-capture-time-columns.sql` | Adds capture_date, capture_time, capture_tz_offset, capture_tz_name to metadata. |
@@ -92,8 +94,8 @@ The Go server is a complete port of the Node.js Photo-Loka backend. It compiles 
 | File | Purpose |
 |------|---------|
 | `handler.go` | Serves media files. GET /getThumbnail (uuid first 3 chars as subdirs, height bucket 100/250/500). GET /getImage (serves original from DB filename). GET /getVideo (range streaming via http.ServeContent, tries compressed variants first). GET /getFaceThumbnail (facesDir/cluster_id/uuid.jpg). |
-| `exif.go` | ExifData struct with all metadata fields. ExtractMetadata: shells out to `exiftool -json -n -G -struct`, parses grouped keys (EXIF:Make, File:FileSize, etc.), handles aspect ratio correction for orientation. CaptureDateTime struct. WriteMetadata: shells out to exiftool with -overwrite_original. |
-| `thumbnail.go` | Creates thumbnails via ffmpeg. 5 sizes (20/100/250/500 fit + 50x50 center). Output: thumbsDir/u/u/i/uuid_height_suffix.jpg. GenerateVideoThumbnail: ffmpeg -vframes 1. DeleteThumbnails. |
+| `exif.go` | ExifData struct with all metadata fields. Uses `go-exiftool` (persistent stay_open process) with `-n`, `-G0`, `-api geolocation`. Extracts grouped keys (EXIF:Make, Composite:GPSLongitude, ExifTool:GeolocationCity, etc.). Handles aspect ratio correction for orientation (images: 6,8 swap; videos: 90,270 swap). Uses Composite:SubSecDateTimeOriginal for timezone-aware capture dates. CaptureDateTime struct. WriteMetadata: shells out to exiftool with -overwrite_original. InitExiftool/CloseExiftool lifecycle. |
+| `thumbnail.go` | Creates thumbnails via govips (libvips). 5 sizes (20/100/250/500 fit + 50x50 center). Output: thumbsDir/u/u/i/uuid_height_suffix.jpg. ResizeImage for on-the-fly getImage resize (1920x1080). GenerateVideoThumbnail: ffmpeg -vframes 1. ExtractFaceThumbnails: crops face regions with padding. DeleteThumbnails. InitVips/ShutdownVips lifecycle. |
 | `video.go` | CompressVideo: dispatches to VP8 (2-pass libvpx), VP9 (2-pass libvpx-vp9), Hardware H.264/H.265/AV1 (nvenc/qsv/amf), Software H.264 (libx264). ResolveVideoPath: checks compressed variants (vp9 2-pass > vp8 2-pass > compressed > original). DeleteCompressedVideo. runFFmpeg helper. |
 
 ### internal/dashboard/
@@ -186,36 +188,51 @@ The Go server is a complete port of the Node.js Photo-Loka backend. It compiles 
 ## Startup Sequence
 
 1. Init logging (tint, timestamp based on INVOCATION_ID env)
-2. Load startup config (.env)
-3. Load runtime config (JSON)
-4. Open database (SQLite, run migrations)
-5. Create auth service
-6. Create queues: indexQueue (CPU-1), videoQueue (2), geoQueue (1)
-7. Create all services and handlers
-8. Create and start HTTP server
-9. Startup activities:
-   - Start file watchers (if configured)
-   - Schedule cron jobs (if configured)
-   - Load all frames
-10. Wait for shutdown signal
+2. Print banner
+3. Check runtime dependencies (ffmpeg, exiftool in PATH; warn if exiftool < 12.78)
+4. Load startup config (.env) — validates DATA_DIR, JWT_SECRET, GEONAMES_USERNAME
+5. Load runtime config (JSON from DATA_DIR)
+6. Initialize libvips (govips)
+7. Initialize persistent exiftool process (go-exiftool, stay_open mode)
+8. Open database (SQLite, run migrations, register json_patch_agg aggregate)
+9. Create auth service
+10. Create queues: indexQueue (CPU-1), videoQueue (2, currently unused), geoQueue (1)
+11. Apply maxConcurrency from runtime config to indexQueue
+12. Create all services and handlers
+13. Wire OnCollectionChanged callback (restart watchers/cron after create/update)
+14. Wire geo and ML services into the indexer (for post-indexing enrichments)
+15. Create and start HTTP server
+16. Startup activities:
+    - Start file watchers (if configured; else mark immediate intakes as stopped)
+    - Start scheduled indexing (if configured; else mark scheduled intakes as stopped)
+    - Scan for changes (if configured; runs in background goroutine)
+    - Load all frames
+    - Schedule frame cron jobs (reset, pause/resume)
+    - Schedule token cleanup cron (daily at 3am)
+17. Wait for shutdown signal
 
 ## Shutdown Sequence
 
 1. Receive SIGINT/SIGTERM
 2. Stop HTTP server (10s grace period)
-3. Stop scheduler (cron)
+3. Stop scheduler (all cron jobs)
 4. Stop file watchers
 5. Stop scheduled indexing
-6. Stop queues (index, video, geo)
-7. Close database
-8. Exit
+6. Save rate limiter state to disk
+7. Stop queues (index, video, geo)
+8. Close exiftool process
+9. Shutdown libvips
+10. Close database
+11. Exit
 
 ## Queue Architecture
 
-Three independent queues, each a `queue.Queue` instance:
-- **indexQueue** (CPU-1 workers): metadata extraction, thumbnails, DB insert
-- **videoQueue** (2 workers): video compression (heavy, long-running)
+Two active queues plus one dedicated geo queue:
+- **indexQueue** (CPU-1 workers): metadata extraction + thumbnails (High), face recognition (Normal), video compression (Low)
+- **videoQueue** (2 workers): currently unused — video compression moved to indexQueue Low priority so it doesn't run concurrently with indexing
 - **geoQueue** (1 worker): rate-limited API calls to geonames
+
+The indexQueue processes priorities in order: all High tasks first, then Normal, then Low. This means video compression only starts after all indexing and face recognition is complete.
 
 Future: configurable DAG pipeline (see docs/pipeline-dag-design.md).
 

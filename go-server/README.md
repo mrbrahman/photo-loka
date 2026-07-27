@@ -53,7 +53,7 @@ cd go-server
 
 Or manually:
 ```bash
-go build -tags "fts5" -o photo-loka .
+go build -tags "fts5 sqlite_math_functions" -o photo-loka .
 ```
 
 ## Configuration
@@ -165,7 +165,7 @@ systemctl --user restart photo-loka
 
 ### Option 2: Build locally, copy binary
 
-Build on your dev machine and transfer the binary. No Go or build tools needed on prod (only runtime deps: libvips, ffmpeg, exiftool).
+Build on your dev machine and transfer the binary. No Go or build tools needed on prod (only runtime deps: ffmpeg, exiftool).
 
 ```bash
 # On dev machine
