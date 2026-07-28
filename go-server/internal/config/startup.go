@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -55,7 +54,6 @@ func LoadStartupConfig() (*StartupConfig, error) {
 	mlServiceURL := os.Getenv("ML_SERVICE_URL")
 	if mlServiceURL == "" {
 		mlServiceURL = "http://localhost:8000"
-		slog.Info("ML_SERVICE_URL not set, using default", "url", mlServiceURL)
 	}
 
 	indexerMode := os.Getenv("INDEXER_MODE")

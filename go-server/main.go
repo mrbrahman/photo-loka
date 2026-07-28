@@ -142,6 +142,10 @@ func runServe() {
 		os.Exit(1)
 	}
 
+	if os.Getenv("ML_SERVICE_URL") == "" {
+		slog.Info("ML_SERVICE_URL not set, using default", "url", cfg.MLServiceURL)
+	}
+
 	// Load runtime config
 	rtCfg, err := config.LoadRuntimeConfig(cfg.DataDir)
 	if err != nil {
