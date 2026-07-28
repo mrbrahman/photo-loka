@@ -72,6 +72,7 @@ func New(cfg *config.StartupConfig, db *database.DB, authSvc *auth.Service,
 	jobsHandler *admin.JobsHandler,
 	authnHandler *authn.Handler,
 	frameIPChecker auth.FrameIPChecker,
+	webFS http.FileSystem,
 ) *Server {
 	gin.SetMode(gin.ReleaseMode)
 
@@ -81,8 +82,8 @@ func New(cfg *config.StartupConfig, db *database.DB, authSvc *auth.Service,
 	// Request logging middleware (skip thumbnail requests)
 	router.Use(requestLogger())
 
-	// Serve static files from ../web with Cache-Control: no-cache
-	router.Use(staticFileHandler())
+	// Serve static files with Cache-Control: no-cache
+	router.Use(staticFileHandler(webFS))
 
 	s := &Server{
 		Router:             router,
@@ -298,9 +299,8 @@ func requestLogger() gin.HandlerFunc {
 	}
 }
 
-// staticFileHandler serves static files from ../web directory.
-func staticFileHandler() gin.HandlerFunc {
-	fs := http.Dir("../web")
+// staticFileHandler serves static files from the provided filesystem.
+func staticFileHandler(fs http.FileSystem) gin.HandlerFunc {
 	fileServer := http.FileServer(fs)
 
 	return func(c *gin.Context) {

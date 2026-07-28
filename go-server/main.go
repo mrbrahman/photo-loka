@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
@@ -267,6 +268,20 @@ func runServe() {
 	// Authn handler
 	authnHandler := authn.NewHandler(authSvc)
 
+	// Determine web assets filesystem: use ../web on disk if present, else embedded
+	var webFS http.FileSystem
+	if _, err := os.Stat("../web"); err == nil {
+		webFS = http.Dir("../web")
+		slog.Info("serving web assets from filesystem", "path", "../web")
+	} else if webEmbedded {
+		subFS, _ := fs.Sub(embeddedWeb, "web")
+		webFS = http.FS(subFS)
+		slog.Info("serving web assets from embedded binary")
+	} else {
+		slog.Error("web assets not found: ../web directory missing and binary was not built with embedded assets")
+		os.Exit(1)
+	}
+
 	// Create and run server
 	srv := server.New(cfg, db, authSvc,
 		collectionsHandler,
@@ -284,6 +299,7 @@ func runServe() {
 		jobsHandler,
 		authnHandler,
 		frameManager,
+		webFS,
 	)
 
 	slog.Info("starting Photo-Loka", "port", cfg.Port, "data_dir", cfg.DataDir)
