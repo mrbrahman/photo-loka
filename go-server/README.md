@@ -7,14 +7,7 @@ A single-binary rewrite of the Photo-Loka Node.js server in Go.
 Install these on the machine where Photo-Loka runs:
 
 ```bash
-# Ubuntu/Debian
 sudo apt install ffmpeg
-
-# Fedora
-sudo dnf install ffmpeg
-
-# macOS
-brew install ffmpeg exiftool
 ```
 
 ### exiftool (version 12.78+ required)
@@ -44,21 +37,9 @@ exiftool -ver  # should show 13.59
 
 Note: `libvips` is linked at build time (compiled into the binary), so it is not needed on the machine where the binary runs — only where it is built.
 
-## Build
-
-```bash
-cd go-server
-./build.sh
-```
-
-Or manually:
-```bash
-go build -tags "fts5 sqlite_math_functions" -o photo-loka .
-```
-
 ## Configuration
 
-Create a `.env` file (or set environment variables):
+The server reads configuration from environment variables. A `.env` file in the working directory is loaded automatically if present, but is not required — you can set the variables any way you prefer (export, systemd `EnvironmentFile`, etc).
 
 ```bash
 # Required
@@ -69,18 +50,23 @@ GEONAMES_USERNAME=your-geonames-username
 # Optional
 ML_SERVICE_URL=http://localhost:8000    # default
 PORT=9000                               # default
-INDEXER_MODE=static                     # static or dynamic
-LOG_LEVEL=info                          # debug, info, warn, error
+LOG_LEVEL=info                          # debug, info, warn, error (not yet implemented, always info)
 NO_COLOR=                               # set to any value to disable colors
 ```
 
-Also required: `runtime-config.json` in the DATA_DIR. See `../server/runtime-config.example.json`.
+`runtime-config.json` is auto-created in DATA_DIR on first run with sensible defaults. Settings can be changed via Admin > Settings page.
 
 ## Usage
 
 ```bash
+# Show help
+./photo-loka --help
+
+# Show version
+./photo-loka --version
+
 # Start server
-./photo-loka serve
+./photo-loka
 
 # Create a user
 ./photo-loka create-user --username admin --password yourpassword --role admin
@@ -92,108 +78,7 @@ Also required: `runtime-config.json` in the DATA_DIR. See `../server/runtime-con
 ./photo-loka generate-token admin 365
 ```
 
-## Development
-
-### Additional build-time dependencies
-
-These are needed only for compiling the binary (not at runtime):
-
-```bash
-# Ubuntu/Debian
-sudo apt install build-essential pkg-config libvips-dev
-
-# Fedora
-sudo dnf install gcc pkg-config vips-devel
-
-# macOS (already included with Xcode CLI tools + brew install above)
-brew install pkg-config
-```
-
-| Dependency | Why |
-|-----------|-----|
-| `build-essential` (gcc) | C compiler needed to compile SQLite (CGO) and govips C bindings |
-| `pkg-config` | Used by govips at build time to locate libvips headers and libraries |
-| `libvips-dev` | Header files for libvips (the runtime `libvips` package doesn't include headers) |
-
-### Setup
-
-```bash
-# Install Go 1.26+
-curl -sL https://go.dev/dl/go1.26.0.linux-amd64.tar.gz | sudo tar -C /usr/local -xz
-echo 'export PATH=/usr/local/go/bin:$PATH' >> ~/.bashrc
-source ~/.bashrc
-go version  # verify
-
-# Install build-time system dependencies (see above)
-sudo apt install build-essential pkg-config libvips-dev
-
-# Download Go dependencies
-cd go-server
-go mod tidy
-
-# Build
-./build.sh
-
-# Run
-DATA_DIR=/path/to/data JWT_SECRET=secret GEONAMES_USERNAME=user ./photo-loka serve
-```
-
-### Cross-platform builds
-
-Due to CGO (SQLite + govips require C compilation), the binary is platform-specific. You must build on the target OS — cross-compilation from Linux to Mac (or vice versa) is not straightforward.
-
-| Platform | How to build |
-|----------|-------------|
-| Linux x86_64 | Build on any Linux x86_64 machine (dev or prod) |
-| Linux ARM64 | Build on an ARM64 machine (Raspberry Pi, ARM server) |
-| macOS | Build on a Mac: `brew install go pkg-config libvips && ./build.sh` |
-
-If dev and prod are the same architecture (e.g. both Linux x86_64), the binary built on dev runs directly on prod without rebuilding.
-
-## Deployment
-
-### Option 1: Build on prod (simplest)
-
-If Go and build deps are installed on your prod box:
-
-```bash
-cd ~/photo-loka/go-server
-git pull
-./build.sh
-systemctl --user restart photo-loka
-```
-
-### Option 2: Build locally, copy binary
-
-Build on your dev machine and transfer the binary. No Go or build tools needed on prod (only runtime deps: ffmpeg, exiftool).
-
-```bash
-# On dev machine
-cd go-server
-./build.sh
-scp photo-loka prod-server:~/photo-loka/
-
-# On prod
-systemctl --user restart photo-loka
-```
-
-### Option 3: GitHub Releases
-
-Attach the binary to a GitHub release, then pull on prod with curl:
-
-```bash
-# On dev: create a release
-git tag v0.1.0
-git push origin v0.1.0
-gh release create v0.1.0 ./go-server/photo-loka --title "v0.1.0" --notes "Release notes"
-
-# On prod: download and restart
-curl -L -o photo-loka https://github.com/mrbrahman/photo-loka/releases/download/v0.1.0/photo-loka
-chmod +x photo-loka
-systemctl --user restart photo-loka
-```
-
-### systemd service file
+## Running as a systemd service
 
 Place in `~/.config/systemd/user/photo-loka.service`:
 
@@ -216,4 +101,156 @@ WantedBy=default.target
 systemctl --user daemon-reload
 systemctl --user enable photo-loka
 systemctl --user start photo-loka
+
+# Enable lingering so service runs without an active login session
+loginctl enable-linger $USER
 ```
+
+### Useful aliases
+
+Add to `~/.bashrc`:
+
+```bash
+alias start='systemctl --user start photo-loka.service'
+alias stop='systemctl --user stop photo-loka.service'
+alias rs='systemctl --user restart photo-loka.service'
+alias log='journalctl --user -u photo-loka.service --all --no-hostname'
+alias logs='journalctl --user -f -u photo-loka.service --all --no-hostname --lines 50'
+alias lt='journalctl --user -u photo-loka.service --all --no-hostname --since today'
+```
+
+## Development
+
+### Build-time dependencies
+
+These are needed only for compiling the binary (not at runtime):
+
+```bash
+sudo apt install build-essential pkg-config libvips-dev
+```
+
+| Dependency | Why |
+|-----------|-----|
+| `build-essential` (gcc) | C compiler for SQLite (CGO) and govips C bindings |
+| `pkg-config` | Used by govips at build time to locate libvips headers |
+| `libvips-dev` | Header files for libvips |
+
+### Setup
+
+```bash
+# Install Go (preferred method: https://go.dev/doc/install)
+curl -sL https://go.dev/dl/go1.23.0.linux-amd64.tar.gz | sudo tar -C /usr/local -xz
+echo 'export PATH=/usr/local/go/bin:$PATH' >> ~/.bashrc
+source ~/.bashrc
+
+# Install build-time system dependencies
+sudo apt install build-essential pkg-config libvips-dev
+
+# Download Go dependencies
+cd go-server
+go mod tidy
+
+# Build
+./build.sh
+
+# Run
+./photo-loka
+```
+
+### Cross-platform note
+
+Due to CGO (SQLite + govips require C compilation), the binary is platform-specific. If dev and prod are the same architecture (e.g. both Linux x86_64), the binary built on dev runs directly on prod without rebuilding.
+
+## Deployment
+
+### Option 1: Build on prod (simplest)
+
+If Go and build deps are installed on your prod box:
+
+```bash
+cd ~/photo-loka/go-server
+git pull
+./build.sh
+systemctl --user restart photo-loka
+```
+
+### Option 2: Build locally, copy binary
+
+Build on your dev machine and transfer the binary. No Go or build tools needed on prod (only runtime deps: ffmpeg, exiftool).
+
+```bash
+# On dev machine: tag so build.sh embeds web assets
+git tag v1.0.0
+cd go-server
+./build.sh
+scp photo-loka prod-server:~/photo-loka/
+# Optionally push the tag to keep remote in sync: git push --tags
+
+# On prod
+systemctl --user restart photo-loka
+```
+
+### Option 3: GitHub Releases (manual upload)
+
+Build locally, tag a release, and upload the binary to GitHub. Others can download with a single curl command.
+
+```bash
+# On dev: tag, build, and upload
+git describe --tags --abbrev=0   # check last tag (e.g. v0.1.0)
+git tag v1.0.0
+git push --tags                  # or: git push origin v1.0.0 (to push only this tag)
+cd go-server
+bash build.sh
+gh release create v1.0.0 ./photo-loka --title "v1.0.0" --notes "Release notes"
+```
+
+Note: `build.sh` detects the exact tag and automatically embeds web assets into the binary.
+
+For the person downloading:
+```bash
+curl -L -o photo-loka https://github.com/mrbrahman/photo-loka/releases/download/v1.0.0/photo-loka
+chmod +x photo-loka
+./photo-loka --help
+```
+
+Refer to [System Dependencies](#system-dependencies) and [Configuration](#configuration) sections above for setup.
+
+### Option 4: GitHub Actions (automated build on tag push)
+
+Automate Option 3 so that pushing a tag triggers a build on GitHub's CI and publishes the binary automatically.
+
+Create `.github/workflows/release.yml`:
+```yaml
+name: Build & Release
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      - name: Install system deps
+        run: sudo apt-get install -y libvips-dev libsqlite3-dev
+      - name: Build
+        run: bash build.sh
+        working-directory: go-server
+      - name: Upload release artifact
+        uses: softprops/action-gh-release@v2
+        with:
+          files: go-server/photo-loka
+```
+
+Then to release:
+```bash
+git describe --tags --abbrev=0   # check last tag (e.g. v0.1.0)
+git tag v1.0.0
+git push --tags                  # or: git push origin v1.0.0 (to push only this tag)
+# GitHub Actions builds and attaches binary to the release page automatically
+```
+
+The download experience for others is identical to Option 3.
