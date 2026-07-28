@@ -117,10 +117,6 @@ func (h *Handler) startIntakeFileIndexing(c *gin.Context) {
 		return
 	}
 
-	if body.StaleDays <= 0 {
-		body.StaleDays = 1
-	}
-
 	go func() {
 		var err error
 		if body.CollectionID != nil && body.Dir != nil {

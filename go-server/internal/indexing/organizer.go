@@ -92,9 +92,9 @@ func (o *Organizer) placeIntake(collection *collections.Collection, filename str
 	// Build token values from capture date
 	values := map[string]string{
 		"yyyy": strconv.Itoa(captureDateTime.Year),
-		"yy":   strconv.Itoa(captureDateTime.Year % 100),
-		"mm":   strconv.Itoa(captureDateTime.Month),
-		"dd":   strconv.Itoa(captureDateTime.Day),
+		"yy":   fmt.Sprintf("%02d", captureDateTime.Year%100),
+		"mm":   fmt.Sprintf("%02d", captureDateTime.Month),
+		"dd":   fmt.Sprintf("%02d", captureDateTime.Day),
 	}
 
 	// Use placeholder album text if configured

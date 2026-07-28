@@ -73,9 +73,6 @@ func (idx *Indexer) StartIntakeForCollection(collectionID int64, staleDays int) 
 				}
 			}
 		}
-		if days <= 0 {
-			days = 1
-		}
 
 		if err := idx.enqueueIntakeFiles(collection, path, days); err != nil {
 			idx.logger.Error("intake indexing failed for path", "path", path, "error", err)

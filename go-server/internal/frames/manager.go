@@ -405,7 +405,7 @@ func (m *Manager) ReloadItemsForFrame(frame *Frame) error {
 	var items []interface{}
 	if flatResults, ok := results.([]search.FlatResult); ok {
 		for _, r := range flatResults {
-			items = append(items, r.Item)
+			items = append(items, r)
 		}
 	}
 
@@ -416,7 +416,7 @@ func (m *Manager) ReloadItemsForFrame(frame *Frame) error {
 	m.mu.Lock()
 	if state, ok := m.frames[frame.FrameIPAddr]; ok {
 		state.Items = items
-		state.CurrIdx = 0
+		state.CurrIdx = -1
 	}
 	m.mu.Unlock()
 

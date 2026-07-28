@@ -202,7 +202,7 @@ func (h *JobsHandler) getJobs(c *gin.Context) {
 				}
 			}
 			frameJobs = append(frameJobs, frameJob)
-		} else if !strings.HasPrefix(j.Name, "intake_") {
+		} else if !strings.HasPrefix(j.Name, "intake_") && !strings.HasPrefix(j.Name, "cron-") {
 			systemJobs = append(systemJobs, cronJobInfo{
 				Name:    j.Name,
 				Pattern: j.Pattern,

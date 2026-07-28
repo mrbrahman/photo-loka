@@ -76,11 +76,8 @@ func (si *ScheduledIndexing) ScheduleForCollection(col *collections.Collection) 
 		}
 
 		staleDays := cfg.Config.StaleDays
-		if staleDays <= 0 {
-			staleDays = 1
-		}
 
-		jobName := fmt.Sprintf("intake_%d_%d", col.CollectionID, i)
+		jobName := fmt.Sprintf("cron-c%d-i%d", col.CollectionID, i)
 		collectionID := col.CollectionID
 		intakePath := cfg.Path
 		days := staleDays
