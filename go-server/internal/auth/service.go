@@ -63,7 +63,12 @@ func (s *Service) CreateUser(username, password, role string) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("hashing password: %w", err)
 	}
-	return s.db.CreateUser(username, string(hash), role)
+	id, err := s.db.CreateUser(username, string(hash), role)
+	if err != nil {
+		return 0, err
+	}
+	s.logger.Info("user created", "username", username, "role", role)
+	return id, nil
 }
 
 // Login authenticates a user and returns a token pair.
@@ -115,6 +120,8 @@ func (s *Service) Login(username, password string) (*TokenPair, error) {
 	if err := s.db.SaveRefreshToken(user.UserID, tokenHash, expiresAt); err != nil {
 		return nil, fmt.Errorf("saving refresh token: %w", err)
 	}
+
+	s.logger.Info("user logged in", "username", username)
 
 	return &TokenPair{
 		AccessToken:  accessToken,
@@ -202,7 +209,11 @@ func (s *Service) VerifyAccessToken(tokenStr string) (*Claims, error) {
 
 // UnlockUser unlocks a user account by username.
 func (s *Service) UnlockUser(username string) error {
-	return s.db.UnlockUser(username)
+	if err := s.db.UnlockUser(username); err != nil {
+		return err
+	}
+	s.logger.Info("user unlocked", "username", username)
+	return nil
 }
 
 // GenerateAPIToken creates a long-lived JWT for API access.
@@ -226,7 +237,12 @@ func (s *Service) GenerateAPIToken(username string, expiresInDays int) (string, 
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(s.jwtSecret)
+	signed, err := token.SignedString(s.jwtSecret)
+	if err != nil {
+		return "", err
+	}
+	s.logger.Info("API token generated", "username", username, "expires_in_days", expiresInDays)
+	return signed, nil
 }
 
 // GetAllUsers returns all users.

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/davidbyttow/govips/v2/vips"
 )
@@ -40,6 +41,8 @@ func ShutdownVips() {
 // using libvips (via govips). Output files are stored in
 // thumbsDir/u[0]/u[1]/u[2]/uuid_<height>_<suffix>.jpg
 func CreateImageThumbnails(uuid, filePath, thumbsDir string) error {
+	start := time.Now()
+
 	dir := thumbDir(uuid, thumbsDir)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("failed to create thumbnail directory %s: %w", dir, err)
@@ -113,7 +116,7 @@ func CreateImageThumbnails(uuid, filePath, thumbsDir string) error {
 		}
 	}
 
-	slog.Debug("thumbnails created", "uuid", uuid, "count", len(thumbSizes))
+	slog.Info("thumbnails created", "uuid", uuid, "count", len(thumbSizes), "duration", time.Since(start).String())
 	return nil
 }
 
@@ -155,6 +158,8 @@ func ResizeImage(filePath string, maxWidth, maxHeight int) ([]byte, error) {
 // Returns the path to the generated frame image. After this, call
 // CreateImageThumbnails with the frame image to generate all sizes.
 func GenerateVideoThumbnail(uuid, videoFilePath, thumbsDir string) (string, error) {
+	start := time.Now()
+
 	dir := thumbDir(uuid, thumbsDir)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "", fmt.Errorf("failed to create thumbnail directory %s: %w", dir, err)
@@ -174,7 +179,7 @@ func GenerateVideoThumbnail(uuid, videoFilePath, thumbsDir string) (string, erro
 		return "", fmt.Errorf("failed to extract video thumbnail for %s: %w", uuid, err)
 	}
 
-	slog.Debug("video thumbnail generated", "uuid", uuid, "path", outputPath)
+	slog.Info("video thumbnail generated", "uuid", uuid, "duration", time.Since(start).String())
 	return outputPath, nil
 }
 

@@ -50,15 +50,27 @@ func (f *Finalizer) FinalizeGeo(uuid string, gpsLat, gpsLng *float64, countryCod
 
 	// No GPS coordinates - nothing we can do
 	if gpsLat == nil || gpsLng == nil {
+		f.logger.Debug("no GPS coordinates, skipping", "uuid", uuid)
 		return f.db.UpdateGeoStatus(uuid, "NO_GPS")
 	}
 
 	// Route based on country
+	var err error
+	var resolveMethod string
 	if countryCode != nil && *countryCode == "US" {
-		return f.finalizeUS(uuid, *gpsLat, *gpsLng)
+		resolveMethod = "US"
+		err = f.finalizeUS(uuid, *gpsLat, *gpsLng)
+	} else {
+		resolveMethod = "non-US"
+		err = f.finalizeNonUS(uuid)
 	}
 
-	return f.finalizeNonUS(uuid)
+	if err != nil {
+		return err
+	}
+
+	f.logger.Info("geo finalized", "uuid", uuid, "method", resolveMethod)
+	return nil
 }
 
 // finalizeNonUS reads exiftool geo data from DB and builds address fields.

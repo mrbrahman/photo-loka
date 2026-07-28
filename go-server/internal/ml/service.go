@@ -142,12 +142,20 @@ func (s *Service) SearchPersonNames(query string) ([]string, error) {
 
 // DismissCluster marks a face cluster as dismissed.
 func (s *Service) DismissCluster(clusterID string) error {
-	return s.db.DismissCluster(clusterID)
+	if err := s.db.DismissCluster(clusterID); err != nil {
+		return err
+	}
+	s.logger.Info("dismissed cluster", "cluster_id", clusterID)
+	return nil
 }
 
 // UndismissCluster restores a dismissed face cluster.
 func (s *Service) UndismissCluster(clusterID string) error {
-	return s.db.UndismissCluster(clusterID)
+	if err := s.db.UndismissCluster(clusterID); err != nil {
+		return err
+	}
+	s.logger.Info("undismissed cluster", "cluster_id", clusterID)
+	return nil
 }
 
 // CleanupMLData removes all ML data for a uuid from both the DB and external ML service.

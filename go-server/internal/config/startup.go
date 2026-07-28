@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -29,19 +30,32 @@ func LoadStartupConfig() (*StartupConfig, error) {
 	// Load .env file; ignore error if file not found
 	_ = godotenv.Load()
 
+	// Validate all required env vars upfront
+	var missing []string
+
 	dataDir := os.Getenv("DATA_DIR")
 	if dataDir == "" {
-		return nil, fmt.Errorf("DATA_DIR environment variable is required")
+		missing = append(missing, "DATA_DIR")
 	}
 
 	jwtSecret := os.Getenv("JWT_SECRET")
 	if jwtSecret == "" {
-		return nil, fmt.Errorf("JWT_SECRET environment variable is required")
+		missing = append(missing, "JWT_SECRET")
+	}
+
+	geonamesUsername := os.Getenv("GEONAMES_USERNAME")
+	if geonamesUsername == "" {
+		missing = append(missing, "GEONAMES_USERNAME")
+	}
+
+	if len(missing) > 0 {
+		return nil, &MissingEnvError{Vars: missing}
 	}
 
 	mlServiceURL := os.Getenv("ML_SERVICE_URL")
 	if mlServiceURL == "" {
 		mlServiceURL = "http://localhost:8000"
+		slog.Info("ML_SERVICE_URL not set, using default", "url", mlServiceURL)
 	}
 
 	indexerMode := os.Getenv("INDEXER_MODE")
@@ -65,11 +79,6 @@ func LoadStartupConfig() (*StartupConfig, error) {
 		port = p
 	}
 
-	geonamesUsername := os.Getenv("GEONAMES_USERNAME")
-	if geonamesUsername == "" {
-		return nil, fmt.Errorf("GEONAMES_USERNAME environment variable is required")
-	}
-
 	cfg := &StartupConfig{
 		DataDir:          dataDir,
 		ThumbsDir:        filepath.Join(dataDir, "thumbnails"),
@@ -85,4 +94,13 @@ func LoadStartupConfig() (*StartupConfig, error) {
 	}
 
 	return cfg, nil
+}
+
+// MissingEnvError holds the list of missing required environment variables.
+type MissingEnvError struct {
+	Vars []string
+}
+
+func (e *MissingEnvError) Error() string {
+	return fmt.Sprintf("missing required environment variables: %v", e.Vars)
 }

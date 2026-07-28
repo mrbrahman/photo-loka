@@ -259,6 +259,7 @@ func (m *Manager) PauseFrame(frameID int64, resumeAtSchedule *bool) error {
 	m.mu.Unlock()
 
 	m.notifySSE(frame.FrameIPAddr, "pause")
+	m.logger.Info("frame paused manually", "frame_id", frameID, "ip", frame.FrameIPAddr, "resume_at_schedule", resumeAtSchedule)
 	return nil
 }
 
@@ -283,6 +284,7 @@ func (m *Manager) ResumeFrame(frameID int64) error {
 	m.mu.Unlock()
 
 	m.notifySSE(frame.FrameIPAddr, "resume")
+	m.logger.Info("frame resumed", "frame_id", frameID, "ip", frame.FrameIPAddr)
 	return nil
 }
 
@@ -420,7 +422,7 @@ func (m *Manager) ReloadItemsForFrame(frame *Frame) error {
 	}
 	m.mu.Unlock()
 
-	m.logger.Debug("items reloaded for frame",
+	m.logger.Info("items loaded for frame",
 		"frame_id", frame.FrameID,
 		"ip", frame.FrameIPAddr,
 		"count", len(items),
@@ -437,6 +439,7 @@ func (m *Manager) RegisterSSEClient(ip string) chan string {
 
 	ch := make(chan string, 10)
 	m.sseClients[ip] = ch
+	m.logger.Info("SSE client connected", "ip", ip)
 	return ch
 }
 
@@ -449,6 +452,7 @@ func (m *Manager) UnregisterSSEClient(ip string) {
 		close(ch)
 		delete(m.sseClients, ip)
 	}
+	m.logger.Info("SSE client disconnected", "ip", ip)
 }
 
 // AllFrameIPs returns the set of all registered frame IPs (for auth bypass).
@@ -471,9 +475,12 @@ func (m *Manager) notifySSE(ip, eventType string) {
 	if ch, ok := m.sseClients[ip]; ok {
 		select {
 		case ch <- eventType:
+			m.logger.Info("sent SSE event to frame", "ip", ip, "event", eventType)
 		default:
 			// Channel full, skip notification
 		}
+	} else {
+		m.logger.Warn("no SSE client found for frame", "ip", ip, "event", eventType)
 	}
 }
 
@@ -497,6 +504,8 @@ func (m *Manager) scheduleJobsForFrame(frame *Frame) {
 				"pattern", *frame.ResetSchedule,
 				"error", err,
 			)
+		} else {
+			m.logger.Info("scheduled frame reset job", "frame_id", frame.FrameID, "schedule", *frame.ResetSchedule)
 		}
 	}
 
@@ -525,6 +534,8 @@ func (m *Manager) scheduleJobsForFrame(frame *Frame) {
 						"frame_id", frame.FrameID,
 						"error", err,
 					)
+				} else {
+					m.logger.Info("scheduled frame pause job", "frame_id", frame.FrameID, "schedule", pausePattern)
 				}
 
 				// Schedule resume job: at end time every day
@@ -540,6 +551,8 @@ func (m *Manager) scheduleJobsForFrame(frame *Frame) {
 						"frame_id", frame.FrameID,
 						"error", err,
 					)
+				} else {
+					m.logger.Info("scheduled frame resume job", "frame_id", frame.FrameID, "schedule", resumePattern)
 				}
 			}
 		}

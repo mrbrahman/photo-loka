@@ -5,6 +5,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -118,6 +119,8 @@ func (d *DB) runMigrations() error {
 
 	for _, m := range migrations {
 		if currentVersion < m.version {
+			slog.Info("running migration", "file", m.filename, "version", m.version)
+
 			sqlBytes, err := migrationsFS.ReadFile(m.filename)
 			if err != nil {
 				return fmt.Errorf("reading migration %s: %w", m.filename, err)

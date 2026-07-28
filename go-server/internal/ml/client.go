@@ -31,6 +31,8 @@ func NewClient(baseURL string) *Client {
 
 // RecognizeFaces sends an image to the ML service for face detection and recognition.
 func (c *Client) RecognizeFaces(uuid, imagePath string, orientation int, xmpRegions interface{}) (map[string]interface{}, error) {
+	c.logger.Info("calling face recognition", "uuid", uuid)
+
 	body := map[string]interface{}{
 		"image_id":    uuid,
 		"image_path":  imagePath,
@@ -72,6 +74,8 @@ func (c *Client) GetFaceSuggestions(clusterID string) (map[string]interface{}, e
 
 // SearchByText performs semantic search by text query.
 func (c *Client) SearchByText(query string) (map[string]interface{}, error) {
+	c.logger.Info("calling text search", "query", query)
+
 	body := map[string]interface{}{
 		"query": query,
 		"limit": 1000,

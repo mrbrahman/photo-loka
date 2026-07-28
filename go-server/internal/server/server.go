@@ -1,8 +1,10 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -209,6 +211,9 @@ func (s *Server) Run() error {
 	return nil
 }
 
+// maxBodyLogSize is the maximum number of bytes to capture from the request body for logging.
+const maxBodyLogSize = 2048
+
 // requestLogger is a Gin middleware that logs requests, skipping thumbnail/static requests.
 func requestLogger() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -229,6 +234,28 @@ func requestLogger() gin.HandlerFunc {
 			path == "/" {
 			c.Next()
 			return
+		}
+
+		// Capture request body for methods that typically have one.
+		// NOTE: In Go, http.Request.Body is a stream (io.ReadCloser) - once read, it's
+		// consumed. We must read the full body into memory and restore it for downstream
+		// handlers. This means every POST/PUT/PATCH body is fully buffered in memory by
+		// this middleware (unlike the default behavior where it can be streamed/read
+		// incrementally). If this becomes a concern (large payloads, memory pressure),
+		// this body-logging block can be removed without affecting functionality.
+		var bodyStr string
+		if c.Request.Body != nil && (c.Request.Method == "POST" || c.Request.Method == "PUT" || c.Request.Method == "PATCH") {
+			bodyBytes, _ := io.ReadAll(c.Request.Body)
+			c.Request.Body.Close()
+			// Restore the full body so downstream handlers can read it
+			c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+			if len(bodyBytes) > 0 {
+				if len(bodyBytes) > maxBodyLogSize {
+					bodyStr = string(bodyBytes[:maxBodyLogSize]) + "...(truncated)"
+				} else {
+					bodyStr = string(bodyBytes)
+				}
+			}
 		}
 
 		start := time.Now()
@@ -258,6 +285,9 @@ func requestLogger() gin.HandlerFunc {
 		)
 		if c.Request.URL.RawQuery != "" {
 			attrs = append(attrs, "query", c.Request.URL.RawQuery)
+		}
+		if bodyStr != "" {
+			attrs = append(attrs, "body", bodyStr)
 		}
 		attrs = append(attrs,
 			"status", status,

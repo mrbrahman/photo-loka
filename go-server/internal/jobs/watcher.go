@@ -231,7 +231,7 @@ func (fw *FileWatcher) enqueueFile(collectionID int64, filePath string) {
 		},
 	})
 
-	fw.logger.Debug("file enqueued from watcher",
+	fw.logger.Info("watcher: file added",
 		"collection_id", collectionID,
 		"file", filePath,
 	)

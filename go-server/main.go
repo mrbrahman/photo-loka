@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -44,11 +45,25 @@ const banner = `
                                            Go Server
 `
 
+// version is set at build time via -ldflags "-X main.version=..."
+var version = "dev"
+
 func main() {
 	// Determine subcommand
 	subcommand := "serve"
-	if len(os.Args) > 1 && os.Args[1][0] != '-' {
-		subcommand = os.Args[1]
+	if len(os.Args) > 1 {
+		arg := os.Args[1]
+		if arg == "-h" || arg == "--help" || arg == "help" {
+			printHelp()
+			os.Exit(0)
+		}
+		if arg == "-v" || arg == "--version" {
+			fmt.Printf("photo-loka %s\n", version)
+			os.Exit(0)
+		}
+		if arg[0] != '-' {
+			subcommand = arg
+		}
 	}
 
 	switch subcommand {
@@ -62,9 +77,51 @@ func main() {
 		runGenerateToken()
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", subcommand)
-		fmt.Fprintf(os.Stderr, "Usage: photo-loka [serve|create-user|unlock-user|generate-token]\n")
+		fmt.Fprintf(os.Stderr, "Run 'photo-loka --help' for usage.\n")
 		os.Exit(1)
 	}
+}
+
+func printHelp() {
+	help := `Photo-Loka Go Server %s
+
+Usage: photo-loka [command]
+
+Commands:
+  serve            Start the web server (default if no command given)
+  create-user      Create a new user account
+  unlock-user      Unlock a locked user account
+  generate-token   Generate a long-lived API token
+  help             Show this help message
+
+Subcommand usage:
+  photo-loka create-user --username <name> --password <pass> --role admin|user
+  photo-loka unlock-user --username <name>
+  photo-loka generate-token <username> [days]
+
+Environment variables (required):
+  DATA_DIR             Absolute path to the data directory (stores DB, thumbnails, faces)
+  JWT_SECRET           Secret key for signing JWT tokens
+  GEONAMES_USERNAME    Username for geonames.org API (reverse geocoding)
+
+Environment variables (optional):
+  PORT                 HTTP port (default: 9000)
+  ML_SERVICE_URL       ML service base URL (default: http://localhost:8000)
+  INDEXER_MODE         Indexer concurrency mode: 'static' or 'dynamic' (default: static)
+  LOG_LEVEL            Log level: debug, info, warn, error (default: info)
+  NO_COLOR             Disable colored log output (set to any value)
+
+Getting started:
+  1. Create a .env file (or export the variables above)
+  2. Start the server:       ./photo-loka
+  3. Create an admin user:   ./photo-loka create-user --username admin --password <pass> --role admin
+  4. Visit http://localhost:9000
+
+External dependencies:
+  ffmpeg       Required for video thumbnail extraction and compression
+  exiftool     Required for metadata read/write (v12.78+ recommended for geolocation)
+`
+	fmt.Printf(help, version)
 }
 
 func runServe() {
@@ -72,9 +129,10 @@ func runServe() {
 	initLogging()
 
 	fmt.Print(banner)
+	fmt.Printf("                                           %s\n\n", version)
 
-	// Check runtime dependencies
-	checkDependencies()
+	// Preflight: validate config and dependencies together
+	preflightCheck()
 
 	// Load startup config
 	cfg, err := config.LoadStartupConfig()
@@ -89,6 +147,9 @@ func runServe() {
 		slog.Error("failed to load runtime config", "error", err)
 		os.Exit(1)
 	}
+
+	// Check if ML service is reachable
+	checkMLService(cfg.MLServiceURL)
 
 	// Initialize libvips for image processing
 	media.InitVips()
@@ -408,6 +469,22 @@ func closeDB(_ *auth.Service) {
 	}
 }
 
+// checkMLService pings the ML service health endpoint and warns if it's not reachable.
+func checkMLService(mlServiceURL string) {
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get(mlServiceURL + "/health")
+	if err != nil {
+		slog.Warn("ML service is not reachable; face recognition and AI search will not work", "url", mlServiceURL)
+		return
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		slog.Warn("ML service returned unhealthy status", "url", mlServiceURL, "status", resp.StatusCode)
+		return
+	}
+	slog.Info("ML service is healthy", "url", mlServiceURL)
+}
+
 // initLogging sets up structured logging with tint handler.
 func initLogging() {
 	// If running under systemd (INVOCATION_ID set), skip timestamps
@@ -427,31 +504,50 @@ func initLogging() {
 	slog.SetDefault(slog.New(handler))
 }
 
-// checkDependencies verifies that required external tools are installed.
-func checkDependencies() {
-	deps := []struct {
-		name    string
-		checkCmd string
-		help    string
-	}{
-		{"ffmpeg", "ffmpeg", "apt install ffmpeg / dnf install ffmpeg / brew install ffmpeg"},
-		{"exiftool", "exiftool", "apt install exiftool / dnf install perl-Image-ExifTool / brew install exiftool"},
-	}
+// preflightCheck validates all prerequisites (env vars + external tools) in one pass.
+// Reports all issues together so the user can fix everything at once.
+func preflightCheck() {
+	var problems []string
 
-	var missing []string
-	for _, dep := range deps {
-		_, err := exec.LookPath(dep.checkCmd)
-		if err != nil {
-			missing = append(missing, fmt.Sprintf("  - %s (install: %s)", dep.name, dep.help))
+	// Check required environment variables
+	_, err := config.LoadStartupConfig()
+	if err != nil {
+		if envErr, ok := err.(*config.MissingEnvError); ok {
+			for _, v := range envErr.Vars {
+				problems = append(problems, fmt.Sprintf("  - Missing environment variable: %s", v))
+			}
+		} else {
+			problems = append(problems, fmt.Sprintf("  - Config error: %s", err))
 		}
 	}
 
-	if len(missing) > 0 {
-		slog.Error("missing required dependencies:\n" + strings.Join(missing, "\n"))
+	// Check required external tools
+	deps := []struct {
+		name     string
+		checkCmd string
+		help     string
+	}{
+		{"ffmpeg", "ffmpeg", "apt install ffmpeg / dnf install ffmpeg / brew install ffmpeg"},
+		{"exiftool", "exiftool", "https://exiftool.org"},
+	}
+
+	for _, dep := range deps {
+		_, err := exec.LookPath(dep.checkCmd)
+		if err != nil {
+			problems = append(problems, fmt.Sprintf("  - Missing external tool: %s (install from %s)", dep.name, dep.help))
+		}
+	}
+
+	if len(problems) > 0 {
+		fmt.Fprintf(os.Stderr, "\nCannot start server. The following issues were found:\n\n")
+		for _, p := range problems {
+			fmt.Fprintf(os.Stderr, "%s\n", p)
+		}
+		fmt.Fprintf(os.Stderr, "\nRun './photo-loka --help' for full configuration details.\n\n")
 		os.Exit(1)
 	}
 
-	// Check exiftool version (geolocation requires 12.78+)
+	// Exiftool version check (non-fatal, just a warning)
 	out, err := exec.Command("exiftool", "-ver").Output()
 	if err == nil {
 		version := strings.TrimSpace(string(out))

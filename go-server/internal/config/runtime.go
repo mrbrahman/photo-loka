@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -36,6 +37,8 @@ func LoadRuntimeConfig(dataDir string) (*RuntimeConfig, error) {
 	if err != nil {
 		if os.IsNotExist(err) {
 			// File missing - populate with sensible defaults and create it
+			slog.Warn("runtime-config.json not found in DATA_DIR, creating with defaults. Settings can be changed via Admin > Settings page", "path", configPath)
+
 			rc.StartFileWatcherAtStartup = true
 			rc.StartScheduledIndexingAtStartup = true
 			rc.ScanFilesForChangesAndIndexAtStartup = false
@@ -69,6 +72,11 @@ func (rc *RuntimeConfig) Save(dataDir string) error {
 	rc.mu.RUnlock()
 	if err != nil {
 		return fmt.Errorf("marshaling runtime config: %w", err)
+	}
+
+	// Ensure the data directory exists
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		return fmt.Errorf("creating data directory: %w", err)
 	}
 
 	configPath := filepath.Join(dataDir, "runtime-config.json")
