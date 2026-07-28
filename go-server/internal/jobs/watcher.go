@@ -72,6 +72,9 @@ func (fw *FileWatcher) StartForCollection(col *collections.Collection) {
 		if cfg.Method != "immediate" {
 			continue
 		}
+		if cfg.Status == "stopped" {
+			continue
+		}
 
 		watcher, err := fsnotify.NewWatcher()
 		if err != nil {
@@ -238,5 +241,6 @@ func (fw *FileWatcher) enqueueFile(collectionID int64, filePath string) {
 type intakeConfig struct {
 	Path   string          `json:"path"`
 	Method string          `json:"method"`
+	Status string          `json:"status"`
 	Config json.RawMessage `json:"config"`
 }

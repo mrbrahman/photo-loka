@@ -65,6 +65,9 @@ func (si *ScheduledIndexing) ScheduleForCollection(col *collections.Collection) 
 		if cfg.Method != "scheduled" {
 			continue
 		}
+		if cfg.Status == "stopped" {
+			continue
+		}
 
 		schedule := cfg.Config.Schedule
 		if schedule == "" {
@@ -169,6 +172,7 @@ func (si *ScheduledIndexing) ListJobs() map[string]int64 {
 type scheduledIntakeConfig struct {
 	Path   string               `json:"path"`
 	Method string               `json:"method"`
+	Status string               `json:"status"`
 	Config scheduledConfigInner `json:"config"`
 }
 
