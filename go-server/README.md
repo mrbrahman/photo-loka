@@ -40,7 +40,7 @@ sudo apt install ffmpeg
 
 ## Configuration
 
-The server reads configuration from environment variables. A `.env` file in the working directory is loaded automatically if present, but is not required ΓÇö you can set the variables any way you prefer (export, systemd `EnvironmentFile`, etc).
+The server reads configuration from environment variables. A `.env` file in the working directory is loaded automatically if present, but is not required - you can set the variables any way you prefer (export, systemd `EnvironmentFile`, etc).
 
 ```bash
 # Required
