@@ -4,11 +4,13 @@ A single-binary rewrite of the Photo-Loka Node.js server in Go.
 
 ## System Dependencies
 
+| Dependency | Purpose |
+|-----------|---------|
+| `exiftool` (12.78+) | EXIF metadata extraction, writing, GPS timezone resolution, and geolocation |
+| `ffmpeg` | Video thumbnail extraction (frame grab) and video compression |
+
 Install these on the machine where Photo-Loka runs:
 
-```bash
-sudo apt install ffmpeg
-```
 
 ### exiftool (version 12.78+ required)
 
@@ -30,16 +32,15 @@ export PATH=/path/to/Image-ExifTool-13.59:$PATH
 exiftool -ver  # should show 13.59
 ```
 
-| Dependency | Purpose |
-|-----------|---------|
-| `ffmpeg` | Video thumbnail extraction (frame grab) and video compression |
-| `exiftool` (12.78+) | EXIF metadata extraction, writing, GPS timezone resolution, and geolocation |
+### ffmpeg
 
-Note: `libvips` is linked at build time (compiled into the binary), so it is not needed on the machine where the binary runs — only where it is built.
+```bash
+sudo apt install ffmpeg
+```
 
 ## Configuration
 
-The server reads configuration from environment variables. A `.env` file in the working directory is loaded automatically if present, but is not required — you can set the variables any way you prefer (export, systemd `EnvironmentFile`, etc).
+The server reads configuration from environment variables. A `.env` file in the working directory is loaded automatically if present, but is not required ΓÇö you can set the variables any way you prefer (export, systemd `EnvironmentFile`, etc).
 
 ```bash
 # Required
@@ -134,6 +135,8 @@ sudo apt install build-essential pkg-config libvips-dev
 | `build-essential` (gcc) | C compiler for SQLite (CGO) and govips C bindings |
 | `pkg-config` | Used by govips at build time to locate libvips headers |
 | `libvips-dev` | Header files for libvips |
+
+Note: `libvips` is linked at build time (compiled into the binary), so it is not needed on the machine where the binary runs - only where it is built.
 
 ### Setup
 
