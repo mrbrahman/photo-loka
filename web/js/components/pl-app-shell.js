@@ -635,7 +635,7 @@ class PlAppShell extends HTMLElement {
         }
       });
 
-      // Poll every minute while visible (TODO: change back to 10 min after testing)
+      // Poll every minute while visible
       this.#updatePollInterval = setInterval(() => {
         if (document.visibilityState === 'visible') {
           console.log('[sw] polling for update');

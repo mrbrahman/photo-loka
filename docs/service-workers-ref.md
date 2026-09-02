@@ -189,7 +189,13 @@ Always try network. Cache as fallback. Best for content that should always be fr
 fetch(req).catch(() => caches.match(req))
 ```
 
-Photo-Loka uses **network-first** for app code (the app needs the server anyway), with a small precache for stable CDN dependencies and the icon.
+Photo-Loka uses **cache-first, keyed on the SW `VERSION`**, for app code
+(HTML/JS/CSS/assets). App code is immutable within a VERSION (baked into the Go
+binary on release, served from `../web` in dev), and every web change bumps
+`VERSION`, so the version-scoped cache self-invalidates on each deploy/edit and
+`activate` deletes the old cache. Code is cached on first fetch into
+`photo-loka-${VERSION}`. API, media, and SSE requests (`/api/*`) stay
+network-first. Stable CDN dependencies and the icon are precached at install.
 
 ### Stale-while-revalidate
 
@@ -219,6 +225,38 @@ caches.match(req).then(cached => {
 - `web/sw.mjs` - the service worker. See its header comment for the update mechanism design.
 - `web/js/components/pl-app-shell.js` (`#initServiceWorker`) - page-side update detection and banner.
 - `.kiro/steering/dev-checklist.md` - rules for bumping the VERSION constant.
+
+### Caching design and the two use cases
+
+App code (HTML/JS/CSS/assets) is cached **cache-first, keyed on the SW
+`VERSION`**, stored in a cache named `photo-loka-${VERSION}`. This is safe
+because code is immutable within a VERSION: on release builds it is embedded in
+the Go binary; on dev builds it is served from `../web`. `/api/*` (API, media,
+SSE) is never cached and always goes to the network.
+
+The single invariant that makes this work: **every change under `web/` bumps
+`VERSION` in `sw.mjs`** (see `dev-checklist.md`). Because the cache name is
+keyed on VERSION, a bump creates a fresh empty cache and the `activate` handler
+deletes the previous version's cache. Two use cases fall out of this:
+
+1. **Prod - new binary while a PWA tab is open.** A new release ships a new
+   binary with a bumped VERSION, so `sw.mjs` changes. The open page detects it
+   (1-min poll while visible, or on tab focus via `visibilitychange`), installs
+   the new SW (`skipWaiting`), activates it (`clients.claim`, old cache
+   deleted), and shows the "App update available (vX -> vY)" banner. Clicking it
+   reloads; the reload repopulates `photo-loka-${newVERSION}` from the new
+   binary. The swap is atomic - the page never mixes old and new code.
+
+2. **Dev - edit/reload loop.** Each edit bumps VERSION too, so the cache key
+   changes on every change. The old version's cache is discarded on activate and
+   the edited files are fetched fresh from `../web` into the new cache. The same
+   banner appears (via the 1-min poll or tab focus), so new code loads at the
+   appropriate time without a manual hard reload. Caching never serves a stale
+   edit, precisely because VERSION always changes.
+
+In both cases the update *detection* is driven solely by the `sw.mjs` byte diff
+(the VERSION bump), independent of code caching; caching only changes what a
+reload fetches (cache vs network), never whether an update is noticed.
 
 ## Further Reading
 
