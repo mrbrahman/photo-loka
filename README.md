@@ -74,7 +74,7 @@ Also, many things are rough around the edges, simply because I'm the sole user &
         e.g. `album_name:trip camera:samsung type:video l:or`
         will translate as
         `{album_name}: "trip"* OR {camera}: "samsung"* OR {type}: "video"*`
-    5. Any un-prefixed condition will be applied to/restricted to all [search-enabled columns](server/app/core/search/search-db.mjs#L3)
+    5. Any un-prefixed condition will be applied to/restricted to all [search-enabled columns](go-server/internal/search/query_builder.go#L15)
     6. For advanced needs (including querying non restricted columns - for e.g. `capture_time`), use the "raw"
        input using SQLite FTS syntax. Thich will be used as-is in the filter.
         e.g.
@@ -145,46 +145,72 @@ TODO - sync timestamps on +2 level folders
 
 # How to install & use
 
-- **Install necessary software**
-  - [Node](https://nodejs.org/en/) (to run the server)
+The server is a single Go binary. You can either download a prebuilt release or
+build it yourself.
+
+- **Install runtime dependencies**
   - [ffmpeg](https://ffmpeg.org/download.html) (for video operations: thumbnail extraction, compression)
-  - On Linux, simply run 
+  - [exiftool](https://exiftool.org/) **12.78+** (for EXIF metadata, GPS timezone resolution, geolocation)
+  - **libvips** shared library (for image operations and HEIC support). The Go
+    binary links libvips dynamically (via govips/cgo), so `libvips.so` must be
+    present at runtime, not just at build time. Package name is `libvips42t64`
+    on recent Ubuntu/Debian and `libvips42` on older releases.
+
+    The exiftool distro package is often outdated. Install a recent version and put it on your `PATH`:
     ```bash
-    # Note: The preferred method of node installation is via [nvm](https://github.com/nvm-sh/nvm?tab=readme-ov-file#installing-and-updating)
-    sudo apt install node ffmpeg
+    # ffmpeg + libvips runtime library
+    sudo apt install ffmpeg libvips42t64   # older distros: libvips42
+    # exiftool: download 12.78+ from https://exiftool.org/ if your distro version is older
+    exiftool -ver   # verify >= 12.78
     ```
 
-- **Install code (just clone this repo)**
+- **Get the code (to build from source)**
   ```bash
   git clone https://github.com/mrbrahman/photo-loka.git
   ```
-  Or, grab the latest release from the [Releases](https://github.com/mrbrahman/photo-loka/releases) page
+  Or grab a prebuilt binary from the [Releases](https://github.com/mrbrahman/photo-loka/releases) page and skip the build step.
 
-- **Install node dependencies**
+- **Build the binary**
+
+  Build-time system dependencies (needed only to compile, not at runtime):
   ```bash
-  cd photo-loka/server
-  npm install
+  sudo apt install build-essential pkg-config libvips-dev
   ```
 
-- **Special instructions for HEIC support (TBD for Linux)**
-
-  For heic support, need to do some extra stuff at the moment. See https://github.com/lovell/sharp/issues/4164 for more details
-  
+  Then build:
   ```bash
-  # https://sharp.pixelplumbing.com/api-output#heif
-  brew install vips libheif libde265 x265
-
-  # https://sharp.pixelplumbing.com/install#building-from-source
-  npm install --build-from-source node-addon-api node-gyp sharp
+  cd photo-loka/go-server
+  go mod tidy
+  ./build.sh
   ```
 
-  **Update your .env in `server`**
-  See `.env.example` for an example
+  `build.sh` compiles with the `fts5` and `sqlite_math_functions` SQLite build
+  tags. On an exact release tag it also embeds the `web/` assets into the binary
+  (`embed_web`); on dev builds the frontend is served from `../web` on disk.
+
+  HEIC support is built in via libvips (no extra steps needed).
+
+- **Configure**
+
+  The server reads config from environment variables (a `.env` file in the
+  working directory is loaded automatically if present):
+  ```bash
+  # Required
+  DATA_DIR=/path/to/data/folder
+  JWT_SECRET=your-secret-key-change-this
+  GEONAMES_USERNAME=your-geonames-username
+
+  # Optional
+  ML_SERVICE_URL=http://localhost:8000    # default
+  PORT=9000                               # default
+  ```
+  `runtime-config.json` is auto-created in `DATA_DIR` on first run and can be
+  edited via the Admin > Settings page.
 
 - **Start server**
   ```bash
-  cd photo-loka/server
-  node --env-file=.env server.mjs
+  cd photo-loka/go-server
+  ./photo-loka
   ```
 
 - **Setup Collection & Start Indexing**
@@ -195,7 +221,7 @@ TODO - sync timestamps on +2 level folders
   - **Folder Pattern**: moustache-style format with tokens `{{yyyy}}`, `{{mm}}`, `{{dd}}`, and `{{album}}` (must be the last token). Example: `{{yyyy}}/{{yyyy}}-{{mm}}-{{dd}} {{album}}` produces folders like `2021/2021-01-01 New Year`.
   - **Placeholder Album Name**: text to use as the album name when intake creates a new folder for files with no obvious album (e.g. `TBD`). Albums matching this text are highlighted in the gallery as needing review. Empty disables the placeholder.
   - **Intake Paths**: one or more paths where new files arrive, with a method:
-    - *Immediate* - watches the folder in real-time (chokidar)
+    - *Immediate* - watches the folder in real-time (fsnotify)
     - *Scheduled* - runs on a cron schedule for files that are N days stale
     - *On-demand* - only indexes when manually triggered
 
@@ -312,15 +338,15 @@ Use CLI commands below until there is a need to make a screen
 ### Create User
 ```bash
 # Create admin user
-npm run create-user -- --username admin --password pass123 --role admin
+./photo-loka create-user --username admin --password pass123 --role admin
 
 # Create regular user
-npm run create-user -- --username john --password pass123 --role user
+./photo-loka create-user --username john --password pass123 --role user
 ```
 
 ### Unlock Locked Account
 ```bash
-npm run unlock-user -- --username john
+./photo-loka unlock-user --username john
 ```
 
 ### Generate API Token
@@ -328,11 +354,11 @@ Generate long-lived tokens for API access (useful for curl commands, scripts, in
 
 ```bash
 # Generate token with 1 year expiry (default)
-npm run generate-token -- admin
+./photo-loka generate-token admin
 
 # Generate token with custom expiry (in days)
-npm run generate-token -- admin 730  # 2 years
-npm run generate-token -- admin 36500  # 100 years (effectively never expires)
+./photo-loka generate-token admin 730  # 2 years
+./photo-loka generate-token admin 36500  # 100 years (effectively never expires)
 ```
 
 The token is a JWT that works with existing authentication. Use it in API calls:
@@ -347,19 +373,19 @@ Or place the authoriation in `.curlrc`
 
 # Architecture
 ## Main
-- nodejs server
+- Go server (single binary, Gin framework)
 - SQLite 3 database
 - Native web components for front end
 
 ## Supporting
 - Sqlite3 provided FTS5 for searches
-- sharp for image operations
-- exiftool-vendored for metadata read / write
+- libvips (via govips) for image operations
+- go-exiftool (wraps external exiftool) for metadata read / write
 - Use browser native features (HTML5) to play videos
 
 # Notes
 
-## Start nodejs server using systemd
+## Run the server using systemd
 
 * Place .service file in `~/.config/systemd/user/photo-loka.service`
 * Use the following commands to start/restart/stop etc
