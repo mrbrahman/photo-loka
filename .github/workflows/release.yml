@@ -1,0 +1,51 @@
+name: Build & Release
+
+# Pushing a version tag (e.g. v1.0.0) triggers a release build on GitHub CI
+# and attaches the compiled binary to the GitHub release for that tag.
+on:
+  push:
+    tags: ['v*']
+
+# softprops/action-gh-release needs write access to create/update the release.
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # build.sh runs `git describe --tags`; fetch full history + tags so
+          # the version string embeds correctly (shallow clones omit tags).
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          # Must match the toolchain in go-server/go.mod (go 1.25.0).
+          go-version: '1.25'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          # libvips-dev: headers + pkg-config for govips (also pulls in the
+          # runtime libvips shared library). build-essential and pkg-config are
+          # already present on ubuntu-latest. SQLite is compiled from bundled C
+          # source by mattn/go-sqlite3, so libsqlite3-dev is NOT needed.
+          sudo apt-get install -y libvips-dev
+          # build.sh calls `esbuild` on release tags to bundle/minify web assets;
+          # it is not preinstalled on the runner.
+          npm install -g esbuild
+
+      - name: Build
+        run: bash build.sh
+        working-directory: go-server
+
+      - name: Upload release artifact
+        uses: softprops/action-gh-release@v2
+        with:
+          files: go-server/photo-loka

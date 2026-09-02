@@ -249,16 +249,27 @@ on:
   push:
     tags: ['v*']
 
+permissions:
+  contents: write        # required by action-gh-release to publish the release
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # build.sh runs `git describe --tags`; need full history + tags
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
-      - name: Install system deps
-        run: sudo apt-get install -y libvips-dev libsqlite3-dev
+          go-version: '1.25'   # must match go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libvips-dev   # headers for govips (pulls in runtime lib too)
+          npm install -g esbuild                # build.sh bundles/minifies web assets on tags
       - name: Build
         run: bash build.sh
         working-directory: go-server
@@ -267,6 +278,12 @@ jobs:
         with:
           files: go-server/photo-loka
 ```
+
+Notes:
+- `go-version` must match `go.mod` (currently 1.25). A lower version fails with a toolchain error.
+- `esbuild` is required because `build.sh` bundles/minifies web assets when building on an exact tag; it is not preinstalled on the runner.
+- `libsqlite3-dev` is NOT needed -- `mattn/go-sqlite3` compiles SQLite from bundled C source.
+- The runner builds an x86_64/glibc binary dynamically linked to `libvips.so`, so the prod machine must have a compatible libvips installed (see [System Dependencies](#system-dependencies)).
 
 Then to release:
 ```bash
