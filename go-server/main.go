@@ -121,6 +121,8 @@ Getting started:
 External dependencies:
   ffmpeg       Required for video thumbnail extraction and compression
   exiftool     Required for metadata read/write (v12.78+ recommended for geolocation)
+  libvips      Shared library required at runtime for image operations and HEIC
+               support (linked dynamically via govips; e.g. apt install libvips42t64)
 `
 	fmt.Printf(help, version)
 }
@@ -157,7 +159,12 @@ func runServe() {
 	checkMLService(cfg.MLServiceURL)
 
 	// Initialize libvips for image processing
-	media.InitVips()
+	if err := media.InitVips(); err != nil {
+		slog.Error("failed to initialize libvips; ensure the libvips shared library is installed (e.g. apt install libvips42t64)",
+			"error", err)
+		os.Exit(1)
+	}
+	slog.Info("libvips initialized", "version", media.VipsVersion())
 	defer media.ShutdownVips()
 
 	// Initialize persistent exiftool process

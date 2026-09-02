@@ -8,6 +8,7 @@ A single-binary rewrite of the Photo-Loka Node.js server in Go.
 |-----------|---------|
 | `exiftool` (12.78+) | EXIF metadata extraction, writing, GPS timezone resolution, and geolocation |
 | `ffmpeg` | Video thumbnail extraction (frame grab) and video compression |
+| `libvips` (shared library) | Image operations (thumbnails, resize) and HEIC support, via govips. Linked dynamically, so the shared library must be present at runtime. |
 
 Install these on the machine where Photo-Loka runs:
 
@@ -37,6 +38,23 @@ exiftool -ver  # should show 13.59
 ```bash
 sudo apt install ffmpeg
 ```
+
+### libvips (shared library)
+
+govips links libvips dynamically (via cgo), so the `libvips.so` shared library
+must be present at runtime, not only when building. Confirm with
+`ldd ./photo-loka | grep vips`.
+
+```bash
+# Recent Ubuntu/Debian (time_t transition):
+sudo apt install libvips42t64
+# Older releases:
+sudo apt install libvips42
+```
+
+Installing `libvips-dev` (build-time) also pulls in the runtime shared library,
+so a build machine is already covered. A runtime-only machine needs just the
+shared library above.
 
 ## Configuration
 
@@ -136,7 +154,9 @@ sudo apt install build-essential pkg-config libvips-dev
 | `pkg-config` | Used by govips at build time to locate libvips headers |
 | `libvips-dev` | Header files for libvips |
 
-Note: `libvips` is linked at build time (compiled into the binary), so it is not needed on the machine where the binary runs - only where it is built.
+Note: `libvips-dev` provides the headers and pkg-config file used when compiling.
+The libvips **shared library** itself (`libvips.so`) is linked dynamically and is
+required at runtime as well - see [System Dependencies](#system-dependencies).
 
 ### Setup
 

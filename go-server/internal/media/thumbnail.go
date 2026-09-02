@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/davidbyttow/govips/v2/vips"
@@ -27,9 +28,25 @@ var thumbSizes = []thumbSize{
 }
 
 // InitVips initializes the govips library. Call once at startup.
-func InitVips() {
+// Returns an error if libvips fails to initialize (e.g. the shared library is
+// present but unusable). Note: a completely missing libvips.so cannot be caught
+// here -- the dynamic linker fails before main() runs.
+func InitVips() error {
 	vips.LoggingSettings(nil, vips.LogLevelWarning)
-	vips.Startup(nil)
+	if err := vips.Startup(nil); err != nil {
+		return err
+	}
+	// Sanity check: a working libvips reports a non-empty version string.
+	if strings.TrimSpace(vips.Version) == "" {
+		return fmt.Errorf("libvips reported an empty version string")
+	}
+	return nil
+}
+
+// VipsVersion returns the libvips version string reported by the linked
+// shared library (e.g. "8.15.1").
+func VipsVersion() string {
+	return vips.Version
 }
 
 // ShutdownVips cleans up govips resources. Call at shutdown.

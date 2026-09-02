@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Go server is a complete port of the Node.js Photo-Loka backend. It compiles to a single ~21 MB binary with no runtime dependencies (aside from exiftool and ffmpeg for media processing).
+The Go server is a complete port of the Node.js Photo-Loka backend. It compiles to a single ~21 MB binary. Runtime dependencies: exiftool and ffmpeg (for media processing) in PATH, and the libvips shared library (linked dynamically via govips/cgo).
 
 **Build:** `./build.sh` (or `go build -tags "fts5 sqlite_math_functions" -o photo-loka .`)
 

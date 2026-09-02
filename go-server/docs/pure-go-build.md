@@ -4,7 +4,7 @@ The current build requires CGO (C compiler + system libraries) because of:
 - `mattn/go-sqlite3` — compiles SQLite from C source
 - `govips` — binds to libvips C library
 
-This makes cross-compilation difficult and requires build-time deps (gcc, pkg-config, libvips-dev).
+This makes cross-compilation difficult and requires build-time deps (gcc, pkg-config, libvips-dev). It also means the libvips shared library must be present at runtime, since govips links it dynamically.
 
 ## Pure Go alternatives
 
