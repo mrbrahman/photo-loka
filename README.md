@@ -142,6 +142,42 @@ TODO - sync timestamps on +2 level folders
 - Intelligent scrollbar (folder levels?)
 - Authorization (role-based access control)
 - Sharing photos/albums
+- In-app self-update: detect a newer release (compare embedded version against
+  the latest GitHub release), notify the admin on login (and via email once
+  email config exists), then self-replace the binary and exit so systemd
+  restarts into the new version (needs `Restart=always` in the unit). Resolve
+  the real binary path via `os.Executable()` + `filepath.EvalSymlinks` (so it
+  works wherever it is installed, including symlinks) and check that path is
+  user-writable first -- warn the admin to update manually if not (e.g. a
+  root-owned `/usr/bin` install). This is why `~/.local/bin` is recommended: a
+  user service can rewrite it without root.
+
+  Library options to evaluate at build time (the problem has two layers --
+  find/compare/fetch the release, and atomically swap the binary):
+  - **All-in-one (detect + download + apply):**
+    - `creativeprojects/go-selfupdate` -- actively maintained; GitHub/GitLab/Gitea
+      releases, semver compare, asset selection, checksums/signatures. Use
+      `DetectLatest` for the login/email notification and `UpdateSelf` only on
+      an explicit admin action. Caveat: confirm its asset-name filter matches
+      the bare `photo-loka` asset (no OS/arch suffix).
+    - `rhysd/go-github-selfupdate` -- the older, well-known predecessor; similar
+      idea but less actively maintained (creativeprojects is a maintained fork).
+  - **Swap only (you fetch the bytes yourself):**
+    - `minio/selfupdate` -- atomic replace with rollback and optional
+      checksum/signature verification; maintained fork of the classic
+      `inconshreveable/go-update`. Pair with a plain HTTP GET of the release
+      asset. Best if we want to fully own the detection/notification UX and
+      delegate only the risky file swap.
+  - **Version compare only (build detection ourselves):**
+    - `Masterminds/semver` or `hashicorp/go-version` -- robust semver parsing
+      (handles the `v` prefix, prerelease ordering) for comparing the latest
+      GitHub `tag_name` against the embedded `main.version`. The GitHub API call
+      (`GET /repos/.../releases/latest`) is trivial, so detection may need no
+      library beyond this.
+
+  All of these require the target file to be writable by the process (no
+  privilege escalation), so the "warn to update manually" path is needed
+  regardless of choice.
 
 # How to install and use
 
