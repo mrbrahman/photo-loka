@@ -168,7 +168,19 @@ build it yourself.
   ```bash
   git clone https://github.com/mrbrahman/photo-loka.git
   ```
-  Or grab a prebuilt binary from the [Releases](https://github.com/mrbrahman/photo-loka/releases) page and skip the build step.
+  Or grab a prebuilt binary from the [Releases](https://github.com/mrbrahman/photo-loka/releases)
+  page and skip the build step:
+  ```bash
+  # Latest release (always resolves to the newest stable release):
+  curl -L -o photo-loka https://github.com/mrbrahman/photo-loka/releases/latest/download/photo-loka
+  # Or pin a specific version:
+  curl -L -o photo-loka https://github.com/mrbrahman/photo-loka/releases/download/v1.0.0/photo-loka
+  chmod +x photo-loka
+  ./photo-loka --help
+  ```
+  Prebuilt binaries are x86_64 Linux (glibc) and still require the runtime
+  dependencies above (libvips, ffmpeg, exiftool). On other platforms (ARM,
+  musl/Alpine, macOS, Windows), build from source instead.
 
 - **Build the binary**
 

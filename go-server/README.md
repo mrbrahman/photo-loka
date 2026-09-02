@@ -231,6 +231,9 @@ Note: `build.sh` detects the exact tag and automatically embeds web assets into 
 
 For the person downloading:
 ```bash
+# Latest release (always resolves to the newest stable release):
+curl -L -o photo-loka https://github.com/mrbrahman/photo-loka/releases/latest/download/photo-loka
+# Or pin a specific version:
 curl -L -o photo-loka https://github.com/mrbrahman/photo-loka/releases/download/v1.0.0/photo-loka
 chmod +x photo-loka
 ./photo-loka --help
