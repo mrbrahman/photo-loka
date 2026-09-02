@@ -229,38 +229,17 @@ func (f *Finalizer) lookupGeonames(uuid string, lat, lng float64) error {
 
 // resolveFromAddress builds geo fields from a parsed address object and updates the DB.
 func (f *Finalizer) resolveFromAddress(uuid string, address map[string]interface{}, status string, matchedUUID *string) error {
-	// Build address string matching Node.js format:
-	// [streetNumber, street, city || adminName2, adminName1, countryCode]
-	var parts []string
-	if streetNumber, ok := address["streetNumber"].(string); ok && streetNumber != "" {
-		parts = append(parts, streetNumber)
-	}
-	if street, ok := address["street"].(string); ok && street != "" {
-		parts = append(parts, street)
-	}
-
+	// Resolve the city BEFORE composing the address string. geonames
+	// findNearestAddress sometimes returns an empty placename; in that case we
+	// fall back to a postal-code city lookup. The address string must use the
+	// resolved city (not the county), so the city has to be known first.
+	// This matches the Node.js geo-finalizer ordering.
 	cityStr := ""
 	if city, ok := address["placename"].(string); ok && city != "" {
-		parts = append(parts, city)
 		cityStr = city
-	} else if county, ok := address["adminName2"].(string); ok && county != "" {
-		// Fall back to county when no city
-		parts = append(parts, county)
 	}
 
-	regionStr := ""
-	if region, ok := address["adminName1"].(string); ok && region != "" {
-		parts = append(parts, region)
-		regionStr = region
-	}
-
-	if cc, ok := address["countryCode"].(string); ok && cc != "" {
-		parts = append(parts, cc)
-	}
-
-	geoAddress := strings.Join(parts, ", ")
-
-	// If we have a postal code but no city, try to resolve it
+	// If placename is empty and we have a postal code, try to resolve the city.
 	if cityStr == "" {
 		if postalcode, ok := address["postalcode"].(string); ok && postalcode != "" {
 			countryCode := "US"
@@ -273,6 +252,38 @@ func (f *Finalizer) resolveFromAddress(uuid string, address map[string]interface
 			}
 		}
 	}
+
+	regionStr := ""
+	if region, ok := address["adminName1"].(string); ok && region != "" {
+		regionStr = region
+	}
+
+	// Build address string matching Node.js format:
+	// [streetNumber, street, city || adminName2, adminName1, countryCode]
+	var parts []string
+	if streetNumber, ok := address["streetNumber"].(string); ok && streetNumber != "" {
+		parts = append(parts, streetNumber)
+	}
+	if street, ok := address["street"].(string); ok && street != "" {
+		parts = append(parts, street)
+	}
+
+	if cityStr != "" {
+		parts = append(parts, cityStr)
+	} else if county, ok := address["adminName2"].(string); ok && county != "" {
+		// Fall back to county only when no city could be resolved.
+		parts = append(parts, county)
+	}
+
+	if regionStr != "" {
+		parts = append(parts, regionStr)
+	}
+
+	if cc, ok := address["countryCode"].(string); ok && cc != "" {
+		parts = append(parts, cc)
+	}
+
+	geoAddress := strings.Join(parts, ", ")
 
 	var city, region, country, countryCode *string
 	if cityStr != "" {
