@@ -1,6 +1,6 @@
 # Service Workers - Quick Guide
 
-A reference for the service worker concepts used in Photo-Loka's PWA update mechanism (`web/sw.js` and `pl-app-shell.js`).
+A reference for the service worker concepts used in Photo-Loka's PWA update mechanism (`web/sw.mjs` and `pl-app-shell.js`).
 
 ## What is a Service Worker?
 
@@ -22,7 +22,7 @@ A SW goes through these states:
 
 Key events:
 
-- **`install`** - Fires once when the SW is first registered or when a new sw.js is detected. Use it to precache assets.
+- **`install`** - Fires once when the SW is first registered or when a new sw.mjs is detected. Use it to precache assets.
 - **`activate`** - Fires once after install, when the SW takes over from any previous version. Use it to clean up old caches.
 - **`fetch`** - Fires for every network request from pages in the SW's scope. Use it to serve cached responses or implement custom strategies.
 - **`message`** - Fires when a page sends a `postMessage` to the SW.
@@ -115,18 +115,18 @@ self.addEventListener('message', event => {
 });
 ```
 
-This is how `pl-app-shell` asks `sw.js` for its version to display in the update banner.
+This is how `pl-app-shell` asks `sw.mjs` for its version to display in the update banner.
 
 ## Page-Side APIs
 
-These run in regular page JS (e.g., in `pl-app-shell`), not in `sw.js`.
+These run in regular page JS (e.g., in `pl-app-shell`), not in `sw.mjs`.
 
 ### `navigator.serviceWorker.register(url)`
 
 Registers a SW. Returns a Promise that resolves with a `ServiceWorkerRegistration`. The SW download/install happens in the background.
 
 ```js
-const registration = await navigator.serviceWorker.register('/sw.js');
+const registration = await navigator.serviceWorker.register('/sw.mjs');
 ```
 
 ### `ServiceWorkerRegistration`
@@ -136,7 +136,7 @@ The page-side handle for a registered SW.
 - `registration.installing` - SW currently installing (or null)
 - `registration.waiting` - SW installed, waiting to activate (or null)
 - `registration.active` - SW currently active (or null)
-- `registration.update()` - check the server for a new sw.js. Returns a Promise.
+- `registration.update()` - check the server for a new sw.mjs. Returns a Promise.
 
 ### `navigator.serviceWorker.controller`
 
@@ -164,12 +164,12 @@ navigator.serviceWorker.addEventListener('controllerchange', () => {
 
 When the browser is asked to register a SW (via `register()` or `update()`):
 
-1. It fetches `sw.js` from the server.
+1. It fetches `sw.mjs` from the server.
 2. It compares the bytes to the currently installed version.
 3. If different, it treats it as a new SW and starts the install process.
 4. If identical, nothing happens.
 
-This is why bumping a `VERSION` constant (or any byte change) in `sw.js` triggers an update.
+This is why bumping a `VERSION` constant (or any byte change) in `sw.mjs` triggers an update.
 
 ## Common Strategies
 
@@ -208,7 +208,7 @@ caches.match(req).then(cached => {
 ## Gotchas
 
 - **Hard reload bypasses the SW.** `Ctrl+Shift+R` makes the page load directly from the network without going through any SW. `navigator.serviceWorker.controller` will be null even if a SW is registered. Don't rely on `controller` if you want to handle this case.
-- **Scope matters.** A SW only controls pages under its scope, which defaults to the directory the sw.js was served from. Putting `sw.js` at the root (`/sw.js`) gives it the widest scope.
+- **Scope matters.** A SW only controls pages under its scope, which defaults to the directory the sw.mjs was served from. Putting `sw.mjs` at the root (`/sw.mjs`) gives it the widest scope.
 - **HTTPS required.** SWs only work on HTTPS or `localhost`.
 - **Async lifecycle.** Many things happen out of order. Always use the lifecycle events; don't assume timing.
 - **No DOM in SWs.** Can't access `document`, `window`, or any UI APIs.
@@ -216,7 +216,7 @@ caches.match(req).then(cached => {
 
 ## In This Codebase
 
-- `web/sw.js` - the service worker. See its header comment for the update mechanism design.
+- `web/sw.mjs` - the service worker. See its header comment for the update mechanism design.
 - `web/js/components/pl-app-shell.js` (`#initServiceWorker`) - page-side update detection and banner.
 - `.kiro/steering/dev-checklist.md` - rules for bumping the VERSION constant.
 

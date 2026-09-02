@@ -11,7 +11,7 @@
 // the page detect when a new version is available.
 //
 // The VERSION constant below is the trigger. Bumping it causes the browser
-// to detect this sw.js as different from the previously installed one,
+// to detect this sw.mjs as different from the previously installed one,
 // which kicks off the install/activate cycle. See dev-checklist.md for
 // when to bump (patch / minor / major).
 //
@@ -19,7 +19,7 @@
 //   1. User has app open with old SW (version X).
 //   2. Page calls registration.update() periodically (10-min poll) and on
 //      visibilitychange (tab back from background).
-//   3. Browser fetches sw.js, sees byte difference, installs new SW (Y).
+//   3. Browser fetches sw.mjs, sees byte difference, installs new SW (Y).
 //      install handler calls skipWaiting() so the new SW activates ASAP.
 //   4. activate handler calls clients.claim() so the new SW takes control
 //      of the open page immediately.
@@ -39,8 +39,8 @@
 // =============================================================================
 
 // Bump this version whenever you deploy frontend changes.
-// The browser compares sw.js byte-for-byte; a changed VERSION triggers an update.
-const VERSION = '4.10.7';
+// The browser compares sw.mjs byte-for-byte; a changed VERSION triggers an update.
+const VERSION = '4.10.8';
 
 const CACHE_NAME = `photo-loka-${VERSION}`;
 

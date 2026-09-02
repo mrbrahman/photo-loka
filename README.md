@@ -400,7 +400,7 @@ The frontend is plain ES modules and native Web Components with no build step --
 reload. `esbuild` is only invoked on release-tag builds to bundle and minify the
 assets that get embedded into the binary.
 
-Any change under `web/` should bump the `VERSION` constant in `web/sw.js` so the
+Any change under `web/` should bump the `VERSION` constant in `web/sw.mjs` so the
 service worker triggers the PWA "new version available" update on installed
 clients.
 

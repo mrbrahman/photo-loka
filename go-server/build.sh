@@ -31,17 +31,13 @@ if git describe --tags --exact-match HEAD &>/dev/null; then
     ESBUILD_EXTERNALS="--external:shoelace/* --external:navigo --external:cronstrue --external:leaflet-css --external:*.css"
 
     # JS module entrypoints -> .mjs so the emitted files match the <script src="js/*.mjs">
-    # references in index.html (main.mjs) and frame.html (frame.mjs).
-    esbuild ../web/js/main.mjs ../web/js/frame.mjs \
+    # references in index.html (main.mjs) and frame.html (frame.mjs). The service
+    # worker (sw.mjs) lives at the web root and is registered at '/sw.mjs' by
+    # pl-app-shell.js, so it rides the same .mjs rewrite and emits to web/sw.mjs.
+    esbuild ../web/js/main.mjs ../web/js/frame.mjs ../web/sw.mjs \
       --bundle --minify --format=esm $ESBUILD_EXTERNALS \
       --out-extension:.js=.mjs \
       --outdir=web --outbase=../web
-
-    # Service worker must stay at /sw.js (pl-app-shell.js registers the literal
-    # path '/sw.js'), so bundle it separately without the .mjs extension rewrite.
-    esbuild ../web/sw.js \
-      --bundle --minify --format=esm $ESBUILD_EXTERNALS \
-      --outfile=web/sw.js
 
     # Component CSS: after bundling, all component CSS imports collapse to
     # "./styles/<name>.css" relative to the bundled web/js/main.mjs (and frame.mjs),

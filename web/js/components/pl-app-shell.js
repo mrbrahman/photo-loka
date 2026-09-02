@@ -591,8 +591,8 @@ class PlAppShell extends HTMLElement {
 
   // --- Service Worker Update ---
   //
-  // Page-side companion to web/sw.js for the PWA update mechanism.
-  // See sw.js header for the full design overview.
+  // Page-side companion to web/sw.mjs for the PWA update mechanism.
+  // See sw.mjs header for the full design overview.
   //
   // Responsibilities:
   //   - Register the SW
@@ -613,7 +613,7 @@ class PlAppShell extends HTMLElement {
     const initiallyControlled = !!navigator.serviceWorker.controller;
 
     try {
-      this.#swRegistration = await navigator.serviceWorker.register('/sw.js');
+      this.#swRegistration = await navigator.serviceWorker.register('/sw.mjs');
 
       // Capture the version of the active SW at page load (the version this page is running)
       if (this.#swRegistration.active) {
