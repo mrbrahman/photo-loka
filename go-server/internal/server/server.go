@@ -228,6 +228,7 @@ func requestLogger() gin.HandlerFunc {
 			strings.Contains(path, "/getThumbnail") ||
 			strings.Contains(path, "/getFaceThumbnail") ||
 			strings.HasSuffix(path, ".html") ||
+			strings.HasSuffix(path, ".mjs") ||
 			strings.HasSuffix(path, ".json") ||
 			strings.HasSuffix(path, ".png") ||
 			strings.HasSuffix(path, ".ico") ||
