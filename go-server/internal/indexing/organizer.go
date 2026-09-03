@@ -65,6 +65,7 @@ func (o *Organizer) placeInPlace(collection *collections.Collection, filename st
 	parsed := utils.ParsePattern(filepath.ToSlash(dir), collection.ApplyFolderPattern)
 	if parsed == nil {
 		// Could not parse - use folder name as album name, no date
+		o.logChange(collection.CollectionID, "in-place", "", &filename)
 		return &PlaceResult{
 			AlbumDate: "",
 			AlbumName: dir,
@@ -75,6 +76,9 @@ func (o *Organizer) placeInPlace(collection *collections.Collection, filename st
 	// Build album date from parsed tokens
 	albumDate := buildAlbumDate(parsed)
 	albumName := parsed["album"]
+
+	// Audit the in-place index (path1 NULL, path2 = the file), matching Node.
+	o.logChange(collection.CollectionID, "in-place", "", &filename)
 
 	return &PlaceResult{
 		AlbumDate: albumDate,
@@ -115,8 +119,15 @@ func (o *Organizer) placeIntake(collection *collections.Collection, filename str
 
 	// Create target directory
 	targetDir := filepath.Join(collection.CollectionPath, folderPath)
+	dirExisted := true
+	if _, statErr := os.Stat(targetDir); os.IsNotExist(statErr) {
+		dirExisted = false
+	}
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
 		return nil, fmt.Errorf("creating target directory %s: %w", targetDir, err)
+	}
+	if !dirExisted {
+		o.logChange(collection.CollectionID, "create-dir", "", &targetDir)
 	}
 
 	// Move file to target directory
@@ -129,6 +140,8 @@ func (o *Organizer) placeIntake(collection *collections.Collection, filename str
 	if err := moveFile(filename, targetPath); err != nil {
 		return nil, fmt.Errorf("moving file to collection: %w", err)
 	}
+
+	o.logChange(collection.CollectionID, "move", filename, &targetPath)
 
 	o.logger.Info("file placed in collection",
 		"source", filename,
@@ -415,7 +428,13 @@ func (o *Organizer) logChange(collectionID int64, action, path1 string, path2 *s
 		return
 	}
 
-	if err := o.db.FileAudit(collectionID, action, path1, path2); err != nil {
+	// An empty path1 is stored as SQL NULL (e.g. the "in-place" action has no
+	// source path, only the resulting file in path2), matching the Node server.
+	var p1 *string
+	if path1 != "" {
+		p1 = &path1
+	}
+	if err := o.db.FileAudit(collectionID, action, p1, path2); err != nil {
 		o.logger.Error("failed to log file audit",
 			"action", action,
 			"path1", path1,

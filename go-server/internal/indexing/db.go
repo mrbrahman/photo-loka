@@ -353,7 +353,8 @@ func (d *IndexingDB) ScheduleExif(uuids []string, newExifJSON string) error {
 }
 
 // FileAudit logs a single file operation to the file_audit table.
-func (d *IndexingDB) FileAudit(collectionID int64, action, path1 string, path2 *string) error {
+// A nil path1/path2 is stored as SQL NULL.
+func (d *IndexingDB) FileAudit(collectionID int64, action string, path1, path2 *string) error {
 	_, err := d.db.Exec(
 		"INSERT INTO file_audit_log (collection_id, action, path1, path2) VALUES (?, ?, ?, ?)",
 		collectionID, action, path1, path2,
