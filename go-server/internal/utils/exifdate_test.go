@@ -1,6 +1,9 @@
 package utils
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestParseExifDate_ISO(t *testing.T) {
 	cases := []struct {
@@ -16,7 +19,7 @@ func TestParseExifDate_ISO(t *testing.T) {
 		// FileModifyDate: tz, no subsec.
 		{"2025:09:15 11:33:32-04:00", "2025-09-15T11:33:32-04:00", "2025-09-15 11:33:32"},
 		// UTC 'Z'.
-		{"2025:09:11 22:01:39Z", "2025-09-11T22:01:39+00:00", "2025-09-11 22:01:39"},
+		{"2025:09:11 22:01:39Z", "2025-09-11T22:01:39Z", "2025-09-11 22:01:39"},
 		// Already-ISO input (dash date, T separator).
 		{"2024-07-27T10:30:00+05:30", "2024-07-27T10:30:00+05:30", "2024-07-27 10:30:00"},
 		// Offset without colon.
@@ -71,5 +74,46 @@ func TestExifDateTime_NoTzFloating(t *testing.T) {
 	}
 	if _, ok := d.TzOffsetString(); ok {
 		t.Errorf("expected no tz string")
+	}
+}
+
+func TestExifDateTime_AsUTC(t *testing.T) {
+	// Naive video-style timestamp interpreted as UTC.
+	d, _ := ParseExifDate("2026:09:03 12:14:04")
+	u := d.AsUTC()
+	if u.TzOffsetMinutes == nil || *u.TzOffsetMinutes != 0 {
+		t.Fatalf("AsUTC offset = %v, want 0", u.TzOffsetMinutes)
+	}
+	if got := u.ToISO(); got != "2026-09-03T12:14:04Z" {
+		t.Errorf("AsUTC ToISO = %q", got)
+	}
+	// capture_tz_offset is rendered separately and stays +00:00 (not Z).
+	if off, ok := u.TzOffsetString(); !ok || off != "+00:00" {
+		t.Errorf("AsUTC TzOffsetString = %q, %v; want +00:00", off, ok)
+	}
+}
+
+func TestExifDateTime_InZone(t *testing.T) {
+	loc, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Skip("tzdata not available")
+	}
+	// UTC 12:14:04 on 2026-09-03 -> EDT 08:14:04-04:00 (same calendar day).
+	d, _ := ParseExifDate("2026:09:03 12:14:04")
+	local := d.AsUTC().In(loc)
+	if local.DateString() != "2026-09-03" {
+		t.Errorf("local date = %q, want 2026-09-03", local.DateString())
+	}
+	if local.TimeString() != "08:14:04" {
+		t.Errorf("local time = %q, want 08:14:04", local.TimeString())
+	}
+	if off, _ := local.TzOffsetString(); off != "-04:00" {
+		t.Errorf("local offset = %q, want -04:00", off)
+	}
+	// Cross-midnight case: UTC 02:00 on the 3rd is 22:00 on the 2nd in EDT.
+	d2, _ := ParseExifDate("2026:09:03 02:00:00")
+	local2 := d2.AsUTC().In(loc)
+	if local2.DateString() != "2026-09-02" {
+		t.Errorf("cross-midnight local date = %q, want 2026-09-02", local2.DateString())
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	exiftool "github.com/barasher/go-exiftool"
 
@@ -239,13 +240,26 @@ func ExtractMetadata(filePath string) (*ExifData, error) {
 	//   capture_tz_name   -> "America/New_York" (from GeolocationTimeZone)
 	// -------------------------------------------------------------------------
 
+	// Video timestamp handling. QuickTime/MP4 CreateDate is stored in UTC by
+	// device convention but exiftool reports it without an offset. Mirroring
+	// exiftool-vendored in the Node.js server (see
+	// photostructure/exiftool-vendored.js issue #113):
+	//   - interpret a naive video timestamp as UTC, then
+	//   - if a GPS-derived IANA timezone is known, shift the instant into that
+	//     zone so the local wall-clock (and hence album_date) is correct;
+	//   - otherwise keep it in UTC.
+	// Still-images are untouched (a naive image time is genuinely local). A
+	// video that already carries an explicit offset is also left as-is.
+	isVideo := data.Mediatype == "video"
+	geoTZ := getStringField(raw, "ExifTool:GeolocationTimeZone")
+
 	// exif_*_ref fields: render the timezone-aware Composite SubSec values as
 	// ISO-8601 via the shared exifdate helper (matching the Node.js server,
 	// which renders these from exiftool-vendored ExifDateTime objects with
 	// subseconds + offset). Fall back to the plain EXIF/QuickTime fields when
 	// the Composite SubSec variant is absent.
-	data.ExifDatetimeOriginalRef = refDateISO(raw, "Composite:SubSecDateTimeOriginal", "EXIF:DateTimeOriginal")
-	data.ExifCreateDateRef = refDateISO(raw, "Composite:SubSecCreateDate", "EXIF:CreateDate", "QuickTime:CreateDate")
+	data.ExifDatetimeOriginalRef = refVideoDateISO(isVideo, geoTZ, raw, "Composite:SubSecDateTimeOriginal", "EXIF:DateTimeOriginal")
+	data.ExifCreateDateRef = refVideoDateISO(isVideo, geoTZ, raw, "Composite:SubSecCreateDate", "EXIF:CreateDate", "QuickTime:CreateDate")
 
 	// captured_at / CaptureDateTime: prefer the Composite SubSec value (carries
 	// the resolved timezone offset and subseconds), falling back to the plain
@@ -254,14 +268,22 @@ func ExtractMetadata(filePath string) (*ExifData, error) {
 		"EXIF:DateTimeOriginal", "EXIF:CreateDate", "QuickTime:CreateDate")
 	if captureSrc != nil {
 		if dt, ok := utils.ParseExifDate(*captureSrc); ok {
+			dt = resolveVideoDate(dt, isVideo, geoTZ)
 			iso := dt.ToISO()
 			data.CapturedAt = &iso
 			data.CaptureDateTime = toCaptureDateTime(dt)
 		}
 	}
 
-	// Timezone name: prefer GeolocationTimeZone (IANA name like "America/New_York")
-	data.CaptureTzName = getStringField(raw, "ExifTool:GeolocationTimeZone")
+	// Timezone name: prefer GeolocationTimeZone (IANA name like "America/New_York").
+	// For a naive video date with no geolocation zone, report UTC to match the
+	// UTC interpretation applied to captured_at above.
+	data.CaptureTzName = geoTZ
+	if data.CaptureTzName == nil && isVideo && data.CaptureDateTime != nil &&
+		data.CaptureDateTime.TzOffsetMinutes != nil && *data.CaptureDateTime.TzOffsetMinutes == 0 {
+		utc := "UTC"
+		data.CaptureTzName = &utc
+	}
 
 	// Geolocation JSON from exiftool's built-in geolocation database
 	// (requires exiftool 12.78+ with -api geolocation)
@@ -482,9 +504,10 @@ func extractFaceNames(raw map[string]interface{}) []string {
 	return faces
 }
 
-// refDateISO renders the first present field (searched in order) as an
-// ISO-8601 string via the shared exifdate helper, or nil if none parse.
-func refDateISO(raw map[string]interface{}, fields ...string) *string {
+// refVideoDateISO renders the first present field (searched in order) as an
+// ISO-8601 string via the shared exifdate helper, applying the video UTC/zone
+// resolution, or nil if none parse.
+func refVideoDateISO(isVideo bool, geoTZ *string, raw map[string]interface{}, fields ...string) *string {
 	src := getStringField(raw, fields...)
 	if src == nil {
 		return nil
@@ -493,8 +516,29 @@ func refDateISO(raw map[string]interface{}, fields ...string) *string {
 	if !ok {
 		return nil
 	}
+	dt = resolveVideoDate(dt, isVideo, geoTZ)
 	iso := dt.ToISO()
 	return &iso
+}
+
+// resolveVideoDate applies the video timezone convention to a parsed date:
+// a naive (offset-less) video timestamp is interpreted as UTC, then, if a
+// GPS-derived IANA timezone name is provided, the instant is shifted into that
+// zone so the local wall-clock is correct. Non-videos, and videos that already
+// carry an offset, are returned unchanged.
+func resolveVideoDate(dt utils.ExifDateTime, isVideo bool, geoTZ *string) utils.ExifDateTime {
+	if !isVideo || dt.TzOffsetMinutes != nil {
+		return dt
+	}
+	// Naive video time -> interpret as UTC.
+	dt = dt.AsUTC()
+	// If we know the capture location's zone, express the instant there.
+	if geoTZ != nil && *geoTZ != "" {
+		if loc, err := time.LoadLocation(*geoTZ); err == nil {
+			dt = dt.In(loc)
+		}
+	}
+	return dt
 }
 
 // toCaptureDateTime maps a parsed utils.ExifDateTime into the media

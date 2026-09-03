@@ -186,7 +186,14 @@ func (d ExifDateTime) ToISO() string {
 		fmt.Fprintf(&b, ".%03d", ms)
 	}
 	if d.TzOffsetMinutes != nil {
-		b.WriteString(offsetSuffix(*d.TzOffsetMinutes))
+		// Render a zero offset as "Z" (UTC), matching exiftool-vendored's ISO
+		// output. Non-zero offsets use "+HH:MM"/"-HH:MM". Note capture_tz_offset
+		// is rendered separately via TzOffsetString and stays "+00:00".
+		if *d.TzOffsetMinutes == 0 {
+			b.WriteString("Z")
+		} else {
+			b.WriteString(offsetSuffix(*d.TzOffsetMinutes))
+		}
 	}
 	return b.String()
 }
@@ -218,6 +225,37 @@ func (d ExifDateTime) Unix() int64 {
 	t := time.Date(d.Year, time.Month(d.Month), d.Day,
 		d.Hour, d.Minute, d.Second, d.Nanosecond, loc)
 	return t.Unix()
+}
+
+// AsUTC returns a copy whose wall-clock components are interpreted as UTC
+// (offset 0), without shifting them. Use for naive video timestamps, which are
+// stored in UTC by convention but reported without an offset.
+func (d ExifDateTime) AsUTC() ExifDateTime {
+	zero := 0
+	d.TzOffsetMinutes = &zero
+	return d
+}
+
+// In converts the instant represented by this value into the given location,
+// recomputing the wall-clock components and offset. If the value has no
+// timezone it is first interpreted in loc (no shift). Subseconds are preserved.
+func (d ExifDateTime) In(loc *time.Location) ExifDateTime {
+	var from *time.Location
+	if d.TzOffsetMinutes != nil {
+		from = time.FixedZone("", *d.TzOffsetMinutes*60)
+	} else {
+		from = loc
+	}
+	t := time.Date(d.Year, time.Month(d.Month), d.Day,
+		d.Hour, d.Minute, d.Second, d.Nanosecond, from).In(loc)
+	_, offSec := t.Zone()
+	offMin := offSec / 60
+	return ExifDateTime{
+		Year: t.Year(), Month: int(t.Month()), Day: t.Day(),
+		Hour: t.Hour(), Minute: t.Minute(), Second: t.Second(),
+		Nanosecond: t.Nanosecond(), HasSubsec: d.HasSubsec,
+		TzOffsetMinutes: &offMin,
+	}
 }
 
 // DateString returns "YYYY-MM-DD".
