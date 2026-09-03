@@ -3,7 +3,6 @@ package indexing
 import (
 	"fmt"
 	"strconv"
-	"time"
 
 	"photo-loka/internal/queue"
 	"photo-loka/internal/utils"
@@ -181,33 +180,10 @@ func parseMtimeString(s string) (int64, error) {
 		return ts, nil
 	}
 
-	// Try common date formats (order: most specific first)
-	// RFC3339 handles: 2025-09-15T15:33:29Z, 2026-07-27T14:31:36-04:00, 2025-10-22T21:36:25.270-04:00
-	if t, err := time.Parse(time.RFC3339, s); err == nil {
-		return t.Unix(), nil
-	}
-
-	// No-colon offset variant from Node.js dateformat 'isoDateTime': 2024-07-27T10:30:00+0530
-	if t, err := time.Parse("2006-01-02T15:04:05-0700", s); err == nil {
-		return t.Unix(), nil
-	}
-
-	// Exiftool native format: 2025:09:15 15:33:29+00:00
-	formats := []string{
-		"2006:01:02 15:04:05-07:00",
-		"2006:01:02 15:04:05",
-		"2006-01-02 15:04:05",
-	}
-
-	for _, format := range formats {
-		if t, err := time.Parse(format, s); err == nil {
-			return t.Unix(), nil
-		}
-	}
-
-	// Last resort: simple datetime treated as local time
-	if t, err := time.ParseInLocation("2006-01-02 15:04:05", s, time.Local); err == nil {
-		return t.Unix(), nil
+	// Otherwise parse via the shared exifdate helper, which handles the
+	// exiftool native format and the ISO variants (with/without timezone).
+	if dt, ok := utils.ParseExifDate(s); ok {
+		return dt.Unix(), nil
 	}
 
 	return 0, fmt.Errorf("unable to parse mtime string: %s", s)

@@ -34,7 +34,8 @@ var metadataColumns = []string{
 	"orientation", "duration", "gps_lat", "gps_lng", "gps_alt",
 	"file_modified_at", "captured_at", "capture_date", "capture_time",
 	"capture_tz_offset", "capture_tz_name",
-	"exif_datetime_original_ref", "exif_create_date_ref", "indexed_at",
+	"exif_datetime_original_ref", "exif_create_date_ref",
+	"is_private", "is_trashed", "trashed_at", "indexed_at",
 }
 
 // NewIndexingDB creates a new IndexingDB instance.

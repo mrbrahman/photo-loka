@@ -3,7 +3,6 @@ package media
 import (
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"math"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +10,8 @@ import (
 	"sync"
 
 	exiftool "github.com/barasher/go-exiftool"
+
+	"photo-loka/internal/utils"
 )
 
 // Persistent exiftool instance (stay_open mode for performance).
@@ -238,25 +239,24 @@ func ExtractMetadata(filePath string) (*ExifData, error) {
 	//   capture_tz_name   -> "America/New_York" (from GeolocationTimeZone)
 	// -------------------------------------------------------------------------
 
-	data.ExifDatetimeOriginalRef = getStringField(raw, "EXIF:DateTimeOriginal")
-	data.ExifCreateDateRef = getStringField(raw, "EXIF:CreateDate", "QuickTime:CreateDate")
+	// exif_*_ref fields: render the timezone-aware Composite SubSec values as
+	// ISO-8601 via the shared exifdate helper (matching the Node.js server,
+	// which renders these from exiftool-vendored ExifDateTime objects with
+	// subseconds + offset). Fall back to the plain EXIF/QuickTime fields when
+	// the Composite SubSec variant is absent.
+	data.ExifDatetimeOriginalRef = refDateISO(raw, "Composite:SubSecDateTimeOriginal", "EXIF:DateTimeOriginal")
+	data.ExifCreateDateRef = refDateISO(raw, "Composite:SubSecCreateDate", "EXIF:CreateDate", "QuickTime:CreateDate")
 
-	// Prefer Composite dates (include timezone) over raw EXIF dates
-	compositeDate := getStringField(raw, "Composite:SubSecDateTimeOriginal", "Composite:SubSecCreateDate")
-	if compositeDate != nil {
-		// Convert exiftool format to ISO 8601: "2025:09:14 13:33:31.186-04:00" -> "2025-09-14T13:33:31.186-04:00"
-		isoStr := exifDateToISO(*compositeDate)
-		data.CapturedAt = &isoStr
-		data.CaptureDateTime = parseCaptureDateTime(*compositeDate)
-	} else {
-		// Fallback to raw EXIF dates (no timezone info)
-		dateStr := data.ExifDatetimeOriginalRef
-		if dateStr == nil {
-			dateStr = data.ExifCreateDateRef
-		}
-		if dateStr != nil {
-			data.CapturedAt = dateStr
-			data.CaptureDateTime = parseCaptureDateTime(*dateStr)
+	// captured_at / CaptureDateTime: prefer the Composite SubSec value (carries
+	// the resolved timezone offset and subseconds), falling back to the plain
+	// EXIF dates (no timezone) when unavailable.
+	captureSrc := getStringField(raw, "Composite:SubSecDateTimeOriginal", "Composite:SubSecCreateDate",
+		"EXIF:DateTimeOriginal", "EXIF:CreateDate", "QuickTime:CreateDate")
+	if captureSrc != nil {
+		if dt, ok := utils.ParseExifDate(*captureSrc); ok {
+			iso := dt.ToISO()
+			data.CapturedAt = &iso
+			data.CaptureDateTime = toCaptureDateTime(dt)
 		}
 	}
 
@@ -475,110 +475,31 @@ func extractFaceNames(raw map[string]interface{}) []string {
 	return faces
 }
 
-// exifDateToISO converts exiftool date format to ISO 8601.
-// "2025:09:14 13:33:31.186-04:00" -> "2025-09-14T13:33:31.186-04:00"
-// "2025:09:14 13:33:31" -> "2025-09-14T13:33:31"
-func exifDateToISO(exifDate string) string {
-	if len(exifDate) < 10 {
-		return exifDate
+// refDateISO renders the first present field (searched in order) as an
+// ISO-8601 string via the shared exifdate helper, or nil if none parse.
+func refDateISO(raw map[string]interface{}, fields ...string) *string {
+	src := getStringField(raw, fields...)
+	if src == nil {
+		return nil
 	}
-	// Replace first two colons in date portion with dashes
-	iso := strings.Replace(exifDate, ":", "-", 2)
-	// Replace the space between date and time with T
-	iso = strings.Replace(iso, " ", "T", 1)
-	return iso
+	dt, ok := utils.ParseExifDate(*src)
+	if !ok {
+		return nil
+	}
+	iso := dt.ToISO()
+	return &iso
 }
 
-// parseCaptureDateTime parses an EXIF date/time string into components.
-// Handles formats like "2021:01:15 14:30:00" and "2021:01:15 14:30:00+05:30".
-func parseCaptureDateTime(dateStr string) *CaptureDateTime {
-	if dateStr == "" || dateStr == "0000:00:00 00:00:00" {
-		return nil
+// toCaptureDateTime maps a parsed utils.ExifDateTime into the media
+// CaptureDateTime struct used by the organizer for folder placement.
+func toCaptureDateTime(dt utils.ExifDateTime) *CaptureDateTime {
+	return &CaptureDateTime{
+		Year:            dt.Year,
+		Month:           dt.Month,
+		Day:             dt.Day,
+		Hour:            dt.Hour,
+		Minute:          dt.Minute,
+		Second:          dt.Second,
+		TzOffsetMinutes: dt.TzOffsetMinutes,
 	}
-
-	dt := &CaptureDateTime{}
-
-	// Split off timezone if present
-	mainPart := dateStr
-	var tzPart string
-
-	// Look for +/- timezone offset (e.g. "+05:30" or "-04:00")
-	for i := len(dateStr) - 1; i >= 0; i-- {
-		if dateStr[i] == '+' || dateStr[i] == '-' {
-			mainPart = dateStr[:i]
-			tzPart = dateStr[i:]
-			break
-		}
-	}
-
-	// Parse main part: "2021:01:15 14:30:00"
-	parts := strings.Fields(mainPart)
-	if len(parts) < 1 {
-		return nil
-	}
-
-	// Parse date
-	dateParts := strings.Split(parts[0], ":")
-	if len(dateParts) >= 3 {
-		fmt.Sscanf(dateParts[0], "%d", &dt.Year)
-		fmt.Sscanf(dateParts[1], "%d", &dt.Month)
-		fmt.Sscanf(dateParts[2], "%d", &dt.Day)
-	}
-
-	// Parse time
-	if len(parts) >= 2 {
-		timeParts := strings.Split(parts[1], ":")
-		if len(timeParts) >= 3 {
-			fmt.Sscanf(timeParts[0], "%d", &dt.Hour)
-			fmt.Sscanf(timeParts[1], "%d", &dt.Minute)
-			fmt.Sscanf(timeParts[2], "%d", &dt.Second)
-		}
-	}
-
-	// Parse timezone offset
-	if tzPart != "" {
-		offset := parseTzOffset(tzPart)
-		if offset != nil {
-			dt.TzOffsetMinutes = offset
-		}
-	}
-
-	// Validate that we got a meaningful date
-	if dt.Year == 0 && dt.Month == 0 && dt.Day == 0 {
-		return nil
-	}
-
-	return dt
-}
-
-// parseTzOffset parses a timezone string like "+05:30" or "-04:00" into minutes.
-func parseTzOffset(tz string) *int {
-	if len(tz) < 5 {
-		return nil
-	}
-
-	sign := 1
-	if tz[0] == '-' {
-		sign = -1
-	}
-
-	var hours, minutes int
-	// Handle "+05:30" or "+0530"
-	tzBody := tz[1:]
-	if strings.Contains(tzBody, ":") {
-		parts := strings.Split(tzBody, ":")
-		if len(parts) >= 2 {
-			fmt.Sscanf(parts[0], "%d", &hours)
-			fmt.Sscanf(parts[1], "%d", &minutes)
-		}
-	} else if len(tzBody) >= 4 {
-		fmt.Sscanf(tzBody[:2], "%d", &hours)
-		fmt.Sscanf(tzBody[2:4], "%d", &minutes)
-	}
-
-	offset := sign * (hours*60 + minutes)
-
-	slog.Debug("parsed timezone offset", "tz", tz, "offset_minutes", offset)
-
-	return &offset
 }

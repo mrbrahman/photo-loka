@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"strconv"
+	"path/filepath"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,6 +15,7 @@ import (
 	"photo-loka/internal/media"
 	"photo-loka/internal/ml"
 	"photo-loka/internal/queue"
+	"photo-loka/internal/utils"
 )
 
 // Indexer orchestrates the indexing pipeline for media files.
@@ -89,7 +90,17 @@ func (idx *Indexer) IndexFile(collection *collections.Collection, sourceFile str
 		if exifData.FileModifiedAt != nil {
 			exifData.CapturedAt = exifData.FileModifiedAt
 			// Parse file_modified_at to build CaptureDateTime for folder placement
-			exifData.CaptureDateTime = parseDateToCaptureDateTime(*exifData.FileModifiedAt)
+			if dt, ok := utils.ParseExifDate(*exifData.FileModifiedAt); ok {
+				exifData.CaptureDateTime = &media.CaptureDateTime{
+					Year:            dt.Year,
+					Month:           dt.Month,
+					Day:             dt.Day,
+					Hour:            dt.Hour,
+					Minute:          dt.Minute,
+					Second:          dt.Second,
+					TzOffsetMinutes: dt.TzOffsetMinutes,
+				}
+			}
 			idx.logger.Info("audio file without EXIF date, using file_modified_at for placement", "file", sourceFile)
 		}
 	}
@@ -166,6 +177,28 @@ func (idx *Indexer) IndexFile(collection *collections.Collection, sourceFile str
 
 	// Step 7: Build and insert/update DB row
 	row := buildMetadataRow(collection, fileUUID, placeResult, exifData, captureDate, captureTime, captureTzOffset)
+
+	// Derive private/trashed status from the on-disk filename prefix so that
+	// pre-existing files that were marked private (leading '.') or trashed
+	// ('.Trash_') on disk are indexed with the correct flags. The stored
+	// filename keeps its prefix, matching what the trash/private APIs and
+	// restore/unmark operations expect. ".Trash_" is checked before "." since
+	// a trashed file also begins with a dot.
+	baseName := filepath.Base(placeResult.Filename)
+	if _, isTrashed, isPrivate := utils.StripStatusPrefix(baseName); isTrashed {
+		row["is_trashed"] = 1
+		// No record exists of when a pre-existing file was trashed. Use the
+		// file's modification time as a proxy (rename does not change mtime).
+		// Normalize to SQLite's local datetime format to match trashed_at
+		// values set by the API.
+		if exifData.FileModifiedAt != nil {
+			if dt, ok := utils.ParseExifDate(*exifData.FileModifiedAt); ok {
+				row["trashed_at"] = dt.ToSQLiteLocal()
+			}
+		}
+	} else if isPrivate {
+		row["is_private"] = 1
+	}
 
 	if existingUUID != "" {
 		// Update existing row
@@ -447,54 +480,3 @@ func joinStrings(ss []string) string {
 	return string(b)
 }
 
-// parseDateToCaptureDateTime attempts to parse a date string into CaptureDateTime.
-// Handles formats like "2025:09:15 11:33:34-04:00" or "2025-09-15T11:33:34-04:00"
-func parseDateToCaptureDateTime(dateStr string) *media.CaptureDateTime {
-	// Try common exiftool date formats
-	formats := []string{
-		"2006:01:02 15:04:05-07:00",
-		"2006:01:02 15:04:05",
-		"2006-01-02T15:04:05-07:00",
-		"2006-01-02T15:04:05",
-		"2006-01-02 15:04:05",
-	}
-
-	for _, fmt := range formats {
-		if t, err := time.Parse(fmt, dateStr); err == nil {
-			dt := &media.CaptureDateTime{
-				Year:   t.Year(),
-				Month:  int(t.Month()),
-				Day:    t.Day(),
-				Hour:   t.Hour(),
-				Minute: t.Minute(),
-				Second: t.Second(),
-			}
-			_, offset := t.Zone()
-			if offset != 0 {
-				offsetMin := offset / 60
-				dt.TzOffsetMinutes = &offsetMin
-			}
-			return dt
-		}
-	}
-	return nil
-}
-
-// formatTzOffset formats a timezone offset in minutes to "+HH:MM" or "-HH:MM".
-func formatTzOffset(offsetMinutes int) string {
-	sign := "+"
-	if offsetMinutes < 0 {
-		sign = "-"
-		offsetMinutes = -offsetMinutes
-	}
-	return sign + padInt(offsetMinutes/60, 2) + ":" + padInt(offsetMinutes%60, 2)
-}
-
-// padInt formats an integer with leading zeros to the specified width.
-func padInt(n, width int) string {
-	s := strconv.Itoa(n)
-	for len(s) < width {
-		s = "0" + s
-	}
-	return s
-}
