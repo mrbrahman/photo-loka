@@ -77,6 +77,16 @@ func CreateImageThumbnails(uuid, filePath, thumbsDir string) error {
 		slog.Warn("auto-rotate failed, continuing without rotation", "uuid", uuid, "error", err)
 	}
 
+	// Drop the embedded ICC profile so it is not carried into every thumbnail.
+	// Combined with StripMetadata on export (below), this keeps thumbnails lean
+	// (matching sharp, which strips metadata by default). Otherwise the source
+	// EXIF/ICC/GainMap would bloat even a 20px thumbnail to many KB.
+	if img.HasICCProfile() {
+		if err := img.RemoveICCProfile(); err != nil {
+			slog.Warn("failed to remove ICC profile", "uuid", uuid, "error", err)
+		}
+	}
+
 	for _, size := range thumbSizes {
 		outputPath := thumbnailPath(uuid, thumbsDir, size)
 
@@ -119,8 +129,8 @@ func CreateImageThumbnails(uuid, filePath, thumbsDir string) error {
 			}
 		}
 
-		// Export as JPEG
-		bytes, _, err := thumb.ExportJpeg(&vips.JpegExportParams{Quality: 80})
+		// Export as JPEG. StripMetadata drops EXIF/XMP so thumbnails stay small.
+		bytes, _, err := thumb.ExportJpeg(&vips.JpegExportParams{Quality: 80, StripMetadata: true})
 		thumb.Close()
 		if err != nil {
 			slog.Error("JPEG export failed", "uuid", uuid, "size", size, "error", err)
