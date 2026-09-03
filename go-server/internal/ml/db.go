@@ -143,8 +143,12 @@ func (m *MLDB) SaveFaceResults(uuid string, faces []map[string]interface{}, unma
 		}
 	}
 
-	// Update metadata.faces with recognized person names
-	var faceNames []string
+	// Update metadata.faces with recognized person names. This column is a
+	// summary of *named* people; detected-but-unnamed faces contribute no name
+	// (their detail is preserved in face_recognition). Initialize as a non-nil
+	// slice so that "ML ran, no recognized names" serializes to [] (known)
+	// rather than null (nothing known / ML not run).
+	faceNames := []string{}
 	for _, face := range faces {
 		if name, ok := face["person_name"].(string); ok && name != "" {
 			faceNames = append(faceNames, name)

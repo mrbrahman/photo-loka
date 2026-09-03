@@ -318,7 +318,9 @@ func (idx *Indexer) RefreshMetadata(uuid string, filename string) error {
 	if exifData.Xmpregion != nil {
 		row["xmpregion"] = *exifData.Xmpregion
 	}
-	if len(exifData.Faces) > 0 {
+	// faces tri-state: nil = no XMP RegionInfo (leave NULL); non-nil (possibly
+	// empty) = RegionInfo present, so store [] or the names.
+	if exifData.Faces != nil {
 		row["faces"] = joinStrings(exifData.Faces)
 	}
 	row["rating"] = exifData.Rating
@@ -412,7 +414,9 @@ func buildMetadataRow(collection *collections.Collection, fileUUID string, place
 	if exif.Xmpregion != nil {
 		row["xmpregion"] = *exif.Xmpregion
 	}
-	if len(exif.Faces) > 0 {
+	// faces tri-state: nil = no XMP RegionInfo (leave NULL, nothing known yet);
+	// non-nil (possibly empty) = RegionInfo present, so store [] or the names.
+	if exif.Faces != nil {
 		row["faces"] = joinStrings(exif.Faces)
 	}
 	if exif.ImageWidth != nil {

@@ -440,6 +440,11 @@ func getStringSlice(raw map[string]interface{}, keys ...string) []string {
 }
 
 // extractFaceNames pulls face names from XMP Region data.
+//
+// Return semantics support the faces tri-state stored in metadata.faces:
+//   - nil            -> no XMP RegionInfo present (nothing known; column left NULL)
+//   - non-nil empty  -> RegionInfo present but no named regions ([] = known, no names)
+//   - non-nil filled -> the named regions found
 func extractFaceNames(raw map[string]interface{}) []string {
 	regionInfo, ok := raw["XMP:RegionInfo"]
 	if !ok {
@@ -461,7 +466,9 @@ func extractFaceNames(raw map[string]interface{}) []string {
 		return nil
 	}
 
-	var faces []string
+	// RegionInfo is present and well-formed: return a non-nil slice so callers
+	// can distinguish "looked, found none" ([]) from "no region data" (nil).
+	faces := []string{}
 	for _, r := range regions {
 		region, ok := r.(map[string]interface{})
 		if !ok {
