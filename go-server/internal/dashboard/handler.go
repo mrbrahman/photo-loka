@@ -16,12 +16,12 @@ type Handler struct {
 
 // LibraryStats holds the overall library statistics.
 type LibraryStats struct {
-	TotalItems   int64                  `json:"totalItems"`
-	TotalSize    int64                  `json:"totalSize"`
-	Albums       int64                  `json:"albums"`
-	TrashedItems int64                  `json:"trashedItems"`
-	ByType       map[string]TypeStat    `json:"byType"`
-	Collections  []CollectionStat       `json:"collections"`
+	TotalItems   int64               `json:"totalItems"`
+	TotalSize    int64               `json:"totalSize"`
+	Albums       int64               `json:"albums"`
+	TrashedItems int64               `json:"trashedItems"`
+	ByType       map[string]TypeStat `json:"byType"`
+	Collections  []CollectionStat    `json:"collections"`
 }
 
 // TypeStat holds count and size for a media type.
@@ -78,17 +78,17 @@ func (h *Handler) queryLibraryStats() (*LibraryStats, error) {
 	query := `
 		SELECT
 			count(*) filter (where coalesce(is_trashed, 0) = 0) as totalItems,
-			coalesce(sum(filesize) filter (where coalesce(is_trashed, 0) = 0), 0) as totalSize,
+			cast(coalesce(sum(filesize) filter (where coalesce(is_trashed, 0) = 0), 0) as integer) as totalSize,
 			count(distinct album_date || '|' || coalesce(album_name, '')) filter (where coalesce(is_trashed, 0) = 0) as albums,
 			count(*) filter (where coalesce(is_trashed, 0) = 1) as trashedItems,
 			count(*) filter (where coalesce(is_trashed, 0) = 0 and mediatype = 'image') as imageCount,
-			coalesce(sum(filesize) filter (where coalesce(is_trashed, 0) = 0 and mediatype = 'image'), 0) as imageSize,
+			cast(coalesce(sum(filesize) filter (where coalesce(is_trashed, 0) = 0 and mediatype = 'image'), 0) as integer) as imageSize,
 			count(*) filter (where coalesce(is_trashed, 0) = 0 and mediatype = 'video') as videoCount,
-			coalesce(sum(filesize) filter (where coalesce(is_trashed, 0) = 0 and mediatype = 'video'), 0) as videoSize,
+			cast(coalesce(sum(filesize) filter (where coalesce(is_trashed, 0) = 0 and mediatype = 'video'), 0) as integer) as videoSize,
 			count(*) filter (where coalesce(is_trashed, 0) = 0 and mediatype = 'audio') as audioCount,
-			coalesce(sum(filesize) filter (where coalesce(is_trashed, 0) = 0 and mediatype = 'audio'), 0) as audioSize,
+			cast(coalesce(sum(filesize) filter (where coalesce(is_trashed, 0) = 0 and mediatype = 'audio'), 0) as integer) as audioSize,
 			count(*) filter (where coalesce(is_trashed, 0) = 0 and mediatype not in ('image', 'video', 'audio')) as otherCount,
-			coalesce(sum(filesize) filter (where coalesce(is_trashed, 0) = 0 and mediatype not in ('image', 'video', 'audio')), 0) as otherSize
+			cast(coalesce(sum(filesize) filter (where coalesce(is_trashed, 0) = 0 and mediatype not in ('image', 'video', 'audio')), 0) as integer) as otherSize
 		FROM metadata`
 
 	var stats LibraryStats
@@ -137,7 +137,7 @@ func (h *Handler) queryCollectionStats() ([]CollectionStat, error) {
 			c.collection_name,
 			c.collection_path,
 			count(m.uuid) as items,
-			coalesce(sum(m.filesize), 0) as totalSize
+			cast(coalesce(sum(m.filesize), 0) as integer) as totalSize
 		FROM collections c
 		INNER JOIN metadata m ON m.collection_id = c.collection_id
 		WHERE coalesce(m.is_trashed, 0) = 0
