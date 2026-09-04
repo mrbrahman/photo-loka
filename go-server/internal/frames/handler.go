@@ -177,6 +177,9 @@ func (h *Handler) loadAllFrames(c *gin.Context) {
 		return
 	}
 
+	// Re-schedule cron jobs to match the reloaded frame set.
+	h.manager.ScheduleAllFrameJobs()
+
 	c.Status(http.StatusOK)
 }
 

@@ -59,7 +59,8 @@ func NewManager(db *FramesDB, searchDB *search.SearchDB, sched *scheduler.Schedu
 	}
 }
 
-// LoadAllFrames loads all frames from DB, initializes in-memory state, and schedules jobs.
+// LoadAllFrames loads all frames from DB and initializes in-memory state.
+// Cron jobs are scheduled separately via ScheduleAllFrameJobs.
 func (m *Manager) LoadAllFrames() error {
 	dbFrames, err := m.db.GetAll()
 	if err != nil {
@@ -86,8 +87,8 @@ func (m *Manager) LoadAllFrames() error {
 			)
 		}
 
-		// Schedule cron jobs
-		m.scheduleJobsForFrame(frame)
+		// Note: cron jobs are scheduled separately via ScheduleAllFrameJobs
+		// so that state-loading and job-scheduling are distinct concerns.
 
 		// Check if currently in pause window
 		if frame.DailyPauseRange != nil && *frame.DailyPauseRange != "" {
