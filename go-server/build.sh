@@ -3,14 +3,34 @@
 PS4='+$(date +%H:%M:%S.%3N) '
 #set -x
 
+# Parse args. --embed forces web-asset embedding even when HEAD is not on an
+# exact release tag (useful for testing the embedded build locally).
+FORCE_EMBED=0
+for arg in "$@"; do
+    case "$arg" in
+        --embed)
+            FORCE_EMBED=1
+            ;;
+        *)
+            echo "Unknown option: $arg" >&2
+            echo "Usage: $0 [--embed]" >&2
+            exit 1
+            ;;
+    esac
+done
+
 VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev")
 
 TAGS="fts5 sqlite_math_functions"
 
-# If on an exact tag (release build), bundle+minify web assets into a temp web/
-# dir and embed it into the binary. Dev builds serve ../web from disk unchanged.
-if git describe --tags --exact-match HEAD &>/dev/null; then
-    echo "Release build: bundling, minifying, and embedding web assets"
+# Embed when on an exact tag (release build) or when --embed forces it.
+# Otherwise dev builds serve ../web from disk unchanged.
+if [ "$FORCE_EMBED" = "1" ] || git describe --tags --exact-match HEAD &>/dev/null; then
+    if [ "$FORCE_EMBED" = "1" ]; then
+        echo "Forced embed build: bundling, minifying, and embedding web assets"
+    else
+        echo "Release build: bundling, minifying, and embedding web assets"
+    fi
 
     # Fresh temp output dir (embedded via //go:embed all:web)
     rm -rf web
