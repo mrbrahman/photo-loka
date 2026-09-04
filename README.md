@@ -203,14 +203,25 @@ build it yourself.
   ```
 
   **exiftool 12.78+**: the distro package is often too old. Check with
-  `exiftool -ver`; if it is below 12.78, install a recent build and put it on
-  your `PATH`:
+  `exiftool -ver`; if it is below 12.78, install a recent build. exiftool is not
+  a single self-contained binary -- the tarball ships the `exiftool` script plus
+  an adjacent `lib/` directory it needs -- so extract it somewhere stable and
+  symlink the script onto your `PATH`:
   ```bash
-  curl -L "https://sourceforge.net/projects/exiftool/files/Image-ExifTool-13.59.tar.gz/download" -o Image-ExifTool-13.59.tar.gz
-  tar -xzf Image-ExifTool-13.59.tar.gz
-  export PATH=/path/to/Image-ExifTool-13.59:$PATH   # add to ~/.bashrc to persist
+  # Download to a temp dir; only the extracted files need to persist.
+  curl -L "https://sourceforge.net/projects/exiftool/files/Image-ExifTool-13.59.tar.gz/download" -o /tmp/Image-ExifTool-13.59.tar.gz
+  mkdir -p "$HOME/.local/lib"
+  tar -xzf /tmp/Image-ExifTool-13.59.tar.gz -C "$HOME/.local/lib"
+  rm /tmp/Image-ExifTool-13.59.tar.gz
+  sudo ln -sf "$HOME/.local/lib/Image-ExifTool-13.59/exiftool" /usr/local/bin/exiftool
   exiftool -ver   # should show 13.59
   ```
+  The symlinked script resolves its own real location, so it still finds the
+  adjacent `lib/`. Placing the symlink in `/usr/local/bin` (already on the
+  default `PATH`, including the systemd user service's PATH) means it works for
+  the server, cron, and interactive shells alike -- no `PATH` edits needed. This
+  is the one step here that uses `sudo`, same as installing ffmpeg and libvips
+  above.
 
   Note on libvips: it is linked dynamically (via govips/cgo), so the shared
   library must be present at runtime, not just when building. `libvips-dev`
