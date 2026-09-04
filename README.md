@@ -145,7 +145,8 @@ TODO - sync timestamps on +2 level folders
 - In-app self-update: detect a newer release (compare embedded version against
   the latest GitHub release), notify the admin on login (and via email once
   email config exists), then self-replace the binary and exit so systemd
-  restarts into the new version (needs `Restart=always` in the unit). Resolve
+  restarts into the new version (the systemd unit already uses
+  `Restart=always`; see [Run the server using systemd](#run-the-server-using-systemd)). Resolve
   the real binary path via `os.Executable()` + `filepath.EvalSymlinks` (so it
   works wherever it is installed, including symlinks) and check that path is
   user-writable first -- warn the admin to update manually if not (e.g. a
@@ -227,7 +228,7 @@ build it yourself.
   # curl -L -o ~/.local/bin/photo-loka https://github.com/mrbrahman/photo-loka/releases/download/v1.0.0/photo-loka
   chmod +x ~/.local/bin/photo-loka
   # ensure it's on PATH (most distros already include ~/.local/bin):
-  command -v photo-loka || echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+  command -v photo-loka || { echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc; source ~/.bashrc; }
   photo-loka --help
   ```
   Config lives in `DATA_DIR` (`runtime-config.json` is created there), and env
@@ -421,38 +422,48 @@ clients.
 ## Run the server using systemd
 
 Run Photo-Loka as a **user** service (`systemctl --user`) rather than a
-system/root service. Reasons:
+system/root service:
 
-- **Least privilege**: the server only needs access to your photos and its
-  `DATA_DIR`, so it should run as the user that owns those paths rather than as
-  root. Running as root gives it far more access than it needs, so a bug or
-  exploit has a much larger blast radius.
-- **File ownership stays sane**: media, thumbnails, and the SQLite database are
-  created/owned by your user, matching the folders you already curate. A
-  root-owned service tends to create root-owned files under your home, which
-  become awkward to manage and back up.
-- **No root needed to install or manage**: the binary lives in `~/.local/bin`
-  and the unit in `~/.config/systemd/user/`, so setup, updates, and
-  start/stop/logs never require `sudo`.
-- **Self-contained**: uninstalling is just removing your files; nothing was
-  installed system-wide.
+- **Least privilege**: it only needs your photos and `DATA_DIR`, so running as
+  root gives it far more access (and blast radius) than it needs.
+- **File ownership stays sane**: media, thumbnails, and the database are owned
+  by your user, not root, matching the folders you already curate.
+- **No root, self-contained**: binary in `~/.local/bin`, unit in
+  `~/.config/systemd/user/` -- setup, updates, and logs never need `sudo`, and
+  uninstalling is just removing your files.
 
 The examples below are for a **user** service (note the `--user` flag and the
 `~/.config/systemd/user/` path). Lingering is enabled so the service runs
 without an active login session.
 
-* Place the following unit file in `~/.config/systemd/user/photo-loka.service`:
+* Create/edit the unit with `systemctl --user edit`, so you do not have to
+  remember where the file lives (systemd writes it to the right place and runs
+  `daemon-reload` for you on save):
+  ```bash
+  systemctl --user edit --force --full photo-loka.service
+  ```
+  The `--full` flag edits the entire unit (not just a drop-in override) and
+  `--force` lets you create it if it does not exist yet. Paste the following
+  into the editor and save:
   ```ini
   [Unit]
   Description=Photo-Loka Server
 
   [Service]
   ExecStart=%h/.local/bin/photo-loka
-  WorkingDirectory=%h/photo-loka
-  # Optional: the leading '-' makes systemd tolerate a missing .env (env vars can
-  # also be set via exported variables or Environment= lines instead).
-  EnvironmentFile=-%h/photo-loka/.env
-  Restart=on-failure
+  # Config via Environment= lines (values quoted for safety). Required:
+  Environment="DATA_DIR=/path/to/data/folder"
+  Environment="JWT_SECRET=your-secret-key-change-this"
+  Environment="GEONAMES_USERNAME=your-geonames-username"
+  # Optional (defaults shown):
+  Environment="ML_SERVICE_URL=http://localhost:8000"
+  Environment="PORT=9000"
+  # Alternative: use a .env file instead of the Environment= lines above.
+  # Uncomment both -- the .env is loaded from WorkingDirectory, and the leading
+  # '-' makes systemd tolerate a missing file.
+  # WorkingDirectory=%h/photo-loka
+  # EnvironmentFile=-%h/photo-loka/.env
+  Restart=always
   RestartSec=5
 
   [Install]
@@ -460,7 +471,6 @@ without an active login session.
   ```
 * Enable and start it (enable lingering so it runs without an active login):
   ```bash
-  systemctl --user daemon-reload
   systemctl --user enable --now photo-loka.service
   loginctl enable-linger $USER
   ```
