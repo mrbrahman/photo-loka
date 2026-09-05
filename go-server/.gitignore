@@ -1,0 +1,17 @@
+# Binary
+photo-loka
+
+# Database (test/dev)
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# Environment
+.env
+
+# Runtime config (user-specific)
+runtime-config.json
+
+# OS files
+.DS_Store
+Thumbs.db

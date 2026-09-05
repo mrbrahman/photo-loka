@@ -4,14 +4,17 @@
 // Goal: Installed PWAs should always run the latest frontend code, with the
 // user notified when a new version is deployed.
 //
-// Strategy: Network-first service worker. The SW does NOT cache app code
-// (HTML/JS/CSS) - those always come fresh from the server. The SW exists
-// solely to (a) make the app installable, (b) precache a few heavy stable
-// assets (CDN deps and icon), and (c) provide the lifecycle hooks that let
-// the page detect when a new version is available.
+// Strategy: Cache-first service worker keyed on VERSION. App code (HTML/JS/CSS/
+// assets) is cached per VERSION and served cache-first for speed and offline;
+// it is safe because code is immutable within a VERSION and every web change
+// bumps VERSION (so the version-scoped cache self-invalidates and activate
+// deletes the old one). API/media/SSE requests are always network-first. The SW
+// also (a) makes the app installable, (b) precaches a few heavy stable assets
+// (CDN deps and icon), and (c) provides the lifecycle hooks that let the page
+// detect when a new version is available.
 //
 // The VERSION constant below is the trigger. Bumping it causes the browser
-// to detect this sw.js as different from the previously installed one,
+// to detect this sw.mjs as different from the previously installed one,
 // which kicks off the install/activate cycle. See dev-checklist.md for
 // when to bump (patch / minor / major).
 //
@@ -19,7 +22,7 @@
 //   1. User has app open with old SW (version X).
 //   2. Page calls registration.update() periodically (10-min poll) and on
 //      visibilitychange (tab back from background).
-//   3. Browser fetches sw.js, sees byte difference, installs new SW (Y).
+//   3. Browser fetches sw.mjs, sees byte difference, installs new SW (Y).
 //      install handler calls skipWaiting() so the new SW activates ASAP.
 //   4. activate handler calls clients.claim() so the new SW takes control
 //      of the open page immediately.
@@ -39,8 +42,8 @@
 // =============================================================================
 
 // Bump this version whenever you deploy frontend changes.
-// The browser compares sw.js byte-for-byte; a changed VERSION triggers an update.
-const VERSION = '4.10.7';
+// The browser compares sw.mjs byte-for-byte; a changed VERSION triggers an update.
+const VERSION = '4.11.4';
 
 const CACHE_NAME = `photo-loka-${VERSION}`;
 
@@ -63,6 +66,27 @@ self.addEventListener('message', event => {
     event.ports[0]?.postMessage({ version: VERSION });
   }
 });
+
+// Same-origin app code that is safe to cache-first. It is immutable within a
+// VERSION (baked into the Go binary / served from ../web in dev), and every web
+// change bumps VERSION -- so the version-scoped CACHE_NAME self-invalidates on
+// every deploy/edit. Allowlist by path so anything unexpected (esp. /api/*)
+// fails safe to the network.
+function isCacheableCode(url) {
+  if (url.origin !== self.location.origin) return false;
+  const p = url.pathname;
+  if (p.startsWith('/api/')) return false;  // dynamic: API, media, SSE
+  if (p === '/sw.mjs') return false;         // never intercept the SW itself
+  return (
+    p === '/' ||
+    p === '/index.html' ||
+    p === '/frame.html' ||
+    p === '/manifest.json' ||
+    p.startsWith('/js/') ||
+    p.startsWith('/css/') ||
+    p.startsWith('/assets/')
+  );
+}
 
 self.addEventListener('install', event => {
   event.waitUntil(
@@ -89,25 +113,50 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
-  const url = new URL(event.request.url);
+  const { request } = event;
+  const url = new URL(request.url);
+
+  // Only GET responses are cacheable; let everything else pass through.
+  if (request.method !== 'GET') return;
 
   // For precached CDN assets and the icon, serve from cache first (they are versioned/stable)
-  if (urlsToCache.includes(event.request.url) || urlsToCache.includes(url.pathname)) {
+  if (urlsToCache.includes(request.url) || urlsToCache.includes(url.pathname)) {
     event.respondWith(
-      caches.match(event.request).then(cached => {
-        return cached || fetch(event.request);
+      caches.match(request).then(cached => {
+        return cached || fetch(request);
       })
     );
     return;
   }
 
-  // Everything else: network-first, no caching.
+  // Same-origin app code (HTML/JS/CSS/assets): cache-first, populated on first
+  // fetch into the VERSION-scoped cache. A cache hit is always correct because
+  // code is immutable within a VERSION; a new VERSION creates a fresh cache and
+  // activate deletes the old one, so a deploy swaps code atomically on reload.
+  if (isCacheableCode(url)) {
+    event.respondWith(
+      caches.open(CACHE_NAME).then(cache =>
+        cache.match(request).then(cached => {
+          if (cached) return cached;
+          return fetch(request).then(resp => {
+            if (resp.ok && resp.status === 200) {
+              cache.put(request, resp.clone());
+            }
+            return resp;
+          });
+        })
+      )
+    );
+    return;
+  }
+
+  // Everything else (API, media, SSE): network-first, no caching.
   // The app needs the server for all functionality anyway.
   // Use cache:'no-store' to bypass the browser's HTTP cache on mobile.
   event.respondWith(
-    fetch(event.request, { cache: 'no-store' }).catch(() => {
+    fetch(request, { cache: 'no-store' }).catch(() => {
       // Offline fallback for navigation requests: serve the cached icon page or nothing
-      if (event.request.destination === 'document') {
+      if (request.destination === 'document') {
         return caches.match('/assets/icon-454.png');
       }
     })
