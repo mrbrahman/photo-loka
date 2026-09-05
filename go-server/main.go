@@ -512,22 +512,43 @@ func checkMLService(mlServiceURL string) {
 	slog.Info("ML service is healthy", "url", mlServiceURL)
 }
 
+// dropTimeAttr is a tint ReplaceAttr that strips the top-level time attribute
+// so no timestamp is written. This is tint's documented way to omit the time
+// (there is no dedicated option; TimeFormat = "" is a no-op).
+func dropTimeAttr(groups []string, a slog.Attr) slog.Attr {
+	if a.Key == slog.TimeKey && len(groups) == 0 {
+		return slog.Attr{} // empty attr -> tint skips it
+	}
+	return a
+}
+
 // initLogging sets up structured logging with tint handler.
 func initLogging() {
-	// If running under systemd (INVOCATION_ID set), skip timestamps
+	// Keep colors on by default; only honor NO_COLOR. Under systemd the output
+	// is a pipe (not a TTY), so we must NOT auto-disable colors -- journalctl
+	// re-emits the ANSI codes when it writes to a terminal.
+	noColor := os.Getenv("NO_COLOR") != ""
+
+	// If running under systemd (INVOCATION_ID set), skip timestamps since
+	// journald already stamps every line. Build a dedicated handler for each
+	// case rather than mutating a shared Options.
 	_, underSystemd := os.LookupEnv("INVOCATION_ID")
 
-	opts := &tint.Options{
-		Level:      slog.LevelInfo,
-		TimeFormat: time.DateTime,
-		NoColor:    os.Getenv("NO_COLOR") != "",
-	}
-
+	var handler slog.Handler
 	if underSystemd {
-		opts.TimeFormat = "" // No timestamp when systemd provides it
+		handler = tint.NewHandler(os.Stderr, &tint.Options{
+			Level:       slog.LevelInfo,
+			NoColor:     noColor,
+			ReplaceAttr: dropTimeAttr,
+		})
+	} else {
+		handler = tint.NewHandler(os.Stderr, &tint.Options{
+			Level:      slog.LevelInfo,
+			TimeFormat: time.DateTime,
+			NoColor:    noColor,
+		})
 	}
 
-	handler := tint.NewHandler(os.Stderr, opts)
 	slog.SetDefault(slog.New(handler))
 }
 
