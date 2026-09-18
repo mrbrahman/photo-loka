@@ -207,25 +207,16 @@ build it yourself.
   a single self-contained binary -- the tarball ships the `exiftool` script plus
   an adjacent `lib/` directory it needs -- so extract it somewhere stable and
   symlink the script onto your `PATH`:
+  
   ```bash
   # Download to a temp dir; only the extracted files need to persist.
   curl -L "https://sourceforge.net/projects/exiftool/files/Image-ExifTool-13.59.tar.gz/download" -o /tmp/Image-ExifTool-13.59.tar.gz
   mkdir -p "$HOME/.local/lib"
   tar -xzf /tmp/Image-ExifTool-13.59.tar.gz -C "$HOME/.local/lib"
   rm /tmp/Image-ExifTool-13.59.tar.gz
-  sudo ln -sf "$HOME/.local/lib/Image-ExifTool-13.59/exiftool" /usr/local/bin/exiftool
+  ln -sf "$HOME/.local/lib/Image-ExifTool-13.59/exiftool" "$HOME/.local/bin/exiftool"
   exiftool -ver   # should show 13.59
   ```
-  The symlinked script resolves its own real location, so it still finds the
-  adjacent `lib/`. Placing the symlink in `/usr/local/bin` (already on the
-  default `PATH`, including the systemd user service's PATH) means it works for
-  the server, cron, and interactive shells alike -- no `PATH` edits needed. This
-  is the one step here that uses `sudo`, same as installing ffmpeg and libvips
-  above.
-
-  Note on libvips: it is linked dynamically (via govips/cgo), so the shared
-  library must be present at runtime, not just when building. `libvips-dev`
-  (build-time) pulls it in too, so a build machine is already covered.
 
 - **Install the binary**
 
