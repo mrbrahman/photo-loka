@@ -13,7 +13,7 @@ Also, many things are rough around the edges, simply because I'm the sole user &
 1. We don't want to use cloud providers for personal photo collection.
 2. Some of us really care about our media in folders that we have meticulously curated from a long time. With any tool, we want the ability to continue to manage pics in folders.
 3. The single source of truth is the photo itself (*). Hence, we want all metadata, including user tags, ML based face / objects labels etc., to go back to the photo, to the extent possible.
-4. In the same vein, we also want the tool to utlize the metadata already existing in the photos (updated by device / other tools).
+4. In the same vein, we also want the tool to utilize the metadata already existing in the photos (updated by device / other tools).
 5. In other words, we don't want to be locked-down by any one particular tool (including this one!).
 6. Some kind of sensible, not too constrained search is needed, even though it may (will) not be as good as Google.
 
@@ -28,7 +28,7 @@ Also, many things are rough around the edges, simply because I'm the sole user &
 # Current Features
 
 ## Media Management
-- Support for existing folders and files: Read existing folder structure (specificed during collection creation) and index the files found (if any) under respective collections
+- Support for existing folders and files: Read existing folder structure (specified during collection creation) and index the files found (if any) under respective collections
 - Support for new files: 
     * Immediate indexing - Watch one or more 'listen' folders for new files, and as new files become available, bring them into the respective collection and index them
     * Delayed indexing - Schedule a daily 'cron' to watch the setup 'intake' folders, to bring in files to the collection that are 'x' days stale
@@ -50,7 +50,7 @@ Also, many things are rough around the edges, simply because I'm the sole user &
 ## Enrichments
 - Lookup GPS location
     * First using geolocation api (that comes with exiftool)
-    * For US based addresses, use [findNearestAdderss](https://www.geonames.org/maps/us-reverse-geocoder.html#findNearestAddress) API (need a registered username)
+    * For US based addresses, use [findNearestAddress](https://www.geonames.org/maps/us-reverse-geocoder.html#findNearestAddress) API (need a registered username)
 - Face recognition
     * Detect and cluster faces in photos
     * Name recognized faces (with auto-suggestions from ML and existing names)
@@ -65,7 +65,7 @@ Also, many things are rough around the edges, simply because I'm the sole user &
 - Search photos based on their metadata, using SQLite FTS5
     1. Github *like* search features (key value pairs)
        e.g. `album_name:trip camera:samsung type:video` (`album:` is also accepted as an alias for `album_name:`)
-    2. When multiple conditions are prsent, by default they are "AND"ed.
+    2. When multiple conditions are present, by default they are "AND"ed.
         e.g. `album_name:trip camera:samsung type:video`
         will translate as
         `{album_name}: "trip"* AND {camera}: "samsung"* AND {type}: "video"*`
@@ -76,11 +76,11 @@ Also, many things are rough around the edges, simply because I'm the sole user &
         `{album_name}: "trip"* OR {camera}: "samsung"* OR {type}: "video"*`
     5. Any un-prefixed condition will be applied to/restricted to all [search-enabled columns](go-server/internal/search/query_builder.go#L15)
     6. For advanced needs (including querying non restricted columns - for e.g. `capture_time`), use the "raw"
-       input using SQLite FTS syntax. Thich will be used as-is in the filter.
+       input using SQLite FTS syntax. This will be used as-is in the filter.
         e.g.
           - `raw:"metadata match '{album_name}: (states* AND trip*)'"`
           - `raw:"strftime('%W',capture_time)=strftime('%W',date()) and strftime('%Y',capture_time) != strftime('%Y',date())"` (all 'past' photos of current week)
-    7. "raw" can be clubbled with other filters, if needed
+    7. "raw" can be clubbed with other filters, if needed
     8. AI-powered semantic search using image embeddings
        e.g. `ai:"sunset on a beach"` to find visually similar photos
 
@@ -104,9 +104,9 @@ All that you do is register the "frame"
 
 Specify the 
 * IP address
-* A search crieteria (refer to 'search photos' in [UI features](#ui-features))
+* A search criteria (refer to 'search photos' in [UI features](#ui-features))
 * A reset schedule (crontab format) - to auto-refresh the playlist for the frame
-* Dailay Pause range - to auto pause the frame during that time period
+* Daily Pause range - to auto pause the frame during that time period
 
 The frame is setup, and available at `http://<server-ip>/frame.html`
 
@@ -123,7 +123,7 @@ When the folders are renamed, backup utilities like `rsync` see them as file-del
 That's exactly what this setup aims to help with.
 
 - Register backup device(s) (with UUID of the device)
-- All file opertions on a collection are noted in a table
+- All file operations on a collection are noted in a table
 - When it is time to backup to a specific device, all 'delta' operations are determined and applied to the set of files eligible for backup.
 - The 'last_backup_id' is noted for each backup.
 
@@ -351,7 +351,7 @@ The token is a JWT that works with existing authentication. Use it in API calls:
 curl -H "Authorization: Bearer <token>" http://localhost:9000/api/getIndexerStatus
 ```
 
-Or place the authoriation in `.curlrc`
+Or place the authorization in `.curlrc`
 
 **Note**: API tokens are not stored in the database. They're self-contained JWTs that remain valid until expiry. If you need to revoke a token before expiry, you'll need to change the JWT_SECRET (which invalidates all tokens).
 
@@ -491,7 +491,7 @@ without an active login session.
   alias stop='systemctl --user stop photo-loka.service'
   alias rs='systemctl --user restart photo-loka.service'
   ```
-* Use the follwing for checking logs in `journalctl`
+* Use the following for checking logs in `journalctl`
   ```bash
   # logs from the start of the service
   alias log='journalctl --user -u photo-loka.service --all --no-hostname'
