@@ -253,18 +253,18 @@ func (h *Handler) compressVideo(c *gin.Context) {
 		return
 	}
 
-	// TODO: When individual queues are implemented for each pipeline step,
-	// this should go through the video compression queue instead of a raw goroutine.
-	go func() {
-		encoder := h.rtConfig.VideoEncoder
-		if err := media.CompressVideo(uuid, filename, h.thumbsDir, encoder); err != nil {
-			h.logger.Error("video compression failed", "uuid", uuid, "error", err)
-		} else {
-			h.logger.Info("video compression complete", "uuid", uuid)
-		}
-	}()
+	encoder := h.rtConfig.VideoEncoder
+	if err := media.CompressVideo(uuid, filename, h.thumbsDir, encoder); err != nil {
+		h.logger.Error("video compression failed", "uuid", uuid, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
+			"message": "video compression failed: " + err.Error(),
+			"code":    "COMPRESS_ERROR",
+		}})
+		return
+	}
 
-	c.JSON(http.StatusAccepted, gin.H{"message": "video compression started", "uuid": uuid})
+	h.logger.Info("video compression complete", "uuid", uuid)
+	c.Status(http.StatusOK)
 }
 
 // trashItems moves items to the collection's .trash folder.
