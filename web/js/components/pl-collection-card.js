@@ -395,8 +395,10 @@ class PlCollectionCard extends HTMLElement {
       const exists = await validatePath(value);
       if (exists) {
         // Disallow using the collection's own folder as the intake folder
-        const normalise = p => p.replace(/\/+$/, '');
-        if (normalise(value) === normalise(this.#data.collection_path)) {
+        const normalise = p => (p || '').trim().replace(/\/+$/, '');
+        const normValue = normalise(value);
+        const normCollPath = normalise(this.#data.collection_path);
+        if (normValue === normCollPath) {
           inputEl.classList.remove('valid'); inputEl.classList.add('invalid');
           statusEl.className = 'adhoc-path-status invalid'; statusEl.textContent = 'Cannot use the collection folder itself as intake source';
           indexBtn.disabled = true;
