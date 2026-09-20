@@ -1,5 +1,5 @@
 import { notify } from '../utils.mjs';
-import { scanForChanges, setAllIntakeStatus, setIntakeStatus } from '../api/admin-api.mjs';
+import { scanForChanges, startIntakeFileIndexing, setAllIntakeStatus, setIntakeStatus, validatePath, listSubDirs } from '../api/admin-api.mjs';
 import { cronToHuman } from '../cron-utils.mjs';
 
 import sheet from "./styles/pl-collection-card.css" with { type: "css" };
@@ -42,9 +42,15 @@ class PlCollectionCard extends HTMLElement {
                 <sl-icon slot="prefix" name="search"></sl-icon>
                 Scan for Changes
               </sl-button>
+              <!-- Disabled: may overwrite enriched fields (geo_address, faces). Needs revisit.
               <sl-button size="small" variant="neutral" outline disabled title="Disabled: may overwrite enriched fields (geo_address, faces). Needs revisit.">
                 <sl-icon slot="prefix" name="arrow-clockwise"></sl-icon>
                 Refresh Metadata
+              </sl-button>
+              -->
+              <sl-button size="small" variant="neutral" outline class="adhoc-intake-btn">
+                <sl-icon slot="prefix" name="folder-symlink"></sl-icon>
+                Ad-hoc Intake
               </sl-button>
             </div>
             <div class="actions-right">
@@ -234,6 +240,7 @@ class PlCollectionCard extends HTMLElement {
 
   #setupEventListeners() {
     this.shadowRoot.querySelector('.scan-btn').addEventListener('click', () => this.#scanForChanges());
+    this.shadowRoot.querySelector('.adhoc-intake-btn').addEventListener('click', () => this.#adHocIntake());
     this.shadowRoot.querySelector('.edit-btn').addEventListener('click', () => this.#emitEdit());
 
     this.shadowRoot.querySelector('.collection-toggle-btn').addEventListener('click', (e) => {
@@ -269,6 +276,144 @@ class PlCollectionCard extends HTMLElement {
       console.error(err);
     } finally {
       btn.loading = false;
+    }
+  }
+
+  #adHocIntake() {
+    const collectionId = this.#data.collection_id;
+    let pathTimer = null;
+
+    // Build dialog
+    const dialog = document.createElement('sl-dialog');
+    dialog.label = 'Ad-hoc Folder Intake';
+    dialog.innerHTML = `
+      <style>
+        .adhoc-path-field { display: flex; flex-direction: column; gap: 4px; }
+        .adhoc-path-label { font-size: 0.85rem; font-weight: 600; color: var(--sl-color-neutral-700); }
+        .adhoc-path-input {
+          width: 100%; box-sizing: border-box;
+          padding: 6px 10px; font-size: 0.9rem;
+          border: 1px solid var(--sl-color-neutral-300); border-radius: var(--sl-border-radius-medium);
+          outline: none; font-family: inherit;
+        }
+        .adhoc-path-input:focus { border-color: var(--sl-color-primary-500); box-shadow: 0 0 0 2px var(--sl-focus-ring); }
+        .adhoc-path-input.valid { border-color: var(--sl-color-success-500); }
+        .adhoc-path-input.invalid { border-color: var(--sl-color-danger-500); }
+        .adhoc-path-status { font-size: 0.8rem; min-height: 1.1em; }
+        .adhoc-path-status.valid { color: var(--sl-color-success-600); }
+        .adhoc-path-status.invalid { color: var(--sl-color-danger-600); }
+        .adhoc-help { font-size: 0.82rem; color: var(--sl-color-neutral-500); margin-top: 6px; }
+      </style>
+      <div class="adhoc-path-field">
+        <label class="adhoc-path-label">Folder Path</label>
+        <input id="adhoc-path-input" class="adhoc-path-input" type="text"
+               placeholder="/path/to/folder/" list="adhoc-path-suggestions" autocomplete="off" />
+        <datalist id="adhoc-path-suggestions"></datalist>
+        <div id="adhoc-path-status" class="adhoc-path-status"></div>
+      </div>
+      <p class="adhoc-help">All files in this folder will be indexed into this collection (stale days: 0).</p>
+      <sl-button slot="footer" variant="primary" id="adhoc-index-btn" disabled>Index</sl-button>
+      <sl-button slot="footer" variant="neutral" id="adhoc-cancel-btn">Cancel</sl-button>
+    `;
+
+    document.body.appendChild(dialog);
+    dialog.show();
+
+    const pathInput = dialog.querySelector('#adhoc-path-input');
+    const datalist = dialog.querySelector('#adhoc-path-suggestions');
+    const statusEl = dialog.querySelector('#adhoc-path-status');
+    const indexBtn = dialog.querySelector('#adhoc-index-btn');
+
+    // Autocomplete: fetch subdirs as user types
+    pathInput.addEventListener('input', () => {
+      clearTimeout(pathTimer);
+      const val = pathInput.value.trim();
+      // Reset validation state on new input
+      pathInput.classList.remove('valid', 'invalid');
+      statusEl.className = 'adhoc-path-status';
+      statusEl.textContent = '';
+      indexBtn.disabled = true;
+      if (val.length < 2) return;
+      pathTimer = setTimeout(() => {
+        this.#fetchAdHocPathSuggestions(pathInput, datalist);
+        this.#validateAdHocPath(pathInput, statusEl, indexBtn);
+      }, 400);
+    });
+
+    // Also validate on blur in case user pastes and tabs out
+    pathInput.addEventListener('blur', () => this.#validateAdHocPath(pathInput, statusEl, indexBtn));
+
+    // Index button
+    indexBtn.addEventListener('click', async () => {
+      const dir = pathInput.value.trim();
+      indexBtn.loading = true;
+      try {
+        await startIntakeFileIndexing(collectionId, dir, 0);
+        dialog.hide();
+        notify(`Ad-hoc intake started for: ${dir}`, 'success');
+      } catch (err) {
+        notify('Failed to start ad-hoc intake', 'danger');
+        console.error(err);
+        indexBtn.loading = false;
+      }
+    });
+
+    // Cancel button
+    dialog.querySelector('#adhoc-cancel-btn').addEventListener('click', () => dialog.hide());
+
+    // Cleanup
+    dialog.addEventListener('sl-after-hide', () => {
+      clearTimeout(pathTimer);
+      dialog.remove();
+    });
+  }
+
+  async #fetchAdHocPathSuggestions(inputEl, datalist) {
+    const pathStr = inputEl.value.trim();
+    const sep = pathStr.includes('\\') ? '\\' : '/';
+    let dirToList = pathStr;
+    if (!pathStr.endsWith(sep)) {
+      const lastSep = Math.max(pathStr.lastIndexOf('/'), pathStr.lastIndexOf('\\'));
+      if (lastSep < 0) return;
+      dirToList = pathStr.substring(0, lastSep + 1);
+    }
+    try {
+      const dirs = await listSubDirs(dirToList);
+      datalist.innerHTML = '';
+      for (const d of dirs) {
+        datalist.appendChild(Object.assign(document.createElement('option'), { value: dirToList + d + sep }));
+      }
+    } catch (_) {
+      datalist.innerHTML = '';
+    }
+  }
+
+  async #validateAdHocPath(inputEl, statusEl, indexBtn) {
+    const value = inputEl.value.trim();
+    if (!value) return;
+    try {
+      const exists = await validatePath(value);
+      if (exists) {
+        // Disallow using the collection's own folder as the intake folder
+        const normalise = p => p.replace(/\/+$/, '');
+        if (normalise(value) === normalise(this.#data.collection_path)) {
+          inputEl.classList.remove('valid'); inputEl.classList.add('invalid');
+          statusEl.className = 'adhoc-path-status invalid'; statusEl.textContent = 'Cannot use the collection folder itself as intake source';
+          indexBtn.disabled = true;
+          return;
+        }
+        inputEl.classList.remove('invalid'); inputEl.classList.add('valid');
+        statusEl.className = 'adhoc-path-status valid'; statusEl.textContent = 'Path exists';
+        indexBtn.disabled = false;
+      } else {
+        inputEl.classList.remove('valid'); inputEl.classList.add('invalid');
+        statusEl.className = 'adhoc-path-status invalid'; statusEl.textContent = 'Path does not exist';
+        indexBtn.disabled = true;
+      }
+    } catch (_) {
+      inputEl.classList.remove('valid'); inputEl.classList.add('invalid');
+      statusEl.className = 'adhoc-path-status invalid'; statusEl.textContent = 'Unable to validate path';
+      indexBtn.disabled = true;
     }
   }
 

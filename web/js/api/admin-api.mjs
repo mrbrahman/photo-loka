@@ -157,6 +157,15 @@ export async function scanForChanges(collectionId) {
   if (!res.ok) return throwError(res);
 }
 
+export async function startIntakeFileIndexing(collectionId, dir, staleDays = 0) {
+  let res = await authenticatedFetch('/api/admin/startIntakeFileIndexing', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ collection_id: collectionId, dir, staleDays })
+  });
+  if (!res.ok) return throwError(res);
+}
+
 export async function setAllIntakeStatus(collectionId, status) {
   let res = await authenticatedFetch(`/api/admin/setAllIntakeStatus/${collectionId}`, {
     method: 'POST',
