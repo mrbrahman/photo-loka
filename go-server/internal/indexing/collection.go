@@ -88,6 +88,8 @@ func (idx *Indexer) ScanForChanges(collectionID int64) error {
 	}
 
 	var tasks []queue.Task
+	var addedCount, changedCount int
+
 	for diskFile, diskMtime := range diskFiles {
 		if utils.ShouldIgnoreFile(diskFile) {
 			continue
@@ -98,6 +100,7 @@ func (idx *Indexer) ScanForChanges(collectionID int64) error {
 			// New file - not yet indexed
 			f := diskFile
 			col := collection
+			addedCount++
 			tasks = append(tasks, queue.Task{
 				Priority:    queue.High,
 				Description: f,
@@ -114,6 +117,7 @@ func (idx *Indexer) ScanForChanges(collectionID int64) error {
 					f := diskFile
 					col := collection
 					existingUUID := indexed.UUID
+					changedCount++
 					tasks = append(tasks, queue.Task{
 						Priority:    queue.High,
 						Description: f,
@@ -126,14 +130,32 @@ func (idx *Indexer) ScanForChanges(collectionID int64) error {
 		}
 	}
 
+	// Detect files in DB but no longer on disk (deleted).
+	// We do not act on these automatically - deletion is risky and must be handled manually.
+	var deletedCount int
+	for filename := range indexedMap {
+		if _, onDisk := diskFiles[filename]; !onDisk {
+			deletedCount++
+		}
+	}
+
 	if len(tasks) > 0 {
 		idx.indexQueue.EnqueueMany(tasks)
 	}
 
 	idx.logger.Info("scan for changes complete",
 		"collection_id", collectionID,
-		"changes_found", len(tasks),
+		"added", addedCount,
+		"changed", changedCount,
+		"total_enqueued", addedCount+changedCount,
 	)
+
+	if deletedCount > 0 {
+		idx.logger.Warn("scan for changes: files missing from disk (deleted?); skipped - admin must review and trash/remove manually",
+			"collection_id", collectionID,
+			"deleted_count", deletedCount,
+		)
+	}
 
 	return nil
 }
