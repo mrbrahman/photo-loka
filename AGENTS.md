@@ -52,7 +52,7 @@ Do not conflate "here's how I'd do it" with "let me do it now". The user wants t
 
 ## Service Worker version bump (web changes)
 
-Any change under `web/` requires bumping the `VERSION` constant in `web/sw.mjs` to trigger the PWA "New version available" banner.
+Any change under `web/` requires bumping the `VERSION` constant in `web/sw.mjs` to trigger the PWA "New version available" banner. This applies on the dev box too -- the service worker uses the version to detect changes, so bumping is the way to pick up updates without manually refreshing the browser.
 
 - **Patch (1.0.X)** - bug fixes, small style/copy tweaks, no-behavior-change refactors
 - **Minor (1.X.0)** - new features/components, additive UI, non-breaking behavior changes
