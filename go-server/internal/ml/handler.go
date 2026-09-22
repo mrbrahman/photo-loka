@@ -40,7 +40,7 @@ func (h *Handler) recognizeFaces(c *gin.Context) {
 		return
 	}
 
-	result, err := h.service.ProcessFaceRecognition(uuid)
+	result, err := h.service.ProcessFaceRecognition(uuid, nil)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": "face recognition failed: " + err.Error(),

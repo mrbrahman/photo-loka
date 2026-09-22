@@ -54,21 +54,37 @@ func ShutdownVips() {
 	vips.Shutdown()
 }
 
+// MLBuffer holds the 640px-longest-edge JPEG produced alongside thumbnails,
+// ready to send to the ML service, along with the scale factor needed to map
+// ML bounding boxes back to full-resolution rotated space.
+type MLBuffer struct {
+	JPEG  []byte
+	Scale float64 // origW / fedW (uniform; aspect preserved, no padding)
+}
+
 // CreateImageThumbnails generates all standard thumbnail sizes for an image
-// using libvips (via govips). Output files are stored in
+// using libvips (via govips), and also produces a 640px-longest-edge JPEG
+// buffer for the ML service -- both from a single file load.
+//
+// Output thumbnail files are stored in
 // thumbsDir/u[0]/u[1]/u[2]/uuid_<height>_<suffix>.jpg
-func CreateImageThumbnails(uuid, filePath, thumbsDir string) error {
+//
+// The returned MLBuffer.Scale is origW/fedW; callers must multiply ML bounding
+// box coordinates by this value to map them back to full-resolution rotated
+// space. If the ML buffer cannot be produced (non-fatal), mlBuf is nil and err
+// is nil -- callers should handle nil mlBuf gracefully.
+func CreateImageThumbnails(uuid, filePath, thumbsDir string) (*MLBuffer, error) {
 	start := time.Now()
 
 	dir := thumbDir(uuid, thumbsDir)
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("failed to create thumbnail directory %s: %w", dir, err)
+		return nil, fmt.Errorf("failed to create thumbnail directory %s: %w", dir, err)
 	}
 
 	// Load the image once
 	img, err := vips.NewImageFromFile(filePath)
 	if err != nil {
-		return fmt.Errorf("failed to load image %s: %w", filePath, err)
+		return nil, fmt.Errorf("failed to load image %s: %w", filePath, err)
 	}
 	defer img.Close()
 
@@ -87,6 +103,92 @@ func CreateImageThumbnails(uuid, filePath, thumbsDir string) error {
 		}
 	}
 
+	writeThumbnails(uuid, img, thumbsDir)
+
+	// Produce 640px-longest-edge JPEG for ML from the same rotated image.
+	mlBuf, err := exportMLBuffer(uuid, img)
+	if err != nil {
+		// Non-fatal: log and return nil; caller skips ML for this item.
+		slog.Warn("ML buffer export failed", "uuid", uuid, "error", err)
+		mlBuf = nil
+	}
+
+	slog.Info("thumbnails created", "uuid", uuid, "count", len(thumbSizes), "duration", time.Since(start).String())
+	return mlBuf, nil
+}
+
+// VideoFramePath returns the path of the first-frame JPEG extracted from a
+// video during thumbnail generation. The file may not exist if thumbnail
+// generation failed; callers should handle that gracefully.
+func VideoFramePath(uuid, thumbsDir string) string {
+	return filepath.Join(thumbDir(uuid, thumbsDir), uuid+".jpg")
+}
+
+// ExportMLBuffer loads filePath, auto-rotates, resizes to 640px longest edge,
+// and exports as JPEG ~q90. Returns the buffer and the scale factor
+// (origW/fedW) needed to map ML bounding boxes back to full-resolution
+// rotated space. Returns (nil, nil) on non-fatal failures (e.g. unsupported
+// format); returns a non-nil error only for unexpected internal failures.
+//
+// This is the single entry point for producing an ML buffer outside the
+// thumbnail pipeline (e.g. on-demand face recognition from the API).
+func ExportMLBuffer(uuid, filePath string) (*MLBuffer, error) {
+	img, err := vips.NewImageFromFile(filePath)
+	if err != nil {
+		// Non-fatal: file may not exist (e.g. video frame not yet extracted)
+		// or format unsupported. Caller falls back to path-based ML endpoint.
+		slog.Warn("ExportMLBuffer: could not load file", "uuid", uuid, "file", filePath, "error", err)
+		return nil, nil
+	}
+	defer img.Close()
+
+	if err := img.AutoRotate(); err != nil {
+		slog.Warn("ExportMLBuffer: auto-rotate failed, continuing", "uuid", uuid, "error", err)
+	}
+
+	return exportMLBuffer(uuid, img)
+}
+
+// exportMLBuffer resizes img to 640px longest edge and exports as JPEG ~q90.
+// img must already be auto-rotated. Returns the buffer and scale factor.
+func exportMLBuffer(uuid string, img *vips.ImageRef) (*MLBuffer, error) {
+	const mlSize = 640
+
+	origW := img.Width()
+	origH := img.Height()
+
+	mlCopy, err := img.Copy()
+	if err != nil {
+		return nil, fmt.Errorf("copy for ML buffer: %w", err)
+	}
+	defer mlCopy.Close()
+
+	// Scale so the longest edge equals mlSize; never upscale.
+	scaleW := float64(mlSize) / float64(origW)
+	scaleH := float64(mlSize) / float64(origH)
+	scale := minFloat(scaleW, scaleH)
+	if scale < 1 {
+		if err := mlCopy.Resize(scale, vips.KernelLanczos3); err != nil {
+			return nil, fmt.Errorf("resize for ML buffer: %w", err)
+		}
+	}
+
+	fedW := mlCopy.Width()
+	bboxScale := float64(origW) / float64(fedW) // uniform; aspect preserved
+
+	jpegBytes, _, err := mlCopy.ExportJpeg(&vips.JpegExportParams{Quality: 90, StripMetadata: true})
+	if err != nil {
+		return nil, fmt.Errorf("JPEG export for ML buffer: %w", err)
+	}
+
+	slog.Debug("ML buffer produced", "uuid", uuid, "origW", origW, "origH", origH, "fedW", mlCopy.Width(), "fedH", mlCopy.Height(), "scale", bboxScale)
+	return &MLBuffer{JPEG: jpegBytes, Scale: bboxScale}, nil
+}
+
+// writeThumbnails generates all standard thumbnail sizes from an already-loaded,
+// already-rotated vips image. Errors per-size are logged and skipped; the
+// function never aborts early so as many sizes as possible are produced.
+func writeThumbnails(uuid string, img *vips.ImageRef, thumbsDir string) {
 	for _, size := range thumbSizes {
 		outputPath := thumbnailPath(uuid, thumbsDir, size)
 
@@ -142,9 +244,6 @@ func CreateImageThumbnails(uuid, filePath, thumbsDir string) error {
 			continue
 		}
 	}
-
-	slog.Info("thumbnails created", "uuid", uuid, "count", len(thumbSizes), "duration", time.Since(start).String())
-	return nil
 }
 
 // ResizeImage resizes an image to fit within maxWidth x maxHeight,

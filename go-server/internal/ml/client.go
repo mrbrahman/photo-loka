@@ -45,6 +45,37 @@ func (c *Client) RecognizeFaces(uuid, imagePath string, orientation int, xmpRegi
 	return c.doJSONRequest(http.MethodPost, "/faces/recognize", body)
 }
 
+// RecognizeFacesBuffer sends a pre-rotated 640px JPEG buffer to the ML service
+// for face detection and recognition. imageBytes must be a base64-encoded JPEG.
+// orientation is still passed so Python can transform XMP region coordinates.
+func (c *Client) RecognizeFacesBuffer(uuid, imageBytes string, orientation int, xmpRegions interface{}) (map[string]interface{}, error) {
+	c.logger.Info("calling buffer face recognition", "uuid", uuid)
+
+	body := map[string]interface{}{
+		"image_id":    uuid,
+		"image_bytes": imageBytes,
+		"orientation": orientation,
+	}
+	if xmpRegions != nil {
+		body["xmp_regions"] = xmpRegions
+	}
+
+	return c.doJSONRequest(http.MethodPost, "/faces/recognize-buffer", body)
+}
+
+// EncodeImageBuffer sends a pre-rotated 640px JPEG buffer to the ML service
+// for CLIP embedding. imageBytes must be a base64-encoded JPEG.
+func (c *Client) EncodeImageBuffer(uuid, imageBytes string) (map[string]interface{}, error) {
+	c.logger.Info("calling buffer image encoding", "uuid", uuid)
+
+	body := map[string]interface{}{
+		"image_id":    uuid,
+		"image_bytes": imageBytes,
+	}
+
+	return c.doJSONRequest(http.MethodPost, "/images/encode-buffer", body)
+}
+
 // NameFaceCluster assigns a name to a face cluster.
 func (c *Client) NameFaceCluster(clusterID, name string) error {
 	body := map[string]interface{}{

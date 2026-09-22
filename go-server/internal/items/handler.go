@@ -218,11 +218,11 @@ func (h *Handler) refreshThumbs(c *gin.Context) {
 				return
 			}
 			// Generate standard thumbnails from the extracted frame
-			if err := media.CreateImageThumbnails(uuid, framePath, h.thumbsDir); err != nil {
+			if _, err := media.CreateImageThumbnails(uuid, framePath, h.thumbsDir); err != nil {
 				h.logger.Error("thumbnail creation from video frame failed", "uuid", uuid, "error", err)
 			}
 		} else {
-			if err := media.CreateImageThumbnails(uuid, filename, h.thumbsDir); err != nil {
+			if _, err := media.CreateImageThumbnails(uuid, filename, h.thumbsDir); err != nil {
 				h.logger.Error("thumbnail creation failed", "uuid", uuid, "error", err)
 			}
 		}

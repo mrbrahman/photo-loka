@@ -137,19 +137,27 @@ func (idx *Indexer) IndexFile(collection *collections.Collection, sourceFile str
 	// Step 5: Generate thumbnail
 	finalFile := placeResult.Filename
 
+	// mlBuf is produced alongside thumbnails, reusing the same libvips load.
+	// Passed to the ML tasks below so the service skips a second file read.
+	// For videos it comes from the first-frame JPEG; for images from the original.
+	var mlBuf *media.MLBuffer
+
 	if exifData.Mediatype == "video" {
-		// Extract a frame from the video first, then generate thumbnails from that frame
+		// Extract a frame from the video first, then generate thumbnails from that frame.
 		framePath, err := media.GenerateVideoThumbnail(fileUUID, finalFile, idx.thumbsDir)
 		if err != nil {
 			idx.logger.Warn("video thumbnail extraction failed", "file", finalFile, "error", err)
 		} else {
-			// Generate standard thumbnails from the extracted frame
-			if err := media.CreateImageThumbnails(fileUUID, framePath, idx.thumbsDir); err != nil {
-				idx.logger.Warn("thumbnail creation from video frame failed", "file", finalFile, "error", err)
+			var thumbErr error
+			mlBuf, thumbErr = media.CreateImageThumbnails(fileUUID, framePath, idx.thumbsDir)
+			if thumbErr != nil {
+				idx.logger.Warn("thumbnail creation from video frame failed", "file", finalFile, "error", thumbErr)
 			}
 		}
 	} else if exifData.Mediatype == "image" {
-		if err := media.CreateImageThumbnails(fileUUID, finalFile, idx.thumbsDir); err != nil {
+		var err error
+		mlBuf, err = media.CreateImageThumbnails(fileUUID, finalFile, idx.thumbsDir)
+		if err != nil {
 			idx.logger.Warn("thumbnail creation failed", "file", finalFile, "error", err)
 		}
 	}
@@ -246,18 +254,31 @@ func (idx *Indexer) IndexFile(collection *collections.Collection, sourceFile str
 		}
 	}
 
-	// Step 9: Enqueue face recognition for images
-	if exifData.Mediatype == "image" && idx.mlService != nil && idx.config.PerformFaceRecognition {
+	// Step 9: Enqueue face recognition and image encoding for images and videos.
+	// For videos, the first-frame buffer from step 5 is passed through.
+	// Passing nil (e.g. if thumbnail failed) causes the service to re-read the file.
+	if (exifData.Mediatype == "image" || exifData.Mediatype == "video") && idx.mlService != nil && idx.config.PerformFaceRecognition {
 		mlSvc := idx.mlService
 		faceUUID := fileUUID
+		buf := mlBuf // capture for closure
 		idx.indexQueue.Enqueue(queue.Task{
 			Priority:    queue.Normal,
 			Description: "face:" + faceUUID,
 			Fn: func() error {
-				_, err := mlSvc.ProcessFaceRecognition(faceUUID)
+				_, err := mlSvc.ProcessFaceRecognition(faceUUID, buf)
 				return err
 			},
 		})
+		// Image encoding (CLIP) is intentionally not enabled in the pipeline yet.
+		// The buffer endpoint and ProcessImageEncoding are wired up and ready;
+		// uncomment to enable semantic-search indexing during indexing.
+		// idx.indexQueue.Enqueue(queue.Task{
+		// 	Priority:    queue.Normal,
+		// 	Description: "encode:" + faceUUID,
+		// 	Fn: func() error {
+		// 		return mlSvc.ProcessImageEncoding(faceUUID, buf)
+		// 	},
+		// })
 	}
 
 	// Step 10: Log completion

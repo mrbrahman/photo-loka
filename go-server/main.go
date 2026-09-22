@@ -239,7 +239,7 @@ func runServe() {
 
 	// Create ML components
 	mlDB := ml.NewMLDB(db.Conn)
-	mlService := ml.NewService(mlClient, mlDB, cfg.FacesDir)
+	mlService := ml.NewService(mlClient, mlDB, cfg.FacesDir, cfg.ThumbsDir)
 	mlHandler := ml.NewHandler(mlService)
 
 	// Wire geo and ML services into the indexer for post-indexing enrichments

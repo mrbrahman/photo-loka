@@ -49,17 +49,18 @@ func intOrNull(val interface{}) interface{} {
 type ItemForRecognition struct {
 	Filename    string
 	Orientation int
+	Mediatype   string
 	Xmpregion   *string
 }
 
-// GetItemForRecognition retrieves the filename, orientation, and xmpregion for a uuid.
+// GetItemForRecognition retrieves the filename, orientation, mediatype, and xmpregion for a uuid.
 func (m *MLDB) GetItemForRecognition(uuid string) (*ItemForRecognition, error) {
 	item := &ItemForRecognition{}
 	var xmpregion sql.NullString
 	err := m.db.QueryRow(
-		`SELECT filename, COALESCE(orientation, 1), xmpregion FROM metadata WHERE uuid = ?`,
+		`SELECT filename, COALESCE(orientation, 1), COALESCE(mediatype, 'image'), xmpregion FROM metadata WHERE uuid = ?`,
 		uuid,
-	).Scan(&item.Filename, &item.Orientation, &xmpregion)
+	).Scan(&item.Filename, &item.Orientation, &item.Mediatype, &xmpregion)
 	if err != nil {
 		return nil, fmt.Errorf("getting item for recognition %s: %w", uuid, err)
 	}

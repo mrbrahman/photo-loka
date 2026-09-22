@@ -1,6 +1,7 @@
 package ml
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -10,25 +11,31 @@ import (
 
 // Service orchestrates ML operations including face recognition and semantic search.
 type Service struct {
-	client   *Client
-	db       *MLDB
-	facesDir string
-	logger   *slog.Logger
+	client    *Client
+	db        *MLDB
+	facesDir  string
+	thumbsDir string
+	logger    *slog.Logger
 }
 
 // NewService creates a new ML Service.
-func NewService(client *Client, db *MLDB, facesDir string) *Service {
+func NewService(client *Client, db *MLDB, facesDir, thumbsDir string) *Service {
 	return &Service{
-		client:   client,
-		db:       db,
-		facesDir: facesDir,
-		logger:   slog.Default().With("component", "ml-service"),
+		client:    client,
+		db:        db,
+		facesDir:  facesDir,
+		thumbsDir: thumbsDir,
+		logger:    slog.Default().With("component", "ml-service"),
 	}
 }
 
 // ProcessFaceRecognition runs face recognition for a media item.
-// It retrieves item info from the DB, calls the ML client, and saves results.
-func (s *Service) ProcessFaceRecognition(uuid string) (map[string]interface{}, error) {
+// mlBuf is a pre-produced 640px buffer from the thumbnail step; pass nil to
+// have the service produce it here (e.g. on-demand API calls). When nil, the
+// service loads the file via libvips -- using the pre-extracted first-frame
+// JPEG for videos -- and falls back to the path-based ML endpoint if that
+// also fails (e.g. format unsupported).
+func (s *Service) ProcessFaceRecognition(uuid string, mlBuf *media.MLBuffer) (map[string]interface{}, error) {
 	// Get item info from DB for the ML call
 	item, err := s.db.GetItemForRecognition(uuid)
 	if err != nil {
@@ -37,17 +44,39 @@ func (s *Service) ProcessFaceRecognition(uuid string) (map[string]interface{}, e
 
 	var xmpRegions interface{}
 	if item.Xmpregion != nil && *item.Xmpregion != "" {
-		// Parse the JSON string into an object before sending to ML service
 		if err := json.Unmarshal([]byte(*item.Xmpregion), &xmpRegions); err != nil {
-			// If parsing fails, send nil (ML service will proceed without XMP data)
 			xmpRegions = nil
 		}
 	}
 
-	// Call ML service
-	result, err := s.client.RecognizeFaces(uuid, item.Filename, item.Orientation, xmpRegions)
-	if err != nil {
-		return nil, fmt.Errorf("face recognition failed for %s: %w", uuid, err)
+	// The file that ML actually "sees": the original for images, the
+	// pre-extracted first-frame JPEG for videos (libvips cannot open a video
+	// container). Used both to produce the buffer and to crop face thumbnails,
+	// so the scaled-up bbox (in this file's pixel space) matches the crop source.
+	feedFile := item.Filename
+	if item.Mediatype == "video" {
+		feedFile = media.VideoFramePath(uuid, s.thumbsDir)
+	}
+
+	// If no buffer was supplied by the caller, produce one now.
+	if mlBuf == nil {
+		mlBuf, _ = media.ExportMLBuffer(uuid, feedFile)
+	}
+
+	var result map[string]interface{}
+	if mlBuf != nil {
+		imageBytes := base64.StdEncoding.EncodeToString(mlBuf.JPEG)
+		result, err = s.client.RecognizeFacesBuffer(uuid, imageBytes, item.Orientation, xmpRegions)
+		if err != nil {
+			return nil, fmt.Errorf("face recognition (buffer) failed for %s: %w", uuid, err)
+		}
+		scaleFaceBboxes(result, mlBuf.Scale)
+	} else {
+		// Fallback: path-based endpoint (Python reads the file directly).
+		result, err = s.client.RecognizeFaces(uuid, item.Filename, item.Orientation, xmpRegions)
+		if err != nil {
+			return nil, fmt.Errorf("face recognition failed for %s: %w", uuid, err)
+		}
 	}
 
 	// Extract faces and unmatched from result
@@ -75,15 +104,74 @@ func (s *Service) ProcessFaceRecognition(uuid string) (map[string]interface{}, e
 		return nil, fmt.Errorf("failed to save face results for %s: %w", uuid, err)
 	}
 
-	// Extract face thumbnails from the image (crop each detected face)
+	// Extract face thumbnails from the crop source (feedFile): the original for
+	// images, the extracted frame for videos. bbox is in feedFile pixel space
+	// after the scale-up above, so the crop source must match feedFile.
 	if len(faces) > 0 {
-		if err := media.ExtractFaceThumbnails(uuid, item.Filename, faces, s.facesDir); err != nil {
+		if err := media.ExtractFaceThumbnails(uuid, feedFile, faces, s.facesDir); err != nil {
 			s.logger.Warn("face thumbnail extraction failed", "uuid", uuid, "error", err)
 		}
 	}
 
 	s.logger.Info("face recognition complete", "uuid", uuid, "faces", len(faces), "unmatched", len(unmatched))
 	return result, nil
+}
+
+// scaleFaceBboxes multiplies every face bbox coordinate by scale, converting
+// from 640px fed-image space back to full-resolution rotated space.
+func scaleFaceBboxes(result map[string]interface{}, scale float64) {
+	faces, ok := result["faces"].([]interface{})
+	if !ok {
+		return
+	}
+	for _, f := range faces {
+		face, ok := f.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if bboxRaw, ok := face["bbox"].([]interface{}); ok {
+			scaled := make([]interface{}, len(bboxRaw))
+			for i, v := range bboxRaw {
+				if fv, ok := v.(float64); ok {
+					scaled[i] = fv * scale
+				} else {
+					scaled[i] = v
+				}
+			}
+			face["bbox"] = scaled
+		}
+	}
+}
+
+// ProcessImageEncoding generates and stores a CLIP embedding for a media item.
+// mlBuf is a pre-produced 640px buffer from the thumbnail step; pass nil to
+// have the service produce it here. No-ops if buffer production fails (CLIP
+// encoding is not available via the path-based endpoint).
+func (s *Service) ProcessImageEncoding(uuid string, mlBuf *media.MLBuffer) error {
+	if mlBuf == nil {
+		item, err := s.db.GetItemForRecognition(uuid)
+		if err != nil {
+			return fmt.Errorf("failed to get item info for encoding %s: %w", uuid, err)
+		}
+		feedFile := item.Filename
+		if item.Mediatype == "video" {
+			feedFile = media.VideoFramePath(uuid, s.thumbsDir)
+		}
+		mlBuf, _ = media.ExportMLBuffer(uuid, feedFile)
+	}
+
+	if mlBuf == nil {
+		return nil
+	}
+
+	imageBytes := base64.StdEncoding.EncodeToString(mlBuf.JPEG)
+	_, err := s.client.EncodeImageBuffer(uuid, imageBytes)
+	if err != nil {
+		return fmt.Errorf("image encoding failed for %s: %w", uuid, err)
+	}
+
+	s.logger.Info("image encoding complete", "uuid", uuid)
+	return nil
 }
 
 // GetFacesByUUID returns all face records for a given uuid.
