@@ -11,6 +11,8 @@ When user asks for a change or new feature, do NOT jump straight to proposing im
 
 Do not conflate "here's how I'd do it" with "let me do it now". The user wants to think through the design collaboratively before any code is written.
 
+**Questions are not implementation requests.** If the user asks "does X need to change?" or "how does Y work?", answer the question. Do not write or modify code unless the user explicitly says to proceed (e.g. "go ahead", "implement it", "make that change"). The bar for starting to code is an explicit directive, not an implied one.
+
 ## Design/Development Philosophy
 
 - **Do the right thing** - Never avoid a refactor because "it's minimal lines" or "it doesn't fix a bug". Correctness, clarity and proper design matter regardless of scope. This project is both a product and a learning tool
