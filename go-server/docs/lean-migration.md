@@ -92,7 +92,7 @@ Services (stateless business logic): fold into package-level funcs:
 ## Status
 
 - [x] Phase 0
-- [ ] Phase 1
+- [x] Phase 1
 - [ ] Phase 2
 - [ ] Phase 3
 - [ ] Phase 4
@@ -122,4 +122,44 @@ what is next, any surprises.)
 - NEXT: Phase 1 -- collapse the 9 DB wrappers to package-level funcs on
   `database.DB`. Start with a leaf package (e.g. `albums` or `dashboard`) to
   keep the blast radius small, compile, then proceed.
+
+- Phase 1 DONE (compiles green: `go build -tags "fts5 sqlite_math_functions"
+  ./...` exit 0; `go vet ./...` exit 0; `./build.sh` produces the binary).
+  All 9 DB wrappers removed; grep confirms NO leftover `*DB` type refs or
+  `New*DB` constructors.
+  - DB wrappers -> package-level funcs using `database.DB`, structs +
+    constructors deleted: `albums`, `search`, `frames`, `geo`, `ml`, `auth`,
+    `collections`, `indexing`. Plus `dashboard` and `media` handlers dropped
+    their `*sql.DB` field/param (still use global `database.DB`); their Handler
+    structs remain for Phase 2.
+  - Consumers updated to call package funcs directly (dropped the wrapper
+    fields/params they only carried for db access):
+    * `collections.Service`: now an empty struct delegating to package funcs
+      (`NewService()` takes no args). Fully collapsed in Phase 3.
+    * `ml.Service`, `auth.Service`: dropped `db` field/param; call same-package
+      funcs. `auth.Service` still holds `jwtSecret` (Phase 3 -> package var).
+    * `geo.Finalizer`: dropped `db` field/param (kept rateLimiter/geonamesUser).
+    * `frames.Manager`: dropped `db` + `searchDB` fields; calls `search.*` and
+      same-package frame funcs.
+    * `indexing.Indexer`: dropped `db` + `collectionsDB` fields AND the
+      `DB() *IndexingDB` accessor; calls same-package indexing funcs and
+      `collections.*`. `indexing.Organizer`: dropped `db` field.
+    * `jobs.FileWatcher`, `jobs.ScheduledIndexing`: dropped `colDB`.
+    * `admin.JobsHandler`, `items.Handler`, `albums.Handler`, `search.Handler`:
+      dropped `colDB`/`collectionsDB`; `items.Handler` now calls `indexing.*`
+      instead of `h.indexer.DB().*`.
+  - main.go constructor calls simplified accordingly; `collectionsDB`,
+    `indexingDB`, `albumsDB`, `searchDB`, `authDB`, `mlDB`, `geoDB`, `framesDB`
+    vars all removed. `LoadRuntimeConfig(db.Conn)` remains (config loader still
+    takes the conn; the singleton owns its own handle for setters).
+  - LESSON: bulk sed on receivers is error-prone -- inconsistent replacement
+    (`(recv *T) ` -> `(` vs ``) left stray `func (Name(` in geo/search/frames;
+    fixed with a follow-up sed. Verify `func \([A-Z]` and `func \([a-z]` after
+    each sed pass.
+- NEXT: Phase 2 -- collapse the Handler structs to package-level RegisterRoutes
+  + unexported handler funcs. Handlers currently still carry non-db collaborators
+  (organizer, mlClient, indexer, frameManager, scheduler, authSvc, rtConfig,
+  thumbsDir/facesDir). Decide per-handler: package vars vs keep-as-struct. Update
+  `server.go` wiring as each handler collapses. `collections.OnCollectionChanged`
+  -> package var.
 

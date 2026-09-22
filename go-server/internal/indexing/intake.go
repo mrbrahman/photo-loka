@@ -15,7 +15,7 @@ import (
 // StartIntakeFileIndexing finds pending files in the intake directory that are
 // older than staleDays, and enqueues each for indexing (inPlace=false).
 func (idx *Indexer) StartIntakeFileIndexing(collectionID int64, dir string, staleDays int) error {
-	collection, err := idx.collectionsDB.Get(collectionID)
+	collection, err := collections.Get(collectionID)
 	if err != nil {
 		return fmt.Errorf("getting collection %d: %w", collectionID, err)
 	}
@@ -28,7 +28,7 @@ func (idx *Indexer) StartIntakeFileIndexing(collectionID int64, dir string, stal
 
 // StartIntakeByDir finds the collection that owns the given intake path and runs indexing.
 func (idx *Indexer) StartIntakeByDir(dir string, staleDays int) error {
-	collection, err := idx.collectionsDB.GetByIntakePath(dir)
+	collection, err := collections.GetByIntakePath(dir)
 	if err != nil {
 		return fmt.Errorf("finding collection for intake path %s: %w", dir, err)
 	}
@@ -46,7 +46,7 @@ func (idx *Indexer) StartIntakeByDir(dir string, staleDays int) error {
 
 // StartIntakeForCollection runs intake indexing for all scheduled intake paths in a collection.
 func (idx *Indexer) StartIntakeForCollection(collectionID int64, staleDays int) error {
-	collection, err := idx.collectionsDB.Get(collectionID)
+	collection, err := collections.Get(collectionID)
 	if err != nil {
 		return fmt.Errorf("getting collection %d: %w", collectionID, err)
 	}

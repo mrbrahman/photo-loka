@@ -1,18 +1,17 @@
 package dashboard
 
 import (
-	"database/sql"
 	"fmt"
 	"net/http"
 	"syscall"
 
 	"github.com/gin-gonic/gin"
+
+	"photo-loka/internal/database"
 )
 
 // Handler provides HTTP handlers for the admin dashboard.
-type Handler struct {
-	db *sql.DB
-}
+type Handler struct{}
 
 // LibraryStats holds the overall library statistics.
 type LibraryStats struct {
@@ -41,8 +40,8 @@ type CollectionStat struct {
 }
 
 // NewHandler creates a new dashboard Handler.
-func NewHandler(conn *sql.DB) *Handler {
-	return &Handler{db: conn}
+func NewHandler() *Handler {
+	return &Handler{}
 }
 
 // RegisterRoutes registers dashboard routes on the given router group.
@@ -94,7 +93,7 @@ func (h *Handler) queryLibraryStats() (*LibraryStats, error) {
 	var stats LibraryStats
 	var imageCount, imageSize, videoCount, videoSize, audioCount, audioSize, otherCount, otherSize int64
 
-	err := h.db.QueryRow(query).Scan(
+	err := database.DB.QueryRow(query).Scan(
 		&stats.TotalItems,
 		&stats.TotalSize,
 		&stats.Albums,
@@ -143,7 +142,7 @@ func (h *Handler) queryCollectionStats() ([]CollectionStat, error) {
 		WHERE coalesce(m.is_trashed, 0) = 0
 		GROUP BY c.collection_id`
 
-	rows, err := h.db.Query(query)
+	rows, err := database.DB.Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("querying collection stats: %w", err)
 	}

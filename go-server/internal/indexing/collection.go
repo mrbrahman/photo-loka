@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"photo-loka/internal/collections"
 	"photo-loka/internal/queue"
 	"photo-loka/internal/utils"
 )
@@ -11,7 +12,7 @@ import (
 // InitialIndexing lists all files in a collection, filters ignored files,
 // and enqueues each for indexing with High priority.
 func (idx *Indexer) InitialIndexing(collectionID int64) error {
-	collection, err := idx.collectionsDB.Get(collectionID)
+	collection, err := collections.Get(collectionID)
 	if err != nil {
 		return fmt.Errorf("getting collection %d: %w", collectionID, err)
 	}
@@ -61,7 +62,7 @@ func (idx *Indexer) InitialIndexing(collectionID int64) error {
 // Node.js also detects deletions but does not trash/remove them automatically.
 // This is intentional - automatic deletion is risky; user should handle manually.
 func (idx *Indexer) ScanForChanges(collectionID int64) error {
-	collection, err := idx.collectionsDB.Get(collectionID)
+	collection, err := collections.Get(collectionID)
 	if err != nil {
 		return fmt.Errorf("getting collection %d: %w", collectionID, err)
 	}
@@ -76,7 +77,7 @@ func (idx *Indexer) ScanForChanges(collectionID int64) error {
 	}
 
 	// Get indexed state from DB
-	indexedFiles, err := idx.db.GetIndexedFiles(collectionID)
+	indexedFiles, err := GetIndexedFiles(collectionID)
 	if err != nil {
 		return fmt.Errorf("getting indexed files for collection %d: %w", collectionID, err)
 	}
@@ -162,7 +163,7 @@ func (idx *Indexer) ScanForChanges(collectionID int64) error {
 
 // RefreshMetadataForCollection re-extracts metadata for all indexed files in a collection.
 func (idx *Indexer) RefreshMetadataForCollection(collectionID int64) error {
-	indexedFiles, err := idx.db.GetIndexedFiles(collectionID)
+	indexedFiles, err := GetIndexedFiles(collectionID)
 	if err != nil {
 		return fmt.Errorf("getting indexed files for refresh, collection %d: %w", collectionID, err)
 	}

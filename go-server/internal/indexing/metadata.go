@@ -10,7 +10,7 @@ import (
 func (idx *Indexer) UpdateDescription(uuid, description string) {
 	fileModifyDate := time.Now().Format("2006:01:02 15:04:05")
 
-	if err := idx.db.UpdateDescription(uuid, description, fileModifyDate); err != nil {
+	if err := UpdateDescription(uuid, description, fileModifyDate); err != nil {
 		idx.logger.Error("failed to update description", "uuid", uuid, "error", err)
 		return
 	}
@@ -27,7 +27,7 @@ func (idx *Indexer) UpdateDescription(uuid, description string) {
 		return
 	}
 
-	if err := idx.db.ScheduleExif([]string{uuid}, string(exifJSON)); err != nil {
+	if err := ScheduleExif([]string{uuid}, string(exifJSON)); err != nil {
 		idx.logger.Error("failed to schedule exif write for description", "uuid", uuid, "error", err)
 	}
 }
@@ -40,7 +40,7 @@ func (idx *Indexer) UpdateRating(uuids []string, newRating int) {
 
 	fileModifyDate := time.Now().Format("2006:01:02 15:04:05")
 
-	if err := idx.db.UpdateRating(uuids, newRating, fileModifyDate); err != nil {
+	if err := UpdateRating(uuids, newRating, fileModifyDate); err != nil {
 		idx.logger.Error("failed to update rating",
 			"uuids", fmt.Sprintf("%v", uuids),
 			"rating", newRating,
@@ -60,7 +60,7 @@ func (idx *Indexer) UpdateRating(uuids []string, newRating int) {
 		return
 	}
 
-	if err := idx.db.ScheduleExif(uuids, string(exifJSON)); err != nil {
+	if err := ScheduleExif(uuids, string(exifJSON)); err != nil {
 		idx.logger.Error("failed to schedule exif write for rating", "error", err)
 	}
 }

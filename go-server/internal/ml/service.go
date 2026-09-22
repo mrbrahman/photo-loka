@@ -12,17 +12,15 @@ import (
 // Service orchestrates ML operations including face recognition and semantic search.
 type Service struct {
 	client    *Client
-	db        *MLDB
 	facesDir  string
 	thumbsDir string
 	logger    *slog.Logger
 }
 
 // NewService creates a new ML Service.
-func NewService(client *Client, db *MLDB, facesDir, thumbsDir string) *Service {
+func NewService(client *Client, facesDir, thumbsDir string) *Service {
 	return &Service{
 		client:    client,
-		db:        db,
 		facesDir:  facesDir,
 		thumbsDir: thumbsDir,
 		logger:    slog.Default().With("component", "ml-service"),
@@ -37,7 +35,7 @@ func NewService(client *Client, db *MLDB, facesDir, thumbsDir string) *Service {
 // also fails (e.g. format unsupported).
 func (s *Service) ProcessFaceRecognition(uuid string, mlBuf *media.MLBuffer) (map[string]interface{}, error) {
 	// Get item info from DB for the ML call
-	item, err := s.db.GetItemForRecognition(uuid)
+	item, err := GetItemForRecognition(uuid)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get item info for %s: %w", uuid, err)
 	}
@@ -100,7 +98,7 @@ func (s *Service) ProcessFaceRecognition(uuid string, mlBuf *media.MLBuffer) (ma
 	}
 
 	// Save results to DB
-	if err := s.db.SaveFaceResults(uuid, faces, unmatched); err != nil {
+	if err := SaveFaceResults(uuid, faces, unmatched); err != nil {
 		return nil, fmt.Errorf("failed to save face results for %s: %w", uuid, err)
 	}
 
@@ -149,7 +147,7 @@ func scaleFaceBboxes(result map[string]interface{}, scale float64) {
 // encoding is not available via the path-based endpoint).
 func (s *Service) ProcessImageEncoding(uuid string, mlBuf *media.MLBuffer) error {
 	if mlBuf == nil {
-		item, err := s.db.GetItemForRecognition(uuid)
+		item, err := GetItemForRecognition(uuid)
 		if err != nil {
 			return fmt.Errorf("failed to get item info for encoding %s: %w", uuid, err)
 		}
@@ -176,12 +174,12 @@ func (s *Service) ProcessImageEncoding(uuid string, mlBuf *media.MLBuffer) error
 
 // GetFacesByUUID returns all face records for a given uuid.
 func (s *Service) GetFacesByUUID(uuid string) ([]map[string]interface{}, error) {
-	return s.db.GetFacesByUUID(uuid)
+	return GetFacesByUUID(uuid)
 }
 
 // GetFacesByPerson returns all face records for a given person name.
 func (s *Service) GetFacesByPerson(name string) ([]map[string]interface{}, error) {
-	return s.db.GetFacesByPerson(name)
+	return GetFacesByPerson(name)
 }
 
 // NameFaceCluster assigns a name to a face cluster in both the ML service and DB.
@@ -192,7 +190,7 @@ func (s *Service) NameFaceCluster(clusterID, name string) (int64, error) {
 	}
 
 	// Update local DB
-	rowsAffected, err := s.db.NameFaceCluster(clusterID, name)
+	rowsAffected, err := NameFaceCluster(clusterID, name)
 	if err != nil {
 		return 0, fmt.Errorf("failed to name cluster in DB: %w", err)
 	}
@@ -209,7 +207,7 @@ func (s *Service) UpdatePersonName(oldName, newName string) (int64, error) {
 	}
 
 	// Update local DB
-	rowsAffected, err := s.db.UpdatePersonName(oldName, newName)
+	rowsAffected, err := UpdatePersonName(oldName, newName)
 	if err != nil {
 		return 0, fmt.Errorf("failed to update person name in DB: %w", err)
 	}
@@ -225,12 +223,12 @@ func (s *Service) GetFaceSuggestions(clusterID string) (map[string]interface{}, 
 
 // SearchPersonNames searches for person names matching a query string.
 func (s *Service) SearchPersonNames(query string) ([]string, error) {
-	return s.db.SearchPersonNames(query)
+	return SearchPersonNames(query)
 }
 
 // DismissCluster marks a face cluster as dismissed.
 func (s *Service) DismissCluster(clusterID string) error {
-	if err := s.db.DismissCluster(clusterID); err != nil {
+	if err := DismissCluster(clusterID); err != nil {
 		return err
 	}
 	s.logger.Info("dismissed cluster", "cluster_id", clusterID)
@@ -239,7 +237,7 @@ func (s *Service) DismissCluster(clusterID string) error {
 
 // UndismissCluster restores a dismissed face cluster.
 func (s *Service) UndismissCluster(clusterID string) error {
-	if err := s.db.UndismissCluster(clusterID); err != nil {
+	if err := UndismissCluster(clusterID); err != nil {
 		return err
 	}
 	s.logger.Info("undismissed cluster", "cluster_id", clusterID)
@@ -249,7 +247,7 @@ func (s *Service) UndismissCluster(clusterID string) error {
 // CleanupMLData removes all ML data for a uuid from both the DB and external ML service.
 func (s *Service) CleanupMLData(uuid string) {
 	// Delete from local DB
-	clusterIDs, err := s.db.DeleteFaceData(uuid)
+	clusterIDs, err := DeleteFaceData(uuid)
 	if err != nil {
 		s.logger.Error("failed to delete face data from DB", "uuid", uuid, "error", err)
 	} else if len(clusterIDs) > 0 {

@@ -16,19 +16,13 @@ import (
 
 // Handler provides HTTP handlers for search operations.
 type Handler struct {
-	searchDB      *SearchDB
-	collectionsDB *collections.CollectionsDB
-	albumsDB      *albums.AlbumsDB
-	mlClient      *ml.Client
+	mlClient *ml.Client
 }
 
 // NewHandler creates a new search Handler.
-func NewHandler(searchDB *SearchDB, collectionsDB *collections.CollectionsDB, albumsDB *albums.AlbumsDB, mlClient *ml.Client) *Handler {
+func NewHandler(mlClient *ml.Client) *Handler {
 	return &Handler{
-		searchDB:      searchDB,
-		collectionsDB: collectionsDB,
-		albumsDB:      albumsDB,
-		mlClient:      mlClient,
+		mlClient: mlClient,
 	}
 }
 
@@ -71,7 +65,7 @@ func (h *Handler) getAll(c *gin.Context) {
 		ToDate:   toDate,
 	}
 
-	results, err := h.searchDB.RunSearch(collectionID, "", false, true, "", dateRange)
+	results, err := RunSearch(collectionID, "", false, true, "", dateRange)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{"message": err.Error(), "code": "INTERNAL_ERROR"},
@@ -116,7 +110,7 @@ func (h *Handler) search(c *gin.Context) {
 		return
 	}
 
-	results, err := h.searchDB.RunSearch(req.CollectionID, req.SearchText, false, true, "", nil)
+	results, err := RunSearch(req.CollectionID, req.SearchText, false, true, "", nil)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{"message": err.Error(), "code": "INTERNAL_ERROR"},
@@ -168,7 +162,7 @@ func (h *Handler) handleAISearch(c *gin.Context, collectionID *int64, query stri
 	}
 	rawFilter := `raw:"uuid in (` + strings.Join(quoted, ",") + `)"`
 
-	results, err := h.searchDB.RunSearch(collectionID, rawFilter, false, true, "", nil)
+	results, err := RunSearch(collectionID, rawFilter, false, true, "", nil)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{"message": err.Error(), "code": "INTERNAL_ERROR"},
@@ -189,7 +183,7 @@ func (h *Handler) getItemInfo(c *gin.Context) {
 		return
 	}
 
-	info, err := h.searchDB.GetItemInfo(uuid)
+	info, err := GetItemInfo(uuid)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{"message": err.Error(), "code": "INTERNAL_ERROR"},
@@ -221,7 +215,7 @@ func (h *Handler) getGpsCoordinates(c *gin.Context) {
 		collectionID = &cid
 	}
 
-	results, err := h.searchDB.GetGpsCoordinates(collectionID)
+	results, err := GetGpsCoordinates(collectionID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{"message": err.Error(), "code": "INTERNAL_ERROR"},
@@ -257,13 +251,13 @@ func (h *Handler) searchForExistingAlbums(c *gin.Context) {
 	// Get placeholder text from the collection if collection_id is provided
 	var placeholder *string
 	if collectionID != nil {
-		col, err := h.collectionsDB.Get(*collectionID)
+		col, err := collections.Get(*collectionID)
 		if err == nil && col != nil && col.PlaceholderAlbumText != nil {
 			placeholder = col.PlaceholderAlbumText
 		}
 	}
 
-	results, err := h.albumsDB.SearchForExisting(searchStr, collectionID, placeholder)
+	results, err := albums.SearchForExisting(searchStr, collectionID, placeholder)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{"message": err.Error(), "code": "INTERNAL_ERROR"},
@@ -303,7 +297,7 @@ func (h *Handler) searchByGpsCoordinates(c *gin.Context) {
 		return
 	}
 
-	results, err := h.searchDB.SearchByGps(
+	results, err := SearchByGps(
 		req.CollectionID,
 		req.Bounds.SW.Lat, req.Bounds.SW.Lng,
 		req.Bounds.NE.Lat, req.Bounds.NE.Lng,
@@ -332,7 +326,7 @@ func (h *Handler) getTrashedItems(c *gin.Context) {
 		collectionID = &cid
 	}
 
-	results, err := h.searchDB.RunSearch(collectionID, "", true, true, "", nil)
+	results, err := RunSearch(collectionID, "", true, true, "", nil)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{"message": err.Error(), "code": "INTERNAL_ERROR"},

@@ -3,12 +3,9 @@ package auth
 import (
 	"database/sql"
 	"fmt"
-)
 
-// AuthDB handles database operations for users and refresh tokens.
-type AuthDB struct {
-	db *sql.DB
-}
+	"photo-loka/internal/database"
+)
 
 // User represents a user record from the database.
 type User struct {
@@ -28,14 +25,9 @@ type RefreshTokenRecord struct {
 	Role     string
 }
 
-// NewAuthDB creates a new AuthDB instance.
-func NewAuthDB(conn *sql.DB) *AuthDB {
-	return &AuthDB{db: conn}
-}
-
 // CreateUser inserts a new user and returns the new user ID.
-func (a *AuthDB) CreateUser(username, passwordHash, role string) (int64, error) {
-	result, err := a.db.Exec(
+func CreateUser(username, passwordHash, role string) (int64, error) {
+	result, err := database.DB.Exec(
 		`INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)`,
 		username, passwordHash, role,
 	)
@@ -46,9 +38,9 @@ func (a *AuthDB) CreateUser(username, passwordHash, role string) (int64, error) 
 }
 
 // GetUserByUsername retrieves a user by username. Returns nil, nil if not found.
-func (a *AuthDB) GetUserByUsername(username string) (*User, error) {
+func GetUserByUsername(username string) (*User, error) {
 	var u User
-	err := a.db.QueryRow(
+	err := database.DB.QueryRow(
 		`SELECT user_id, username, password_hash, role, failed_login_attempts, locked_at, created_at
 		 FROM users WHERE username = ?`,
 		username,
@@ -64,8 +56,8 @@ func (a *AuthDB) GetUserByUsername(username string) (*User, error) {
 }
 
 // IncrementFailedAttempts increments the failed_login_attempts counter for a user.
-func (a *AuthDB) IncrementFailedAttempts(userID int64) error {
-	_, err := a.db.Exec(
+func IncrementFailedAttempts(userID int64) error {
+	_, err := database.DB.Exec(
 		`UPDATE users SET failed_login_attempts = failed_login_attempts + 1 WHERE user_id = ?`,
 		userID,
 	)
@@ -76,8 +68,8 @@ func (a *AuthDB) IncrementFailedAttempts(userID int64) error {
 }
 
 // LockUser sets the locked_at timestamp for a user.
-func (a *AuthDB) LockUser(userID int64) error {
-	_, err := a.db.Exec(
+func LockUser(userID int64) error {
+	_, err := database.DB.Exec(
 		`UPDATE users SET locked_at = datetime('now', 'localtime') WHERE user_id = ?`,
 		userID,
 	)
@@ -88,8 +80,8 @@ func (a *AuthDB) LockUser(userID int64) error {
 }
 
 // UnlockUser clears the lock and resets failed attempts for a user by username.
-func (a *AuthDB) UnlockUser(username string) error {
-	result, err := a.db.Exec(
+func UnlockUser(username string) error {
+	result, err := database.DB.Exec(
 		`UPDATE users SET locked_at = NULL, failed_login_attempts = 0 WHERE username = ?`,
 		username,
 	)
@@ -107,8 +99,8 @@ func (a *AuthDB) UnlockUser(username string) error {
 }
 
 // ResetFailedAttempts resets the failed_login_attempts counter to 0.
-func (a *AuthDB) ResetFailedAttempts(userID int64) error {
-	_, err := a.db.Exec(
+func ResetFailedAttempts(userID int64) error {
+	_, err := database.DB.Exec(
 		`UPDATE users SET failed_login_attempts = 0 WHERE user_id = ?`,
 		userID,
 	)
@@ -119,8 +111,8 @@ func (a *AuthDB) ResetFailedAttempts(userID int64) error {
 }
 
 // SaveRefreshToken stores a hashed refresh token in the database.
-func (a *AuthDB) SaveRefreshToken(userID int64, tokenHash, expiresAt string) error {
-	_, err := a.db.Exec(
+func SaveRefreshToken(userID int64, tokenHash, expiresAt string) error {
+	_, err := database.DB.Exec(
 		`INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)`,
 		userID, tokenHash, expiresAt,
 	)
@@ -132,9 +124,9 @@ func (a *AuthDB) SaveRefreshToken(userID int64, tokenHash, expiresAt string) err
 
 // GetRefreshToken looks up a refresh token by hash, joining with users.
 // Returns nil, nil if not found or expired.
-func (a *AuthDB) GetRefreshToken(tokenHash string) (*RefreshTokenRecord, error) {
+func GetRefreshToken(tokenHash string) (*RefreshTokenRecord, error) {
 	var rec RefreshTokenRecord
-	err := a.db.QueryRow(
+	err := database.DB.QueryRow(
 		`SELECT u.user_id, u.username, u.role
 		 FROM refresh_tokens rt
 		 JOIN users u ON u.user_id = rt.user_id
@@ -152,8 +144,8 @@ func (a *AuthDB) GetRefreshToken(tokenHash string) (*RefreshTokenRecord, error) 
 }
 
 // DeleteRefreshToken removes a refresh token by its hash.
-func (a *AuthDB) DeleteRefreshToken(tokenHash string) error {
-	_, err := a.db.Exec(`DELETE FROM refresh_tokens WHERE token_hash = ?`, tokenHash)
+func DeleteRefreshToken(tokenHash string) error {
+	_, err := database.DB.Exec(`DELETE FROM refresh_tokens WHERE token_hash = ?`, tokenHash)
 	if err != nil {
 		return fmt.Errorf("deleting refresh token: %w", err)
 	}
@@ -161,8 +153,8 @@ func (a *AuthDB) DeleteRefreshToken(tokenHash string) error {
 }
 
 // CleanupExpiredTokens deletes all expired refresh tokens and returns the count removed.
-func (a *AuthDB) CleanupExpiredTokens() (int64, error) {
-	result, err := a.db.Exec(
+func CleanupExpiredTokens() (int64, error) {
+	result, err := database.DB.Exec(
 		`DELETE FROM refresh_tokens WHERE expires_at <= datetime('now', 'localtime')`,
 	)
 	if err != nil {
@@ -172,8 +164,8 @@ func (a *AuthDB) CleanupExpiredTokens() (int64, error) {
 }
 
 // GetAllUsers returns all users (without password hashes).
-func (a *AuthDB) GetAllUsers() ([]User, error) {
-	rows, err := a.db.Query(
+func GetAllUsers() ([]User, error) {
+	rows, err := database.DB.Query(
 		`SELECT user_id, username, role, failed_login_attempts, locked_at, created_at FROM users ORDER BY created_at ASC`,
 	)
 	if err != nil {
@@ -196,8 +188,8 @@ func (a *AuthDB) GetAllUsers() ([]User, error) {
 }
 
 // UpdateUserRole changes the role of a user.
-func (a *AuthDB) UpdateUserRole(userID int64, role string) error {
-	result, err := a.db.Exec(`UPDATE users SET role = ? WHERE user_id = ?`, role, userID)
+func UpdateUserRole(userID int64, role string) error {
+	result, err := database.DB.Exec(`UPDATE users SET role = ? WHERE user_id = ?`, role, userID)
 	if err != nil {
 		return fmt.Errorf("updating user role: %w", err)
 	}

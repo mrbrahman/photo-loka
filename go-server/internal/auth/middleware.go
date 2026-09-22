@@ -29,7 +29,7 @@ func AuthMiddleware(authService *Service) gin.HandlerFunc {
 			if err == nil && cookie != "" {
 				// Validate refresh token via hash lookup
 				tokenHash := hashToken(cookie)
-				rec, err := authService.db.GetRefreshToken(tokenHash)
+				rec, err := GetRefreshToken(tokenHash)
 				if err == nil && rec != nil {
 					c.Set("userId", rec.UserID)
 					c.Set("username", rec.Username)

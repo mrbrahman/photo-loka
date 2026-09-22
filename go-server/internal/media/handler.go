@@ -10,21 +10,21 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+
+	"photo-loka/internal/database"
 )
 
 // Handler provides HTTP handlers for media serving (thumbnails, images, videos).
 type Handler struct {
 	thumbsDir string
 	facesDir  string
-	db        *sql.DB
 }
 
 // NewHandler creates a new media Handler.
-func NewHandler(thumbsDir, facesDir string, conn *sql.DB) *Handler {
+func NewHandler(thumbsDir, facesDir string) *Handler {
 	return &Handler{
 		thumbsDir: thumbsDir,
 		facesDir:  facesDir,
-		db:        conn,
 	}
 }
 
@@ -94,7 +94,7 @@ func (h *Handler) getImage(c *gin.Context) {
 
 	// filename in DB is the absolute path
 	var filename string
-	err := h.db.QueryRow("SELECT filename FROM metadata WHERE uuid = ?", uuid).Scan(&filename)
+	err := database.DB.QueryRow("SELECT filename FROM metadata WHERE uuid = ?", uuid).Scan(&filename)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": gin.H{"message": "Item not found", "code": "NOT_FOUND"},
@@ -134,7 +134,7 @@ func (h *Handler) getVideo(c *gin.Context) {
 	quality := c.DefaultQuery("quality", "compressed")
 
 	var filename string
-	err := h.db.QueryRow("SELECT filename FROM metadata WHERE uuid = ?", uuid).Scan(&filename)
+	err := database.DB.QueryRow("SELECT filename FROM metadata WHERE uuid = ?", uuid).Scan(&filename)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": gin.H{"message": "Item not found", "code": "NOT_FOUND"},
@@ -238,7 +238,7 @@ func (h *Handler) getFilePathByUUID(uuid string) (filename, collectionPath strin
 		WHERE m.uuid = ?`
 
 	var fname, cpath sql.NullString
-	err = h.db.QueryRow(query, uuid).Scan(&fname, &cpath)
+	err = database.DB.QueryRow(query, uuid).Scan(&fname, &cpath)
 	if err == sql.ErrNoRows {
 		return "", "", nil
 	}

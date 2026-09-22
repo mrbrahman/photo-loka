@@ -185,27 +185,21 @@ func runServe() {
 	slog.Info("runtime config loaded from database")
 
 	// Create auth service
-	authDB := auth.NewAuthDB(db.Conn)
-	authSvc := auth.NewService(authDB, cfg.JWTSecret)
+	authSvc := auth.NewService(cfg.JWTSecret)
 
 	// Create collections service and handler
-	collectionsDB := collections.NewCollectionsDB(db.Conn)
-	collectionsSvc := collections.NewService(collectionsDB)
+	collectionsSvc := collections.NewService()
 	collectionsHandler := collections.NewHandler(collectionsSvc)
 
-	// Create albums DB (handler created after organizer below)
-	albumsDB := albums.NewAlbumsDB(db.Conn)
-
 	// Create search handler
-	searchDB := search.NewSearchDB(db.Conn)
 	mlClient := ml.NewClient(cfg.MLServiceURL)
-	searchHandler := search.NewHandler(searchDB, collectionsDB, albumsDB, mlClient)
+	searchHandler := search.NewHandler(mlClient)
 
 	// Create media handler
-	mediaHandler := media.NewHandler(cfg.ThumbsDir, cfg.FacesDir, db.Conn)
+	mediaHandler := media.NewHandler(cfg.ThumbsDir, cfg.FacesDir)
 
 	// Create dashboard handler
-	dashboardHandler := dashboard.NewHandler(db.Conn)
+	dashboardHandler := dashboard.NewHandler()
 
 	// Create indexing queues
 	numCPU := runtime.NumCPU()
@@ -222,24 +216,21 @@ func runServe() {
 	}
 
 	// Create indexing components
-	indexingDB := indexing.NewIndexingDB(db.Conn)
-	organizer := indexing.NewOrganizer(indexingDB, rtCfg)
-	albumsHandler := albums.NewHandler(albumsDB, collectionsDB, organizer)
-	indexer := indexing.NewIndexer(indexingDB, organizer, indexQueue, videoQueue, cfg.ThumbsDir, rtCfg, collectionsDB)
+	organizer := indexing.NewOrganizer(rtCfg)
+	albumsHandler := albums.NewHandler(organizer)
+	indexer := indexing.NewIndexer(organizer, indexQueue, videoQueue, cfg.ThumbsDir, rtCfg)
 	indexingHandler := indexing.NewHandler(indexer, indexQueue, videoQueue, rtCfg)
 
 	// Create geo components
 	geoQueue := queue.New(1) // geo runs single-threaded due to rate limits
-	geoDB := geo.NewGeoDB(db.Conn)
 	rateLimitStateFile := filepath.Join(cfg.DataDir, "rate_limit_state.json")
 	rateLimiter := geo.NewRateLimiter(rtCfg, rateLimitStateFile)
-	geoFinalizer := geo.NewFinalizer(geoDB, rateLimiter, cfg.GeonamesUsername)
+	geoFinalizer := geo.NewFinalizer(rateLimiter, cfg.GeonamesUsername)
 	geoService := geo.NewService(geoFinalizer, geoQueue)
 	geoHandler := geo.NewHandler(geoService)
 
 	// Create ML components
-	mlDB := ml.NewMLDB(db.Conn)
-	mlService := ml.NewService(mlClient, mlDB, cfg.FacesDir, cfg.ThumbsDir)
+	mlService := ml.NewService(mlClient, cfg.FacesDir, cfg.ThumbsDir)
 	mlHandler := ml.NewHandler(mlService)
 
 	// Wire geo and ML services into the indexer for post-indexing enrichments
@@ -247,23 +238,22 @@ func runServe() {
 	indexer.SetMLService(mlService)
 
 	// Create items handler
-	itemsHandler := items.NewHandler(indexer, organizer, mlService, collectionsDB, rtCfg, cfg.ThumbsDir)
+	itemsHandler := items.NewHandler(indexer, organizer, mlService, rtCfg, cfg.ThumbsDir)
 
 	// Scheduler
 	sched := scheduler.New()
 
 	// Frames
-	framesDB := frames.NewFramesDB(db.Conn)
-	frameManager := frames.NewManager(framesDB, searchDB, sched)
+	frameManager := frames.NewManager(sched)
 	framesHandler := frames.NewHandler(frameManager)
 
 	// Jobs
-	fileWatcher := jobs.NewFileWatcher(indexer, collectionsDB)
-	scheduledIndexing := jobs.NewScheduledIndexing(sched, indexer, collectionsDB)
+	fileWatcher := jobs.NewFileWatcher(indexer)
+	scheduledIndexing := jobs.NewScheduledIndexing(sched, indexer)
 
 	// Wire collection change callback to restart watchers/cron
 	collectionsHandler.OnCollectionChanged = func(collectionID int64) {
-		col, err := collectionsDB.Get(collectionID)
+		col, err := collections.Get(collectionID)
 		if err != nil || col == nil {
 			return
 		}
@@ -276,7 +266,7 @@ func runServe() {
 	// Admin handlers
 	configHandler := admin.NewConfigHandler(rtCfg)
 	usersHandler := admin.NewUsersHandler(authSvc)
-	jobsHandler := admin.NewJobsHandler(sched, fileWatcher, scheduledIndexing, collectionsDB, frameManager)
+	jobsHandler := admin.NewJobsHandler(sched, fileWatcher, scheduledIndexing, frameManager)
 
 	// Authn handler
 	authnHandler := authn.NewHandler(authSvc)
@@ -324,7 +314,7 @@ func runServe() {
 		}
 	} else {
 		// Mark immediate intakes as stopped in DB when watchers are disabled
-		collectionsDB.SetIntakeStatusByMethod("immediate", "stopped")
+		collections.SetIntakeStatusByMethod("immediate", "stopped")
 		slog.Info("file watcher at startup disabled - marked immediate intakes as stopped")
 	}
 	if rtCfg.StartScheduledIndexingAtStartup {
@@ -333,7 +323,7 @@ func runServe() {
 		}
 	} else {
 		// Mark scheduled intakes as stopped in DB when scheduling is disabled
-		collectionsDB.SetIntakeStatusByMethod("scheduled", "stopped")
+		collections.SetIntakeStatusByMethod("scheduled", "stopped")
 		slog.Info("scheduled indexing at startup disabled - marked scheduled intakes as stopped")
 	}
 	if err := frameManager.LoadAllFrames(); err != nil {
@@ -471,8 +461,7 @@ func initAuthService() *auth.Service {
 	// Store db reference for cleanup
 	cliDB = db
 
-	authDB := auth.NewAuthDB(db.Conn)
-	return auth.NewService(authDB, cfg.JWTSecret)
+	return auth.NewService(cfg.JWTSecret)
 }
 
 // cliDB holds a reference to the database for CLI cleanup.

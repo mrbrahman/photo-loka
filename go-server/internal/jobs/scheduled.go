@@ -15,18 +15,16 @@ import (
 type ScheduledIndexing struct {
 	scheduler *scheduler.Scheduler
 	indexer   *indexing.Indexer
-	colDB     *collections.CollectionsDB
 	jobs      map[string]int64 // jobName -> collection_id
 	mu        sync.Mutex
 	logger    *slog.Logger
 }
 
 // NewScheduledIndexing creates a new ScheduledIndexing manager.
-func NewScheduledIndexing(sched *scheduler.Scheduler, indexer *indexing.Indexer, colDB *collections.CollectionsDB) *ScheduledIndexing {
+func NewScheduledIndexing(sched *scheduler.Scheduler, indexer *indexing.Indexer) *ScheduledIndexing {
 	return &ScheduledIndexing{
 		scheduler: sched,
 		indexer:   indexer,
-		colDB:     colDB,
 		jobs:      make(map[string]int64),
 		logger:    slog.Default().With("component", "scheduled-indexing"),
 	}
@@ -34,7 +32,7 @@ func NewScheduledIndexing(sched *scheduler.Scheduler, indexer *indexing.Indexer,
 
 // ScheduleAll schedules intake indexing for all collections with scheduled intake paths.
 func (si *ScheduledIndexing) ScheduleAll() error {
-	cols, err := si.colDB.GetAll()
+	cols, err := collections.GetAll()
 	if err != nil {
 		return fmt.Errorf("getting collections for scheduling: %w", err)
 	}

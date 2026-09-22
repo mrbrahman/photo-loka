@@ -249,7 +249,7 @@ func (h *Handler) refreshMetadataForItem(c *gin.Context) {
 		return
 	}
 
-	filename, err := h.indexer.db.GetFileName(itemUUID)
+	filename, err := GetFileName(itemUUID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": gin.H{
 			"message": "item not found: " + err.Error(),

@@ -4,12 +4,9 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
-)
 
-// IndexingDB provides database operations for the indexer.
-type IndexingDB struct {
-	db *sql.DB
-}
+	"photo-loka/internal/database"
+)
 
 // IndexedFile represents a file that has already been indexed.
 type IndexedFile struct {
@@ -38,14 +35,9 @@ var metadataColumns = []string{
 	"is_private", "is_trashed", "trashed_at", "indexed_at",
 }
 
-// NewIndexingDB creates a new IndexingDB instance.
-func NewIndexingDB(conn *sql.DB) *IndexingDB {
-	return &IndexingDB{db: conn}
-}
-
 // InsertMetadata inserts a new row into the metadata table.
 // The row map keys should correspond to column names. indexed_at is set automatically.
-func (d *IndexingDB) InsertMetadata(row map[string]interface{}) error {
+func InsertMetadata(row map[string]interface{}) error {
 	// Build columns and values from the map, plus indexed_at
 	var cols []string
 	var placeholders []string
@@ -70,7 +62,7 @@ func (d *IndexingDB) InsertMetadata(row map[string]interface{}) error {
 		strings.Join(placeholders, ", "),
 	)
 
-	_, err := d.db.Exec(query, args...)
+	_, err := database.DB.Exec(query, args...)
 	if err != nil {
 		return fmt.Errorf("inserting metadata: %w", err)
 	}
@@ -80,7 +72,7 @@ func (d *IndexingDB) InsertMetadata(row map[string]interface{}) error {
 
 // UpdateMetadata updates an existing metadata row identified by uuid.
 // The row map keys should correspond to column names. indexed_at is updated automatically.
-func (d *IndexingDB) UpdateMetadata(row map[string]interface{}) error {
+func UpdateMetadata(row map[string]interface{}) error {
 	uuid, ok := row["uuid"]
 	if !ok {
 		return fmt.Errorf("row map must contain 'uuid' key")
@@ -112,7 +104,7 @@ func (d *IndexingDB) UpdateMetadata(row map[string]interface{}) error {
 		strings.Join(setClauses, ", "),
 	)
 
-	_, err := d.db.Exec(query, args...)
+	_, err := database.DB.Exec(query, args...)
 	if err != nil {
 		return fmt.Errorf("updating metadata for uuid %v: %w", uuid, err)
 	}
@@ -121,8 +113,8 @@ func (d *IndexingDB) UpdateMetadata(row map[string]interface{}) error {
 }
 
 // DeleteMetadata removes a metadata row by uuid.
-func (d *IndexingDB) DeleteMetadata(uuid string) error {
-	_, err := d.db.Exec("DELETE FROM metadata WHERE uuid = ?", uuid)
+func DeleteMetadata(uuid string) error {
+	_, err := database.DB.Exec("DELETE FROM metadata WHERE uuid = ?", uuid)
 	if err != nil {
 		return fmt.Errorf("deleting metadata for uuid %s: %w", uuid, err)
 	}
@@ -130,10 +122,10 @@ func (d *IndexingDB) DeleteMetadata(uuid string) error {
 }
 
 // GetIndexedFiles returns all indexed files for a given collection.
-func (d *IndexingDB) GetIndexedFiles(collectionID int64) ([]IndexedFile, error) {
+func GetIndexedFiles(collectionID int64) ([]IndexedFile, error) {
 	query := `SELECT uuid, filename, file_modified_at FROM metadata WHERE collection_id = ?`
 
-	rows, err := d.db.Query(query, collectionID)
+	rows, err := database.DB.Query(query, collectionID)
 	if err != nil {
 		return nil, fmt.Errorf("querying indexed files for collection %d: %w", collectionID, err)
 	}
@@ -160,9 +152,9 @@ func (d *IndexingDB) GetIndexedFiles(collectionID int64) ([]IndexedFile, error) 
 }
 
 // GetFileName returns the filename for a given uuid.
-func (d *IndexingDB) GetFileName(uuid string) (string, error) {
+func GetFileName(uuid string) (string, error) {
 	var filename string
-	err := d.db.QueryRow("SELECT filename FROM metadata WHERE uuid = ?", uuid).Scan(&filename)
+	err := database.DB.QueryRow("SELECT filename FROM metadata WHERE uuid = ?", uuid).Scan(&filename)
 	if err == sql.ErrNoRows {
 		return "", fmt.Errorf("uuid %s not found", uuid)
 	}
@@ -173,7 +165,7 @@ func (d *IndexingDB) GetFileName(uuid string) (string, error) {
 }
 
 // GetFileNames returns a uuid->filename map for the given uuids.
-func (d *IndexingDB) GetFileNames(uuids []string) (map[string]string, error) {
+func GetFileNames(uuids []string) (map[string]string, error) {
 	if len(uuids) == 0 {
 		return make(map[string]string), nil
 	}
@@ -190,7 +182,7 @@ func (d *IndexingDB) GetFileNames(uuids []string) (map[string]string, error) {
 		strings.Join(placeholders, ", "),
 	)
 
-	rows, err := d.db.Query(query, args...)
+	rows, err := database.DB.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("querying filenames: %w", err)
 	}
@@ -213,8 +205,8 @@ func (d *IndexingDB) GetFileNames(uuids []string) (map[string]string, error) {
 }
 
 // TrashItem marks an item as trashed by updating its filename to the trash path.
-func (d *IndexingDB) TrashItem(uuid, trashFilename string) error {
-	_, err := d.db.Exec(
+func TrashItem(uuid, trashFilename string) error {
+	_, err := database.DB.Exec(
 		"UPDATE metadata SET filename = ?, is_trashed = 1, trashed_at = datetime('now','localtime') WHERE uuid = ?",
 		trashFilename, uuid,
 	)
@@ -225,8 +217,8 @@ func (d *IndexingDB) TrashItem(uuid, trashFilename string) error {
 }
 
 // UntrashItem restores a trashed item by updating its filename.
-func (d *IndexingDB) UntrashItem(uuid, restoredFilename string) error {
-	_, err := d.db.Exec(
+func UntrashItem(uuid, restoredFilename string) error {
+	_, err := database.DB.Exec(
 		"UPDATE metadata SET filename = ?, is_trashed = 0, trashed_at = null WHERE uuid = ?",
 		restoredFilename, uuid,
 	)
@@ -237,8 +229,8 @@ func (d *IndexingDB) UntrashItem(uuid, restoredFilename string) error {
 }
 
 // MarkPrivate marks an item as private by updating its filename.
-func (d *IndexingDB) MarkPrivate(uuid, newFilename string) error {
-	_, err := d.db.Exec(
+func MarkPrivate(uuid, newFilename string) error {
+	_, err := database.DB.Exec(
 		"UPDATE metadata SET filename = ?, is_private = 1 WHERE uuid = ?",
 		newFilename, uuid,
 	)
@@ -249,8 +241,8 @@ func (d *IndexingDB) MarkPrivate(uuid, newFilename string) error {
 }
 
 // UnmarkPrivate removes the private flag from an item and updates its filename.
-func (d *IndexingDB) UnmarkPrivate(uuid, newFilename string) error {
-	_, err := d.db.Exec(
+func UnmarkPrivate(uuid, newFilename string) error {
+	_, err := database.DB.Exec(
 		"UPDATE metadata SET filename = ?, is_private = 0 WHERE uuid = ?",
 		newFilename, uuid,
 	)
@@ -261,8 +253,8 @@ func (d *IndexingDB) UnmarkPrivate(uuid, newFilename string) error {
 }
 
 // UpdateDescription updates the description and file_modified_at for an item.
-func (d *IndexingDB) UpdateDescription(uuid, description, fileModifyDate string) error {
-	_, err := d.db.Exec(
+func UpdateDescription(uuid, description, fileModifyDate string) error {
+	_, err := database.DB.Exec(
 		"UPDATE metadata SET description = ?, file_modified_at = ? WHERE uuid = ?",
 		description, fileModifyDate, uuid,
 	)
@@ -273,8 +265,8 @@ func (d *IndexingDB) UpdateDescription(uuid, description, fileModifyDate string)
 }
 
 // UpdateFilename updates the filename for an item.
-func (d *IndexingDB) UpdateFilename(uuid, filename string) error {
-	_, err := d.db.Exec(
+func UpdateFilename(uuid, filename string) error {
+	_, err := database.DB.Exec(
 		"UPDATE metadata SET filename = ? WHERE uuid = ?",
 		filename, uuid,
 	)
@@ -285,12 +277,12 @@ func (d *IndexingDB) UpdateFilename(uuid, filename string) error {
 }
 
 // UpdateRating updates the rating for multiple items in a transaction.
-func (d *IndexingDB) UpdateRating(uuids []string, rating int, fileModifyDate string) error {
+func UpdateRating(uuids []string, rating int, fileModifyDate string) error {
 	if len(uuids) == 0 {
 		return nil
 	}
 
-	tx, err := d.db.Begin()
+	tx, err := database.DB.Begin()
 	if err != nil {
 		return fmt.Errorf("beginning transaction: %w", err)
 	}
@@ -320,12 +312,12 @@ func (d *IndexingDB) UpdateRating(uuids []string, rating int, fileModifyDate str
 // write them back to the files) is not implemented. Node.js also has the table and
 // insert logic but never implemented the processing job (getPendingExifUpdates exists
 // but is never called). Updates accumulate in the table for future implementation.
-func (d *IndexingDB) ScheduleExif(uuids []string, newExifJSON string) error {
+func ScheduleExif(uuids []string, newExifJSON string) error {
 	if len(uuids) == 0 {
 		return nil
 	}
 
-	tx, err := d.db.Begin()
+	tx, err := database.DB.Begin()
 	if err != nil {
 		return fmt.Errorf("beginning transaction: %w", err)
 	}
@@ -354,8 +346,8 @@ func (d *IndexingDB) ScheduleExif(uuids []string, newExifJSON string) error {
 
 // FileAudit logs a single file operation to the file_audit table.
 // A nil path1/path2 is stored as SQL NULL.
-func (d *IndexingDB) FileAudit(collectionID int64, action string, path1, path2 *string) error {
-	_, err := d.db.Exec(
+func FileAudit(collectionID int64, action string, path1, path2 *string) error {
+	_, err := database.DB.Exec(
 		"INSERT INTO file_audit_log (collection_id, action, path1, path2) VALUES (?, ?, ?, ?)",
 		collectionID, action, path1, path2,
 	)
@@ -366,12 +358,12 @@ func (d *IndexingDB) FileAudit(collectionID int64, action string, path1, path2 *
 }
 
 // FileAuditBatch logs multiple file operations in a transaction.
-func (d *IndexingDB) FileAuditBatch(collectionID int64, entries []AuditEntry) error {
+func FileAuditBatch(collectionID int64, entries []AuditEntry) error {
 	if len(entries) == 0 {
 		return nil
 	}
 
-	tx, err := d.db.Begin()
+	tx, err := database.DB.Begin()
 	if err != nil {
 		return fmt.Errorf("beginning transaction: %w", err)
 	}
@@ -403,8 +395,8 @@ func (d *IndexingDB) FileAuditBatch(collectionID int64, entries []AuditEntry) er
 }
 
 // UpdateAlbumForItem updates the album_date, album_name, and filename for a single item.
-func (d *IndexingDB) UpdateAlbumForItem(uuid, albumDate, albumName, filename string) error {
-	_, err := d.db.Exec(
+func UpdateAlbumForItem(uuid, albumDate, albumName, filename string) error {
+	_, err := database.DB.Exec(
 		"UPDATE metadata SET album_date = ?, album_name = ?, filename = ? WHERE uuid = ?",
 		albumDate, albumName, filename, uuid,
 	)
@@ -421,8 +413,8 @@ type MoveEntry struct {
 }
 
 // UpdateAlbumForItems updates album_date, album_name, and filename for multiple items in a transaction.
-func (d *IndexingDB) UpdateAlbumForItems(entries []MoveEntry, albumDate, albumName string) error {
-	tx, err := d.db.Begin()
+func UpdateAlbumForItems(entries []MoveEntry, albumDate, albumName string) error {
+	tx, err := database.DB.Begin()
 	if err != nil {
 		return fmt.Errorf("beginning transaction: %w", err)
 	}
@@ -447,8 +439,8 @@ func (d *IndexingDB) UpdateAlbumForItems(entries []MoveEntry, albumDate, albumNa
 }
 
 // InsertGeoLookup stores exiftool geolocation data in the geo_lookups table.
-func (d *IndexingDB) InsertGeoLookup(uuid, source, apiName string, responseJSON string) error {
-	_, err := d.db.Exec(
+func InsertGeoLookup(uuid, source, apiName string, responseJSON string) error {
+	_, err := database.DB.Exec(
 		`INSERT OR REPLACE INTO geo_lookups (uuid, source, api_name, response_json, fetched_at)
 		 VALUES (?, ?, ?, ?, datetime('now','localtime'))`,
 		uuid, source, apiName, responseJSON,

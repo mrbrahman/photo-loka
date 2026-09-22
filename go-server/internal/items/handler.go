@@ -23,19 +23,17 @@ type Handler struct {
 	indexer      *indexing.Indexer
 	organizer    *indexing.Organizer
 	mlService    *ml.Service
-	colDB        *collections.CollectionsDB
 	rtConfig     *config.RuntimeConfig
 	thumbsDir    string
 	logger       *slog.Logger
 }
 
 // NewHandler creates a new items Handler.
-func NewHandler(indexer *indexing.Indexer, org *indexing.Organizer, mlSvc *ml.Service, colDB *collections.CollectionsDB, rtCfg *config.RuntimeConfig, thumbsDir string) *Handler {
+func NewHandler(indexer *indexing.Indexer, org *indexing.Organizer, mlSvc *ml.Service, rtCfg *config.RuntimeConfig, thumbsDir string) *Handler {
 	return &Handler{
 		indexer:   indexer,
 		organizer: org,
 		mlService: mlSvc,
-		colDB:     colDB,
 		rtConfig:  rtCfg,
 		thumbsDir: thumbsDir,
 		logger:    slog.Default().With("component", "items-handler"),
@@ -76,7 +74,7 @@ func (h *Handler) updateRating(c *gin.Context) {
 	// file_modified_at is set to now so that the exif write scheduler picks it up
 	fileModifyDate := time.Now().Format(time.RFC3339)
 
-	if err := h.indexer.DB().UpdateRating(body.UUIDs, body.NewRating, fileModifyDate); err != nil {
+	if err := indexing.UpdateRating(body.UUIDs, body.NewRating, fileModifyDate); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": "failed to update rating: " + err.Error(),
 			"code":    "DB_ERROR",
@@ -87,7 +85,7 @@ func (h *Handler) updateRating(c *gin.Context) {
 	// Schedule exif write for rating
 	exifUpdate := map[string]interface{}{"Rating": body.NewRating, "FileModifyDate": fileModifyDate}
 	exifJSON, _ := json.Marshal(exifUpdate)
-	if err := h.indexer.DB().ScheduleExif(body.UUIDs, string(exifJSON)); err != nil {
+	if err := indexing.ScheduleExif(body.UUIDs, string(exifJSON)); err != nil {
 		h.logger.Error("failed to schedule exif write for rating", "error", err)
 	}
 
@@ -112,7 +110,7 @@ func (h *Handler) updateDescription(c *gin.Context) {
 
 	fileModifyDate := time.Now().Format(time.RFC3339)
 
-	if err := h.indexer.DB().UpdateDescription(body.UUID, body.Description, fileModifyDate); err != nil {
+	if err := indexing.UpdateDescription(body.UUID, body.Description, fileModifyDate); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": "failed to update description: " + err.Error(),
 			"code":    "DB_ERROR",
@@ -123,7 +121,7 @@ func (h *Handler) updateDescription(c *gin.Context) {
 	// Schedule exif write for description
 	exifUpdate := map[string]interface{}{"ImageDescription": body.Description, "FileModifyDate": fileModifyDate}
 	exifJSON, _ := json.Marshal(exifUpdate)
-	if err := h.indexer.DB().ScheduleExif([]string{body.UUID}, string(exifJSON)); err != nil {
+	if err := indexing.ScheduleExif([]string{body.UUID}, string(exifJSON)); err != nil {
 		h.logger.Error("failed to schedule exif write for description", "error", err)
 	}
 
@@ -148,7 +146,7 @@ func (h *Handler) renameFile(c *gin.Context) {
 	}
 
 	// Get current filename from DB
-	oldFilename, err := h.indexer.DB().GetFileName(body.UUID)
+	oldFilename, err := indexing.GetFileName(body.UUID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": gin.H{
 			"message": "item not found: " + err.Error(),
@@ -171,7 +169,7 @@ func (h *Handler) renameFile(c *gin.Context) {
 	}
 
 	// Update DB filename
-	if err := h.indexer.DB().UpdateFilename(body.UUID, newFilename); err != nil {
+	if err := indexing.UpdateFilename(body.UUID, newFilename); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": "file renamed but DB update failed: " + err.Error(),
 			"code":    "DB_ERROR",
@@ -194,7 +192,7 @@ func (h *Handler) refreshThumbs(c *gin.Context) {
 		return
 	}
 
-	filename, err := h.indexer.DB().GetFileName(uuid)
+	filename, err := indexing.GetFileName(uuid)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": gin.H{
 			"message": "item not found: " + err.Error(),
@@ -244,7 +242,7 @@ func (h *Handler) compressVideo(c *gin.Context) {
 		return
 	}
 
-	filename, err := h.indexer.DB().GetFileName(uuid)
+	filename, err := indexing.GetFileName(uuid)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": gin.H{
 			"message": "item not found: " + err.Error(),
@@ -393,7 +391,7 @@ func (h *Handler) permanentlyDeleteItems(uuids []string) []string {
 	var errs []string
 
 	// Get filenames for all items
-	filenames, err := h.indexer.DB().GetFileNames(uuids)
+	filenames, err := indexing.GetFileNames(uuids)
 	if err != nil {
 		return []string{"failed to get filenames: " + err.Error()}
 	}
@@ -420,7 +418,7 @@ func (h *Handler) permanentlyDeleteItems(uuids []string) []string {
 		h.mlService.CleanupMLData(uuid)
 
 		// 5. Delete metadata row from DB
-		if err := h.indexer.DB().DeleteMetadata(uuid); err != nil {
+		if err := indexing.DeleteMetadata(uuid); err != nil {
 			h.logger.Error("failed to delete metadata", "uuid", uuid, "error", err)
 			errs = append(errs, fmt.Sprintf("%s: failed to delete metadata: %v", uuid, err))
 			continue
@@ -468,7 +466,7 @@ func (h *Handler) moveItems(c *gin.Context) {
 	}
 
 	// Get collection to compute target folder path
-	col, err := h.colDB.Get(req.CollectionID)
+	col, err := collections.Get(req.CollectionID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{"message": err.Error(), "code": "INTERNAL_ERROR"},
@@ -488,7 +486,7 @@ func (h *Handler) moveItems(c *gin.Context) {
 	}
 
 	// Get filenames for all uuids
-	filenames, err := h.indexer.DB().GetFileNames(req.UUIDs)
+	filenames, err := indexing.GetFileNames(req.UUIDs)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{"message": err.Error(), "code": "INTERNAL_ERROR"},
@@ -530,7 +528,7 @@ func (h *Handler) moveItems(c *gin.Context) {
 	for i, entry := range plan {
 		moveEntries[i] = indexing.MoveEntry{UUID: entry.uuid, Dest: entry.dest}
 	}
-	if err := h.indexer.DB().UpdateAlbumForItems(moveEntries, req.TargetAlbumDate, req.TargetAlbumName); err != nil {
+	if err := indexing.UpdateAlbumForItems(moveEntries, req.TargetAlbumDate, req.TargetAlbumName); err != nil {
 		h.logger.Error("failed to update DB after moves", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{"message": "Files moved but DB update failed: " + err.Error(), "code": "DB_ERROR"},

@@ -20,29 +20,25 @@ import (
 
 // Indexer orchestrates the indexing pipeline for media files.
 type Indexer struct {
-	db            *IndexingDB
-	organizer     *Organizer
-	indexQueue    *queue.Queue
-	videoQueue    *queue.Queue
-	thumbsDir     string
-	config        *config.RuntimeConfig
-	collectionsDB *collections.CollectionsDB
-	geoService    *geo.Service
-	mlService     *ml.Service
-	logger        *slog.Logger
+	organizer  *Organizer
+	indexQueue *queue.Queue
+	videoQueue *queue.Queue
+	thumbsDir  string
+	config     *config.RuntimeConfig
+	geoService *geo.Service
+	mlService  *ml.Service
+	logger     *slog.Logger
 }
 
 // NewIndexer creates a new Indexer instance.
-func NewIndexer(db *IndexingDB, org *Organizer, indexQueue, videoQueue *queue.Queue, thumbsDir string, cfg *config.RuntimeConfig, colDB *collections.CollectionsDB) *Indexer {
+func NewIndexer(org *Organizer, indexQueue, videoQueue *queue.Queue, thumbsDir string, cfg *config.RuntimeConfig) *Indexer {
 	return &Indexer{
-		db:            db,
-		organizer:     org,
-		indexQueue:    indexQueue,
-		videoQueue:    videoQueue,
-		thumbsDir:     thumbsDir,
-		config:        cfg,
-		collectionsDB: colDB,
-		logger:        slog.Default().With("component", "indexer"),
+		organizer:  org,
+		indexQueue: indexQueue,
+		videoQueue: videoQueue,
+		thumbsDir:  thumbsDir,
+		config:     cfg,
+		logger:     slog.Default().With("component", "indexer"),
 	}
 }
 
@@ -54,11 +50,6 @@ func (idx *Indexer) SetGeoService(gs *geo.Service) {
 // SetMLService sets the ML service for face recognition after indexing.
 func (idx *Indexer) SetMLService(ms *ml.Service) {
 	idx.mlService = ms
-}
-
-// DB returns the IndexingDB instance for direct access by other packages.
-func (idx *Indexer) DB() *IndexingDB {
-	return idx.db
 }
 
 // IndexQueue returns the indexing queue for external enqueue operations.
@@ -210,12 +201,12 @@ func (idx *Indexer) IndexFile(collection *collections.Collection, sourceFile str
 
 	if existingUUID != "" {
 		// Update existing row
-		if err := idx.db.UpdateMetadata(row); err != nil {
+		if err := UpdateMetadata(row); err != nil {
 			return fmt.Errorf("updating metadata for %s: %w", fileUUID, err)
 		}
 	} else {
 		// Insert new row
-		if err := idx.db.InsertMetadata(row); err != nil {
+		if err := InsertMetadata(row); err != nil {
 			return fmt.Errorf("inserting metadata for %s: %w", fileUUID, err)
 		}
 	}
@@ -233,7 +224,7 @@ func (idx *Indexer) IndexFile(collection *collections.Collection, sourceFile str
 			}
 			if hasData {
 				geoJSON, _ := json.Marshal(exifData.ExiftoolGeoJSON)
-				if err := idx.db.InsertGeoLookup(fileUUID, "exiftool", "geolocation", string(geoJSON)); err != nil {
+				if err := InsertGeoLookup(fileUUID, "exiftool", "geolocation", string(geoJSON)); err != nil {
 					idx.logger.Warn("failed to store exiftool geo data", "uuid", fileUUID, "error", err)
 				}
 			}
@@ -398,7 +389,7 @@ func (idx *Indexer) RefreshMetadata(uuid string, filename string) error {
 		row["exif_create_date_ref"] = *exifData.ExifCreateDateRef
 	}
 
-	if err := idx.db.UpdateMetadata(row); err != nil {
+	if err := UpdateMetadata(row); err != nil {
 		return fmt.Errorf("updating metadata for %s: %w", uuid, err)
 	}
 

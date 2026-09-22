@@ -19,17 +19,15 @@ type JobsHandler struct {
 	scheduler         *scheduler.Scheduler
 	fileWatcher       *jobs.FileWatcher
 	scheduledIndexing *jobs.ScheduledIndexing
-	colDB             *collections.CollectionsDB
 	frameManager      *frames.Manager
 }
 
 // NewJobsHandler creates a new JobsHandler.
-func NewJobsHandler(sched *scheduler.Scheduler, fw *jobs.FileWatcher, si *jobs.ScheduledIndexing, colDB *collections.CollectionsDB, fm *frames.Manager) *JobsHandler {
+func NewJobsHandler(sched *scheduler.Scheduler, fw *jobs.FileWatcher, si *jobs.ScheduledIndexing, fm *frames.Manager) *JobsHandler {
 	return &JobsHandler{
 		scheduler:         sched,
 		fileWatcher:       fw,
 		scheduledIndexing: si,
-		colDB:             colDB,
 		frameManager:      fm,
 	}
 }
@@ -93,7 +91,7 @@ type scheduledConfig struct {
 // GET /api/admin/jobs
 func (h *JobsHandler) getJobs(c *gin.Context) {
 	// Get all collections
-	cols, err := h.colDB.GetAll()
+	cols, err := collections.GetAll()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{

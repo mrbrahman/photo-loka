@@ -18,17 +18,13 @@ type Organizer interface {
 
 // Handler provides HTTP handlers for album operations.
 type Handler struct {
-	albumsDB      *AlbumsDB
-	collectionsDB *collections.CollectionsDB
-	organizer     Organizer
+	organizer Organizer
 }
 
 // NewHandler creates a new albums Handler.
-func NewHandler(albumsDB *AlbumsDB, collectionsDB *collections.CollectionsDB, organizer Organizer) *Handler {
+func NewHandler(organizer Organizer) *Handler {
 	return &Handler{
-		albumsDB:      albumsDB,
-		collectionsDB: collectionsDB,
-		organizer:     organizer,
+		organizer: organizer,
 	}
 }
 
@@ -84,7 +80,7 @@ func (h *Handler) updateAlbumName(c *gin.Context) {
 	}
 
 	// Look up collection
-	collection, err := h.collectionsDB.Get(req.CollectionID)
+	collection, err := collections.Get(req.CollectionID)
 	if err != nil || collection == nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": gin.H{"message": "Collection not found", "code": "NOT_FOUND"},
@@ -112,7 +108,7 @@ func (h *Handler) updateAlbumName(c *gin.Context) {
 	}
 
 	// Update DB records
-	if err := h.albumsDB.UpdateAlbumName(req.CollectionID, req.AlbumDate, req.CurrAlbumName, req.NewAlbumName); err != nil {
+	if err := UpdateAlbumName(req.CollectionID, req.AlbumDate, req.CurrAlbumName, req.NewAlbumName); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{"message": err.Error(), "code": "INTERNAL_ERROR"},
 		})
@@ -147,13 +143,13 @@ func (h *Handler) searchForExistingAlbums(c *gin.Context) {
 	// Get placeholder text from the collection if collection_id is provided
 	var placeholder *string
 	if collectionID != nil {
-		col, err := h.collectionsDB.Get(*collectionID)
+		col, err := collections.Get(*collectionID)
 		if err == nil && col != nil && col.PlaceholderAlbumText != nil {
 			placeholder = col.PlaceholderAlbumText
 		}
 	}
 
-	results, err := h.albumsDB.SearchForExisting(searchStr, collectionID, placeholder)
+	results, err := SearchForExisting(searchStr, collectionID, placeholder)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{"message": err.Error(), "code": "INTERNAL_ERROR"},

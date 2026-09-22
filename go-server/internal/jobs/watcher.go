@@ -26,22 +26,20 @@ type FileWatcher struct {
 	mu       sync.Mutex
 	watchers []WatcherInfo
 	indexer  *indexing.Indexer
-	colDB    *collections.CollectionsDB
 	logger   *slog.Logger
 }
 
 // NewFileWatcher creates a new FileWatcher.
-func NewFileWatcher(indexer *indexing.Indexer, colDB *collections.CollectionsDB) *FileWatcher {
+func NewFileWatcher(indexer *indexing.Indexer) *FileWatcher {
 	return &FileWatcher{
 		indexer: indexer,
-		colDB:   colDB,
 		logger:  slog.Default().With("component", "file-watcher"),
 	}
 }
 
 // StartForAllCollections starts file watchers for all collections with immediate intake paths.
 func (fw *FileWatcher) StartForAllCollections() error {
-	cols, err := fw.colDB.GetAll()
+	cols, err := collections.GetAll()
 	if err != nil {
 		return err
 	}
@@ -211,7 +209,7 @@ func (fw *FileWatcher) handleEvents(watcher *fsnotify.Watcher, collectionID int6
 
 // enqueueFile adds a file to the indexing queue with High priority.
 func (fw *FileWatcher) enqueueFile(collectionID int64, filePath string) {
-	collection, err := fw.colDB.Get(collectionID)
+	collection, err := collections.Get(collectionID)
 	if err != nil || collection == nil {
 		fw.logger.Error("failed to get collection for enqueue",
 			"collection_id", collectionID,

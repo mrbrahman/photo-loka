@@ -3,12 +3,9 @@ package geo
 import (
 	"database/sql"
 	"math"
-)
 
-// GeoDB handles database operations for geo encoding.
-type GeoDB struct {
-	db *sql.DB
-}
+	"photo-loka/internal/database"
+)
 
 // GeoContext holds GPS coordinates and country code for a media item.
 type GeoContext struct {
@@ -38,15 +35,10 @@ type GeoFields struct {
 	GeoMatchedUUID *string
 }
 
-// NewGeoDB creates a new GeoDB instance.
-func NewGeoDB(conn *sql.DB) *GeoDB {
-	return &GeoDB{db: conn}
-}
-
 // GetGeoContext retrieves GPS coordinates and country code for a given uuid.
-func (g *GeoDB) GetGeoContext(uuid string) (*GeoContext, error) {
+func GetGeoContext(uuid string) (*GeoContext, error) {
 	ctx := &GeoContext{}
-	err := g.db.QueryRow(
+	err := database.DB.QueryRow(
 		`SELECT m.gps_lat, m.gps_lng,
 			json_extract(gl.response_json, '$.GeolocationCountryCode') AS country_code
 		 FROM metadata m
@@ -62,9 +54,9 @@ func (g *GeoDB) GetGeoContext(uuid string) (*GeoContext, error) {
 
 // GetExiftoolGeoLookup returns the stored exiftool geo lookup response_json for a uuid.
 // Returns empty string if no record found.
-func (g *GeoDB) GetExiftoolGeoLookup(uuid string) (string, error) {
+func GetExiftoolGeoLookup(uuid string) (string, error) {
 	var responseJSON sql.NullString
-	err := g.db.QueryRow(
+	err := database.DB.QueryRow(
 		`SELECT response_json FROM geo_lookups
 		 WHERE uuid = ? AND api_name = 'geolocation'`,
 		uuid,
@@ -83,12 +75,12 @@ func (g *GeoDB) GetExiftoolGeoLookup(uuid string) (string, error) {
 
 // FindExactGeoMatch finds a previously resolved item at the same GPS coordinates
 // (rounded to 4 decimal places).
-func (g *GeoDB) FindExactGeoMatch(lat, lng float64) (*GeoMatch, error) {
+func FindExactGeoMatch(lat, lng float64) (*GeoMatch, error) {
 	roundedLat := math.Round(lat*10000) / 10000
 	roundedLng := math.Round(lng*10000) / 10000
 
 	match := &GeoMatch{}
-	err := g.db.QueryRow(
+	err := database.DB.QueryRow(
 		`SELECT uuid, geo_address, geo_city, geo_region, geo_country, geo_country_code
 		 FROM metadata
 		 WHERE ROUND(gps_lat, 4) = ROUND(?, 4)
@@ -108,7 +100,7 @@ func (g *GeoDB) FindExactGeoMatch(lat, lng float64) (*GeoMatch, error) {
 
 // FindProximityGeoMatch finds a previously resolved item within 10 meters
 // using the haversine formula.
-func (g *GeoDB) FindProximityGeoMatch(lat, lng float64) (*GeoMatch, error) {
+func FindProximityGeoMatch(lat, lng float64) (*GeoMatch, error) {
 	// Haversine formula in SQL - distance in meters
 	// 6371000 = earth radius in meters
 	// Pre-filter with ABS bounds check (~10m box) to avoid full-table trig computation
@@ -130,7 +122,7 @@ func (g *GeoDB) FindProximityGeoMatch(lat, lng float64) (*GeoMatch, error) {
 		LIMIT 1`
 
 	match := &GeoMatch{}
-	err := g.db.QueryRow(query, lat, lng, lat, lat, lng).Scan(
+	err := database.DB.QueryRow(query, lat, lng, lat, lat, lng).Scan(
 		&match.UUID, &match.GeoAddress, &match.GeoCity, &match.GeoRegion, &match.GeoCountry, &match.GeoCountryCode,
 	)
 	if err == sql.ErrNoRows {
@@ -143,9 +135,9 @@ func (g *GeoDB) FindProximityGeoMatch(lat, lng float64) (*GeoMatch, error) {
 }
 
 // FindPostalCodeMatch returns the response_json from geo_lookups for a postal code + country match.
-func (g *GeoDB) FindPostalCodeMatch(postalcode, country string) (string, error) {
+func FindPostalCodeMatch(postalcode, country string) (string, error) {
 	var responseJSON sql.NullString
-	err := g.db.QueryRow(
+	err := database.DB.QueryRow(
 		`SELECT response_json FROM geo_lookups
 		 WHERE api_name = 'postalCodeLookup'
 		   AND json_extract(request_params, '$.postalcode') = ?
@@ -166,8 +158,8 @@ func (g *GeoDB) FindPostalCodeMatch(postalcode, country string) (string, error) 
 }
 
 // InsertGeoLookup inserts a record into the geo_lookups table.
-func (g *GeoDB) InsertGeoLookup(uuid, source, apiName string, requestParams, responseJSON *string) error {
-	_, err := g.db.Exec(
+func InsertGeoLookup(uuid, source, apiName string, requestParams, responseJSON *string) error {
+	_, err := database.DB.Exec(
 		`INSERT OR REPLACE INTO geo_lookups (uuid, source, api_name, request_params, response_json, fetched_at)
 		 VALUES (?, ?, ?, ?, ?, datetime('now','localtime'))`,
 		uuid, source, apiName, requestParams, responseJSON,
@@ -177,8 +169,8 @@ func (g *GeoDB) InsertGeoLookup(uuid, source, apiName string, requestParams, res
 
 // UpdateGeoFields updates geo-related fields on the metadata table.
 // Uses COALESCE for country and country_code to avoid overwriting existing values with NULL.
-func (g *GeoDB) UpdateGeoFields(uuid string, fields *GeoFields) error {
-	_, err := g.db.Exec(
+func UpdateGeoFields(uuid string, fields *GeoFields) error {
+	_, err := database.DB.Exec(
 		`UPDATE metadata SET
 		   geo_address = ?,
 		   geo_city = ?,
@@ -201,8 +193,8 @@ func (g *GeoDB) UpdateGeoFields(uuid string, fields *GeoFields) error {
 }
 
 // UpdateGeoStatus updates only the geo_status field for a given uuid.
-func (g *GeoDB) UpdateGeoStatus(uuid, status string) error {
-	_, err := g.db.Exec(
+func UpdateGeoStatus(uuid, status string) error {
+	_, err := database.DB.Exec(
 		`UPDATE metadata SET geo_status = ? WHERE uuid = ?`,
 		status, uuid,
 	)

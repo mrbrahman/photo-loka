@@ -26,15 +26,13 @@ type PlaceResult struct {
 
 // Organizer handles file placement, moves, and trash operations.
 type Organizer struct {
-	db     *IndexingDB
 	config *config.RuntimeConfig
 	logger *slog.Logger
 }
 
 // NewOrganizer creates a new Organizer instance.
-func NewOrganizer(db *IndexingDB, cfg *config.RuntimeConfig) *Organizer {
+func NewOrganizer(cfg *config.RuntimeConfig) *Organizer {
 	return &Organizer{
-		db:     db,
 		config: cfg,
 		logger: slog.Default().With("component", "organizer"),
 	}
@@ -232,7 +230,7 @@ func (o *Organizer) MoveItem(collectionID int64, src, dest string, silent bool) 
 
 // MoveFileToTrash moves items to the collection's .trash folder.
 func (o *Organizer) MoveFileToTrash(collectionID int64, uuids []string) error {
-	filenames, err := o.db.GetFileNames(uuids)
+	filenames, err := GetFileNames(uuids)
 	if err != nil {
 		return fmt.Errorf("getting filenames for trash: %w", err)
 	}
@@ -253,7 +251,7 @@ func (o *Organizer) MoveFileToTrash(collectionID int64, uuids []string) error {
 			return fmt.Errorf("moving %s to trash: %w", filename, err)
 		}
 
-		if err := o.db.TrashItem(uuid, trashPath); err != nil {
+		if err := TrashItem(uuid, trashPath); err != nil {
 			return fmt.Errorf("updating DB for trashed item %s: %w", uuid, err)
 		}
 
@@ -265,7 +263,7 @@ func (o *Organizer) MoveFileToTrash(collectionID int64, uuids []string) error {
 
 // RestoreFromTrash restores trashed items by removing the '.Trash_' prefix.
 func (o *Organizer) RestoreFromTrash(collectionID int64, uuids []string) error {
-	filenames, err := o.db.GetFileNames(uuids)
+	filenames, err := GetFileNames(uuids)
 	if err != nil {
 		return fmt.Errorf("getting filenames for restore: %w", err)
 	}
@@ -287,7 +285,7 @@ func (o *Organizer) RestoreFromTrash(collectionID int64, uuids []string) error {
 			return fmt.Errorf("restoring %s from trash: %w", trashPath, err)
 		}
 
-		if err := o.db.UntrashItem(uuid, restoredPath); err != nil {
+		if err := UntrashItem(uuid, restoredPath); err != nil {
 			return fmt.Errorf("updating DB for restored item %s: %w", uuid, err)
 		}
 
@@ -299,7 +297,7 @@ func (o *Organizer) RestoreFromTrash(collectionID int64, uuids []string) error {
 
 // MarkFilePrivate renames files to add a "private_" prefix.
 func (o *Organizer) MarkFilePrivate(collectionID int64, uuids []string) error {
-	filenames, err := o.db.GetFileNames(uuids)
+	filenames, err := GetFileNames(uuids)
 	if err != nil {
 		return fmt.Errorf("getting filenames for mark private: %w", err)
 	}
@@ -320,7 +318,7 @@ func (o *Organizer) MarkFilePrivate(collectionID int64, uuids []string) error {
 			return fmt.Errorf("renaming %s to private: %w", filename, err)
 		}
 
-		if err := o.db.MarkPrivate(uuid, newPath); err != nil {
+		if err := MarkPrivate(uuid, newPath); err != nil {
 			return fmt.Errorf("updating DB for private item %s: %w", uuid, err)
 		}
 
@@ -332,7 +330,7 @@ func (o *Organizer) MarkFilePrivate(collectionID int64, uuids []string) error {
 
 // UnmarkFilePrivate removes the leading dot from filenames.
 func (o *Organizer) UnmarkFilePrivate(collectionID int64, uuids []string) error {
-	filenames, err := o.db.GetFileNames(uuids)
+	filenames, err := GetFileNames(uuids)
 	if err != nil {
 		return fmt.Errorf("getting filenames for unmark private: %w", err)
 	}
@@ -356,7 +354,7 @@ func (o *Organizer) UnmarkFilePrivate(collectionID int64, uuids []string) error 
 			return fmt.Errorf("renaming %s to remove private: %w", filename, err)
 		}
 
-		if err := o.db.UnmarkPrivate(uuid, newPath); err != nil {
+		if err := UnmarkPrivate(uuid, newPath); err != nil {
 			return fmt.Errorf("updating DB for unprivate item %s: %w", uuid, err)
 		}
 
@@ -434,7 +432,7 @@ func (o *Organizer) logChange(collectionID int64, action, path1 string, path2 *s
 	if path1 != "" {
 		p1 = &path1
 	}
-	if err := o.db.FileAudit(collectionID, action, p1, path2); err != nil {
+	if err := FileAudit(collectionID, action, p1, path2); err != nil {
 		o.logger.Error("failed to log file audit",
 			"action", action,
 			"path1", path1,

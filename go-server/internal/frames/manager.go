@@ -39,8 +39,6 @@ type FrameState struct {
 type Manager struct {
 	mu         sync.RWMutex
 	frames     map[string]*FrameState // ip -> state
-	db         *FramesDB
-	searchDB   *search.SearchDB
 	scheduler  *scheduler.Scheduler
 	sseClients map[string]chan string // ip -> SSE channel
 	sseMu      sync.Mutex
@@ -48,11 +46,9 @@ type Manager struct {
 }
 
 // NewManager creates a new frame Manager.
-func NewManager(db *FramesDB, searchDB *search.SearchDB, sched *scheduler.Scheduler) *Manager {
+func NewManager(sched *scheduler.Scheduler) *Manager {
 	return &Manager{
 		frames:     make(map[string]*FrameState),
-		db:         db,
-		searchDB:   searchDB,
 		scheduler:  sched,
 		sseClients: make(map[string]chan string),
 		logger:     slog.Default().With("component", "frame-manager"),
@@ -62,7 +58,7 @@ func NewManager(db *FramesDB, searchDB *search.SearchDB, sched *scheduler.Schedu
 // LoadAllFrames loads all frames from DB and initializes in-memory state.
 // Cron jobs are scheduled separately via ScheduleAllFrameJobs.
 func (m *Manager) LoadAllFrames() error {
-	dbFrames, err := m.db.GetAll()
+	dbFrames, err := GetAll()
 	if err != nil {
 		return fmt.Errorf("loading frames from DB: %w", err)
 	}
@@ -108,7 +104,7 @@ func (m *Manager) LoadAllFrames() error {
 
 // GetAllFrames returns all DB frames merged with their in-memory state.
 func (m *Manager) GetAllFrames() ([]map[string]interface{}, error) {
-	dbFrames, err := m.db.GetAll()
+	dbFrames, err := GetAll()
 	if err != nil {
 		return nil, fmt.Errorf("getting frames: %w", err)
 	}
@@ -144,7 +140,7 @@ func (m *Manager) GetAllFrames() ([]map[string]interface{}, error) {
 
 // CreateFrame inserts a frame into the DB, initializes in-memory state, and schedules jobs.
 func (m *Manager) CreateFrame(frame *Frame) (int64, error) {
-	id, err := m.db.Create(frame)
+	id, err := Create(frame)
 	if err != nil {
 		return 0, err
 	}
@@ -175,7 +171,7 @@ func (m *Manager) CreateFrame(frame *Frame) (int64, error) {
 // UpdateFrame updates the DB record, refreshes in-memory state, and reschedules jobs.
 func (m *Manager) UpdateFrame(frameID int64, frame *Frame) error {
 	// Get old frame to know the old IP
-	oldFrame, err := m.db.GetByID(frameID)
+	oldFrame, err := GetByID(frameID)
 	if err != nil {
 		return err
 	}
@@ -183,7 +179,7 @@ func (m *Manager) UpdateFrame(frameID int64, frame *Frame) error {
 		return fmt.Errorf("frame %d not found", frameID)
 	}
 
-	if err := m.db.Update(frameID, frame); err != nil {
+	if err := Update(frameID, frame); err != nil {
 		return err
 	}
 
@@ -217,7 +213,7 @@ func (m *Manager) UpdateFrame(frameID int64, frame *Frame) error {
 
 // DeleteFrame removes the frame from DB, in-memory state, and cron jobs.
 func (m *Manager) DeleteFrame(frameID int64) error {
-	frame, err := m.db.GetByID(frameID)
+	frame, err := GetByID(frameID)
 	if err != nil {
 		return err
 	}
@@ -225,7 +221,7 @@ func (m *Manager) DeleteFrame(frameID int64) error {
 		return fmt.Errorf("frame %d not found", frameID)
 	}
 
-	if err := m.db.Delete(frameID); err != nil {
+	if err := Delete(frameID); err != nil {
 		return err
 	}
 
@@ -241,7 +237,7 @@ func (m *Manager) DeleteFrame(frameID int64) error {
 // PauseFrame manually pauses a frame. If resumeAtSchedule is set, it will
 // auto-resume at the next scheduled unpause time.
 func (m *Manager) PauseFrame(frameID int64, resumeAtSchedule *bool) error {
-	frame, err := m.db.GetByID(frameID)
+	frame, err := GetByID(frameID)
 	if err != nil {
 		return err
 	}
@@ -266,7 +262,7 @@ func (m *Manager) PauseFrame(frameID int64, resumeAtSchedule *bool) error {
 
 // ResumeFrame manually resumes a paused frame.
 func (m *Manager) ResumeFrame(frameID int64) error {
-	frame, err := m.db.GetByID(frameID)
+	frame, err := GetByID(frameID)
 	if err != nil {
 		return err
 	}
@@ -350,7 +346,7 @@ func (m *Manager) GetPrevItem(ip string) (interface{}, error) {
 
 // SetAutoPause sets the automatic pause state for a frame.
 func (m *Manager) SetAutoPause(frameID int64, paused bool) error {
-	frame, err := m.db.GetByID(frameID)
+	frame, err := GetByID(frameID)
 	if err != nil {
 		return err
 	}
@@ -399,7 +395,7 @@ func (m *Manager) ReloadItemsForFrame(frame *Frame) error {
 		displayOrder = *frame.DisplayOrder
 	}
 
-	results, err := m.searchDB.RunSearch(frame.CollectionID, frame.SearchStr, false, false, displayOrder, nil)
+	results, err := search.RunSearch(frame.CollectionID, frame.SearchStr, false, false, displayOrder, nil)
 	if err != nil {
 		return fmt.Errorf("running search for frame %d: %w", frame.FrameID, err)
 	}
@@ -617,7 +613,7 @@ func (m *Manager) ScheduleAllFrameJobs() {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	frames, err := m.db.GetAll()
+	frames, err := GetAll()
 	if err != nil {
 		m.logger.Error("failed to get frames for job scheduling", "error", err)
 		return

@@ -29,13 +29,11 @@ type intakeConfig struct {
 }
 
 // Service provides business logic for collections.
-type Service struct {
-	db *CollectionsDB
-}
+type Service struct{}
 
 // NewService creates a new collections Service.
-func NewService(db *CollectionsDB) *Service {
-	return &Service{db: db}
+func NewService() *Service {
+	return &Service{}
 }
 
 // Create validates and creates a new collection.
@@ -43,7 +41,7 @@ func (s *Service) Create(col *Collection) (int64, error) {
 	if err := validateCollection(col); err != nil {
 		return 0, err
 	}
-	return s.db.Create(col)
+	return Create(col)
 }
 
 // Update validates and updates an existing collection.
@@ -51,27 +49,27 @@ func (s *Service) Update(collectionID int64, col *Collection) error {
 	if err := validateCollection(col); err != nil {
 		return err
 	}
-	return s.db.Update(collectionID, col)
+	return Update(collectionID, col)
 }
 
 // GetAll returns all collections.
 func (s *Service) GetAll() ([]Collection, error) {
-	return s.db.GetAll()
+	return GetAll()
 }
 
 // Get returns a single collection by ID.
 func (s *Service) Get(collectionID int64) (*Collection, error) {
-	return s.db.Get(collectionID)
+	return Get(collectionID)
 }
 
 // GetDefault returns the default collection.
 func (s *Service) GetDefault() (*Collection, error) {
-	return s.db.GetDefault()
+	return GetDefault()
 }
 
 // GetSummary returns a lightweight list of collections.
 func (s *Service) GetSummary() ([]CollectionSummary, error) {
-	return s.db.GetSummary()
+	return GetSummary()
 }
 
 // ListSubDirs reads a directory and returns the names of its subdirectories.
@@ -106,12 +104,12 @@ func (s *Service) IsValidDir(path string) bool {
 
 // SetIntakeStatus updates the status of a single intake config entry.
 func (s *Service) SetIntakeStatus(collectionID int64, index int, status string) error {
-	return s.db.SetIntakeStatusByIndex(collectionID, index, status)
+	return SetIntakeStatusByIndex(collectionID, index, status)
 }
 
 // SetAllIntakeStatus updates the status of all intake config entries.
 func (s *Service) SetAllIntakeStatus(collectionID int64, status string) error {
-	return s.db.SetAllIntakeStatus(collectionID, status)
+	return SetAllIntakeStatus(collectionID, status)
 }
 
 // validateCollection checks that a collection has valid fields.

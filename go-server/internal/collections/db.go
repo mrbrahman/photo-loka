@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+
+	"photo-loka/internal/database"
 )
 
 // Collection represents a full collection record from the database.
@@ -29,18 +31,8 @@ type CollectionSummary struct {
 	PlaceholderAlbumText *string `json:"placeholder_album_text"`
 }
 
-// CollectionsDB provides database operations for collections.
-type CollectionsDB struct {
-	db *sql.DB
-}
-
-// NewCollectionsDB creates a new CollectionsDB instance.
-func NewCollectionsDB(conn *sql.DB) *CollectionsDB {
-	return &CollectionsDB{db: conn}
-}
-
 // Create inserts a new collection and returns the new collection_id.
-func (c *CollectionsDB) Create(col *Collection) (int64, error) {
+func Create(col *Collection) (int64, error) {
 	query := `
 		INSERT INTO collections (
 			collection_name, collection_path, album_type, intake_configs,
@@ -48,7 +40,7 @@ func (c *CollectionsDB) Create(col *Collection) (int64, error) {
 			compress_videos, placeholder_album_text
 		) VALUES (?, ?, ?, json(?), ?, ?, ?, ?, ?)`
 
-	result, err := c.db.Exec(query,
+	result, err := database.DB.Exec(query,
 		col.CollectionName,
 		col.CollectionPath,
 		col.AlbumType,
@@ -72,7 +64,7 @@ func (c *CollectionsDB) Create(col *Collection) (int64, error) {
 }
 
 // Update updates an existing collection by ID.
-func (c *CollectionsDB) Update(collectionID int64, col *Collection) error {
+func Update(collectionID int64, col *Collection) error {
 	query := `
 		UPDATE collections SET
 			collection_name = ?,
@@ -85,7 +77,7 @@ func (c *CollectionsDB) Update(collectionID int64, col *Collection) error {
 			placeholder_album_text = ?
 		WHERE collection_id = ?`
 
-	result, err := c.db.Exec(query,
+	result, err := database.DB.Exec(query,
 		col.CollectionName,
 		col.AlbumType,
 		string(col.IntakeConfigs),
@@ -112,14 +104,14 @@ func (c *CollectionsDB) Update(collectionID int64, col *Collection) error {
 }
 
 // GetAll returns all collections.
-func (c *CollectionsDB) GetAll() ([]Collection, error) {
+func GetAll() ([]Collection, error) {
 	query := `
 		SELECT collection_id, collection_name, collection_path, album_type,
 			   intake_configs, apply_folder_pattern, default_collection,
 			   trash_days, compress_videos, placeholder_album_text
 		FROM collections`
 
-	rows, err := c.db.Query(query)
+	rows, err := database.DB.Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("querying collections: %w", err)
 	}
@@ -129,7 +121,7 @@ func (c *CollectionsDB) GetAll() ([]Collection, error) {
 }
 
 // Get returns a single collection by ID.
-func (c *CollectionsDB) Get(collectionID int64) (*Collection, error) {
+func Get(collectionID int64) (*Collection, error) {
 	query := `
 		SELECT collection_id, collection_name, collection_path, album_type,
 			   intake_configs, apply_folder_pattern, default_collection,
@@ -140,7 +132,7 @@ func (c *CollectionsDB) Get(collectionID int64) (*Collection, error) {
 	col := &Collection{}
 	var intakeConfigsStr sql.NullString
 
-	err := c.db.QueryRow(query, collectionID).Scan(
+	err := database.DB.QueryRow(query, collectionID).Scan(
 		&col.CollectionID,
 		&col.CollectionName,
 		&col.CollectionPath,
@@ -167,7 +159,7 @@ func (c *CollectionsDB) Get(collectionID int64) (*Collection, error) {
 }
 
 // GetDefault returns the collection marked as default (default_collection = 1).
-func (c *CollectionsDB) GetDefault() (*Collection, error) {
+func GetDefault() (*Collection, error) {
 	query := `
 		SELECT collection_id, collection_name, collection_path, album_type,
 			   intake_configs, apply_folder_pattern, default_collection,
@@ -178,7 +170,7 @@ func (c *CollectionsDB) GetDefault() (*Collection, error) {
 	col := &Collection{}
 	var intakeConfigsStr sql.NullString
 
-	err := c.db.QueryRow(query).Scan(
+	err := database.DB.QueryRow(query).Scan(
 		&col.CollectionID,
 		&col.CollectionName,
 		&col.CollectionPath,
@@ -205,13 +197,13 @@ func (c *CollectionsDB) GetDefault() (*Collection, error) {
 }
 
 // GetSummary returns a lightweight list of all collections.
-func (c *CollectionsDB) GetSummary() ([]CollectionSummary, error) {
+func GetSummary() ([]CollectionSummary, error) {
 	query := `
 		SELECT collection_id, collection_name, default_collection,
 			   apply_folder_pattern, placeholder_album_text
 		FROM collections`
 
-	rows, err := c.db.Query(query)
+	rows, err := database.DB.Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("querying collection summaries: %w", err)
 	}
@@ -240,7 +232,7 @@ func (c *CollectionsDB) GetSummary() ([]CollectionSummary, error) {
 }
 
 // GetByIntakePath finds the collection whose intake_configs contains the given path.
-func (c *CollectionsDB) GetByIntakePath(dirPath string) (*Collection, error) {
+func GetByIntakePath(dirPath string) (*Collection, error) {
 	query := `
 		SELECT c.collection_id, c.collection_name, c.collection_path, c.album_type,
 			   c.intake_configs, c.apply_folder_pattern, c.default_collection,
@@ -251,7 +243,7 @@ func (c *CollectionsDB) GetByIntakePath(dirPath string) (*Collection, error) {
 	col := &Collection{}
 	var intakeConfigsStr sql.NullString
 
-	err := c.db.QueryRow(query, dirPath).Scan(
+	err := database.DB.QueryRow(query, dirPath).Scan(
 		&col.CollectionID,
 		&col.CollectionName,
 		&col.CollectionPath,
@@ -278,14 +270,14 @@ func (c *CollectionsDB) GetByIntakePath(dirPath string) (*Collection, error) {
 }
 
 // SetIntakeStatusByIndex updates the status field of a specific intake config entry by index.
-func (c *CollectionsDB) SetIntakeStatusByIndex(collectionID int64, index int, status string) error {
+func SetIntakeStatusByIndex(collectionID int64, index int, status string) error {
 	// Use json_set to update the status at the given array index
 	query := fmt.Sprintf(`
 		UPDATE collections
 		SET intake_configs = json_set(intake_configs, '$[%d].status', ?)
 		WHERE collection_id = ?`, index)
 
-	result, err := c.db.Exec(query, status, collectionID)
+	result, err := database.DB.Exec(query, status, collectionID)
 	if err != nil {
 		return fmt.Errorf("setting intake status for collection %d index %d: %w", collectionID, index, err)
 	}
@@ -302,10 +294,10 @@ func (c *CollectionsDB) SetIntakeStatusByIndex(collectionID int64, index int, st
 }
 
 // SetAllIntakeStatus updates the status field of all intake config entries for a collection.
-func (c *CollectionsDB) SetAllIntakeStatus(collectionID int64, status string) error {
+func SetAllIntakeStatus(collectionID int64, status string) error {
 	// First get the current intake_configs to know how many entries exist
 	var intakeConfigsStr sql.NullString
-	err := c.db.QueryRow(
+	err := database.DB.QueryRow(
 		"SELECT intake_configs FROM collections WHERE collection_id = ?",
 		collectionID,
 	).Scan(&intakeConfigsStr)
@@ -335,7 +327,7 @@ func (c *CollectionsDB) SetAllIntakeStatus(collectionID int64, status string) er
 		if method, _ := entry["method"].(string); method == "on-demand" {
 			continue // on-demand intakes have no background process to stop/start
 		}
-		if err := c.SetIntakeStatusByIndex(collectionID, i, status); err != nil {
+		if err := SetIntakeStatusByIndex(collectionID, i, status); err != nil {
 			return err
 		}
 	}
@@ -381,8 +373,8 @@ func scanCollections(rows *sql.Rows) ([]Collection, error) {
 
 // SetIntakeStatusByMethod updates the status of all intake entries matching a given method
 // across all collections. Skips on-demand intakes.
-func (c *CollectionsDB) SetIntakeStatusByMethod(method, status string) {
-	_, _ = c.db.Exec(`
+func SetIntakeStatusByMethod(method, status string) {
+	_, _ = database.DB.Exec(`
 		UPDATE collections
 		SET intake_configs = (
 			SELECT json_group_array(

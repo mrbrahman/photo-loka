@@ -12,16 +12,14 @@ import (
 
 // Finalizer handles geo resolution logic for media items.
 type Finalizer struct {
-	db           *GeoDB
 	rateLimiter  *RateLimiter
 	geonamesUser string
 	logger       *slog.Logger
 }
 
 // NewFinalizer creates a new Finalizer instance.
-func NewFinalizer(db *GeoDB, rl *RateLimiter, geonamesUser string) *Finalizer {
+func NewFinalizer(rl *RateLimiter, geonamesUser string) *Finalizer {
 	return &Finalizer{
-		db:           db,
 		rateLimiter:  rl,
 		geonamesUser: geonamesUser,
 		logger:       slog.Default().With("component", "geo-finalizer"),
@@ -33,7 +31,7 @@ func NewFinalizer(db *GeoDB, rl *RateLimiter, geonamesUser string) *Finalizer {
 func (f *Finalizer) FinalizeGeo(uuid string, gpsLat, gpsLng *float64, countryCode *string) error {
 	// If we don't have GPS or country info, try to get it from DB
 	if gpsLat == nil || gpsLng == nil || countryCode == nil {
-		ctx, err := f.db.GetGeoContext(uuid)
+		ctx, err := GetGeoContext(uuid)
 		if err != nil {
 			return fmt.Errorf("failed to get geo context for %s: %w", uuid, err)
 		}
@@ -51,7 +49,7 @@ func (f *Finalizer) FinalizeGeo(uuid string, gpsLat, gpsLng *float64, countryCod
 	// No GPS coordinates - nothing we can do
 	if gpsLat == nil || gpsLng == nil {
 		f.logger.Debug("no GPS coordinates, skipping", "uuid", uuid)
-		return f.db.UpdateGeoStatus(uuid, "NO_GPS")
+		return UpdateGeoStatus(uuid, "NO_GPS")
 	}
 
 	// Route based on country
@@ -75,13 +73,13 @@ func (f *Finalizer) FinalizeGeo(uuid string, gpsLat, gpsLng *float64, countryCod
 
 // finalizeNonUS reads exiftool geo data from DB and builds address fields.
 func (f *Finalizer) finalizeNonUS(uuid string) error {
-	responseJSON, err := f.db.GetExiftoolGeoLookup(uuid)
+	responseJSON, err := GetExiftoolGeoLookup(uuid)
 	if err != nil {
 		return fmt.Errorf("failed to get exiftool geo lookup for %s: %w", uuid, err)
 	}
 
 	if responseJSON == "" {
-		return f.db.UpdateGeoStatus(uuid, "NO_EXIFTOOL_DATA")
+		return UpdateGeoStatus(uuid, "NO_EXIFTOOL_DATA")
 	}
 
 	var data map[string]interface{}
@@ -101,7 +99,7 @@ func (f *Finalizer) finalizeNonUS(uuid string) error {
 
 	geoAddress := strings.Join(parts, ", ")
 	if geoAddress == "" {
-		return f.db.UpdateGeoStatus(uuid, "NO_ADDRESS_DATA")
+		return UpdateGeoStatus(uuid, "NO_ADDRESS_DATA")
 	}
 
 	var city, region, country, countryCode *string
@@ -127,14 +125,14 @@ func (f *Finalizer) finalizeNonUS(uuid string) error {
 		GeoStatus:      "RESOLVED_FROM_EXIFTOOL",
 	}
 
-	return f.db.UpdateGeoFields(uuid, fields)
+	return UpdateGeoFields(uuid, fields)
 }
 
 // finalizeUS attempts geo resolution for US addresses.
 // Priority: exact match -> proximity match -> geonames API lookup.
 func (f *Finalizer) finalizeUS(uuid string, lat, lng float64) error {
 	// Try exact coordinate match first
-	match, err := f.db.FindExactGeoMatch(lat, lng)
+	match, err := FindExactGeoMatch(lat, lng)
 	if err != nil {
 		return fmt.Errorf("exact geo match failed for %s: %w", uuid, err)
 	}
@@ -149,11 +147,11 @@ func (f *Finalizer) finalizeUS(uuid string, lat, lng float64) error {
 			GeoStatus:      "FOUND_DB_EXACT_MATCH",
 			GeoMatchedUUID: &matchedUUID,
 		}
-		return f.db.UpdateGeoFields(uuid, fields)
+		return UpdateGeoFields(uuid, fields)
 	}
 
 	// Try proximity match (within 10m)
-	match, err = f.db.FindProximityGeoMatch(lat, lng)
+	match, err = FindProximityGeoMatch(lat, lng)
 	if err != nil {
 		return fmt.Errorf("proximity geo match failed for %s: %w", uuid, err)
 	}
@@ -168,7 +166,7 @@ func (f *Finalizer) finalizeUS(uuid string, lat, lng float64) error {
 			GeoStatus:      "FOUND_DB_PROXIMITY_MATCH",
 			GeoMatchedUUID: &matchedUUID,
 		}
-		return f.db.UpdateGeoFields(uuid, fields)
+		return UpdateGeoFields(uuid, fields)
 	}
 
 	// Fall back to geonames API
@@ -178,7 +176,7 @@ func (f *Finalizer) finalizeUS(uuid string, lat, lng float64) error {
 // lookupGeonames calls the geonames findNearestAddressJSON API and stores the result.
 func (f *Finalizer) lookupGeonames(uuid string, lat, lng float64) error {
 	if !f.rateLimiter.Check() {
-		return f.db.UpdateGeoStatus(uuid, "RATE_LIMITED")
+		return UpdateGeoStatus(uuid, "RATE_LIMITED")
 	}
 
 	apiURL := fmt.Sprintf(
@@ -208,7 +206,7 @@ func (f *Finalizer) lookupGeonames(uuid string, lat, lng float64) error {
 	requestParams := fmt.Sprintf(`{"lat":%f,"lng":%f}`, lat, lng)
 
 	// Store the lookup result
-	if err := f.db.InsertGeoLookup(uuid, "geonames", "findNearestAddress", &requestParams, &responseStr); err != nil {
+	if err := InsertGeoLookup(uuid, "geonames", "findNearestAddress", &requestParams, &responseStr); err != nil {
 		f.logger.Error("failed to insert geo lookup", "uuid", uuid, "error", err)
 	}
 
@@ -221,7 +219,7 @@ func (f *Finalizer) lookupGeonames(uuid string, lat, lng float64) error {
 	// Extract address from response
 	address, ok := result["address"].(map[string]interface{})
 	if !ok {
-		return f.db.UpdateGeoStatus(uuid, "NO_ADDRESS_FOUND")
+		return UpdateGeoStatus(uuid, "NO_ADDRESS_FOUND")
 	}
 
 	return f.resolveFromAddress(uuid, address, "FOUND_VIA_API", nil)
@@ -308,14 +306,14 @@ func (f *Finalizer) resolveFromAddress(uuid string, address map[string]interface
 		GeoMatchedUUID: matchedUUID,
 	}
 
-	return f.db.UpdateGeoFields(uuid, fields)
+	return UpdateGeoFields(uuid, fields)
 }
 
 // resolveCity attempts to find a city name from a postal code.
 // It first checks the DB cache, then calls the geonames postalCodeLookup API.
 func (f *Finalizer) resolveCity(uuid, postalcode, country string) (string, error) {
 	// Check cache first
-	responseJSON, err := f.db.FindPostalCodeMatch(postalcode, country)
+	responseJSON, err := FindPostalCodeMatch(postalcode, country)
 	if err != nil {
 		return "", err
 	}
@@ -356,7 +354,7 @@ func (f *Finalizer) resolveCity(uuid, postalcode, country string) (string, error
 	requestParams := fmt.Sprintf(`{"postalcode":"%s","country":"%s"}`, postalcode, country)
 
 	// Store the lookup
-	if err := f.db.InsertGeoLookup(uuid, "geonames", "postalCodeLookup", &requestParams, &responseStr); err != nil {
+	if err := InsertGeoLookup(uuid, "geonames", "postalCodeLookup", &requestParams, &responseStr); err != nil {
 		f.logger.Error("failed to insert postal code lookup", "uuid", uuid, "error", err)
 	}
 
