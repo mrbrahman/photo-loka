@@ -16,24 +16,18 @@ import (
 
 	"github.com/lmittmann/tint"
 
-	"photo-loka/internal/admin"
-	"photo-loka/internal/albums"
 	"photo-loka/internal/auth"
-	"photo-loka/internal/authn"
 	"photo-loka/internal/collections"
 	"photo-loka/internal/config"
-	"photo-loka/internal/dashboard"
 	"photo-loka/internal/database"
 	"photo-loka/internal/frames"
 	"photo-loka/internal/geo"
 	"photo-loka/internal/indexing"
-	"photo-loka/internal/items"
 	"photo-loka/internal/jobs"
 	"photo-loka/internal/media"
 	"photo-loka/internal/ml"
 	"photo-loka/internal/queue"
 	"photo-loka/internal/scheduler"
-	"photo-loka/internal/search"
 	"photo-loka/internal/server"
 )
 
@@ -187,19 +181,11 @@ func runServe() {
 	// Create auth service
 	authSvc := auth.NewService(cfg.JWTSecret)
 
-	// Create collections service and handler
+	// Create collections service
 	collectionsSvc := collections.NewService()
-	collectionsHandler := collections.NewHandler(collectionsSvc)
 
-	// Create search handler
+	// ML client (shared by search and ML service)
 	mlClient := ml.NewClient(cfg.MLServiceURL)
-	searchHandler := search.NewHandler(mlClient)
-
-	// Create media handler
-	mediaHandler := media.NewHandler(cfg.ThumbsDir, cfg.FacesDir)
-
-	// Create dashboard handler
-	dashboardHandler := dashboard.NewHandler()
 
 	// Create indexing queues
 	numCPU := runtime.NumCPU()
@@ -217,9 +203,7 @@ func runServe() {
 
 	// Create indexing components
 	organizer := indexing.NewOrganizer(rtCfg)
-	albumsHandler := albums.NewHandler(organizer)
 	indexer := indexing.NewIndexer(organizer, indexQueue, videoQueue, cfg.ThumbsDir, rtCfg)
-	indexingHandler := indexing.NewHandler(indexer, indexQueue, videoQueue, rtCfg)
 
 	// Create geo components
 	geoQueue := queue.New(1) // geo runs single-threaded due to rate limits
@@ -227,32 +211,26 @@ func runServe() {
 	rateLimiter := geo.NewRateLimiter(rtCfg, rateLimitStateFile)
 	geoFinalizer := geo.NewFinalizer(rateLimiter, cfg.GeonamesUsername)
 	geoService := geo.NewService(geoFinalizer, geoQueue)
-	geoHandler := geo.NewHandler(geoService)
 
-	// Create ML components
+	// Create ML service
 	mlService := ml.NewService(mlClient, cfg.FacesDir, cfg.ThumbsDir)
-	mlHandler := ml.NewHandler(mlService)
 
 	// Wire geo and ML services into the indexer for post-indexing enrichments
 	indexer.SetGeoService(geoService)
 	indexer.SetMLService(mlService)
-
-	// Create items handler
-	itemsHandler := items.NewHandler(indexer, organizer, mlService, rtCfg, cfg.ThumbsDir)
 
 	// Scheduler
 	sched := scheduler.New()
 
 	// Frames
 	frameManager := frames.NewManager(sched)
-	framesHandler := frames.NewHandler(frameManager)
 
 	// Jobs
 	fileWatcher := jobs.NewFileWatcher(indexer)
 	scheduledIndexing := jobs.NewScheduledIndexing(sched, indexer)
 
 	// Wire collection change callback to restart watchers/cron
-	collectionsHandler.OnCollectionChanged = func(collectionID int64) {
+	collections.OnCollectionChanged = func(collectionID int64) {
 		col, err := collections.Get(collectionID)
 		if err != nil || col == nil {
 			return
@@ -262,14 +240,6 @@ func runServe() {
 		fileWatcher.StartForCollection(col)
 		scheduledIndexing.ScheduleForCollection(col)
 	}
-
-	// Admin handlers
-	configHandler := admin.NewConfigHandler(rtCfg)
-	usersHandler := admin.NewUsersHandler(authSvc)
-	jobsHandler := admin.NewJobsHandler(sched, fileWatcher, scheduledIndexing, frameManager)
-
-	// Authn handler
-	authnHandler := authn.NewHandler(authSvc)
 
 	// Determine web assets filesystem: use ../web on disk if present, else embedded
 	var webFS http.FileSystem
@@ -285,25 +255,26 @@ func runServe() {
 		os.Exit(1)
 	}
 
-	// Create and run server
-	srv := server.New(cfg, db, authSvc,
-		collectionsHandler,
-		albumsHandler,
-		searchHandler,
-		mediaHandler,
-		dashboardHandler,
-		indexingHandler,
-		geoHandler,
-		mlHandler,
-		itemsHandler,
-		framesHandler,
-		configHandler,
-		usersHandler,
-		jobsHandler,
-		authnHandler,
-		frameManager,
-		webFS,
-	)
+	// Create and run server. Handlers are package-level; the server threads the
+	// collaborators below into each package's RegisterRoutes.
+	srv := server.New(cfg, server.Deps{
+		AuthService:    authSvc,
+		FrameIPChecker: frameManager,
+		CollectionsSvc: collectionsSvc,
+		Organizer:      organizer,
+		MLClient:       mlClient,
+		MLService:      mlService,
+		GeoService:     geoService,
+		Indexer:        indexer,
+		IndexQueue:     indexQueue,
+		VideoQueue:     videoQueue,
+		FrameManager:   frameManager,
+		Scheduler:      sched,
+		FileWatcher:    fileWatcher,
+		ScheduledIdx:   scheduledIndexing,
+		ThumbsDir:      cfg.ThumbsDir,
+		FacesDir:       cfg.FacesDir,
+	}, webFS)
 
 	slog.Info("starting Photo-Loka", "port", cfg.Port, "data_dir", cfg.DataDir)
 

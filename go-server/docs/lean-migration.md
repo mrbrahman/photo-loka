@@ -93,7 +93,7 @@ Services (stateless business logic): fold into package-level funcs:
 
 - [x] Phase 0
 - [x] Phase 1
-- [ ] Phase 2
+- [x] Phase 2
 - [ ] Phase 3
 - [ ] Phase 4
 - [ ] Phase 5
@@ -162,4 +162,44 @@ what is next, any surprises.)
   thumbsDir/facesDir). Decide per-handler: package vars vs keep-as-struct. Update
   `server.go` wiring as each handler collapses. `collections.OnCollectionChanged`
   -> package var.
+
+- Phase 2 DONE (compiles green: `go build`/`go vet -tags "fts5
+  sqlite_math_functions" ./...` exit 0; `./build.sh` exit 0). grep confirms NO
+  `type *Handler struct` and NO `New*Handler` constructors remain.
+  - All 14 handlers collapsed to package-level `RegisterRoutes(rg, ...deps)` +
+    unexported handler funcs. Handler struct + New*Handler deleted.
+  - Collaborator pattern: `RegisterRoutes` takes the collaborators as params,
+    stores them in package-level vars, then mounts routes. Runtime config uses
+    the `config.Rt` singleton directly (admin config handler, indexing, items).
+    Package vars used: geo/ml `svc`; authn/admin `authService`; collections
+    `svc` + `OnCollectionChanged`; albums `organizer`; search `mlClient`;
+    indexing `indexer`/`indexQueue`/`videoQueue`; frames `manager`; items
+    `organizer`/`mlService`/`thumbsDir`/`logger`; media `thumbsDir`/`facesDir`.
+  - admin package had 3 handlers sharing one package -> renamed the register
+    funcs to avoid collision: `RegisterConfigRoutes`, `RegisterUsersRoutes`,
+    `RegisterJobsRoutes`. Jobs collaborators use prefixed package vars
+    (`jobsScheduler`, `jobsFileWatcher`, `jobsScheduledIdx`, `jobsFrameManager`).
+  - `items` dropped its unused `indexer` field entirely (it calls `indexing.*`
+    package funcs directly).
+  - server.go: `Server` struct slimmed to `{Router, Config}`. Added a `Deps`
+    struct bundling collaborators; `New(cfg, deps, webFS)` + `setupRoutes(deps)`
+    call each package's `RegisterRoutes`. Dropped the 18-param New and all
+    `*Handler` fields. (Full package-level server is Phase 5.)
+  - main.go: removed all `xHandler := ...NewHandler(...)` vars; builds a
+    `server.Deps{...}` from the collaborators. `collections.OnCollectionChanged`
+    set as package var. Dropped now-unused imports (admin, albums, authn,
+    dashboard, items, search).
+  - LESSON (again): sed `func (h *Handler) ` -> `func ` also rewrites the
+    RegisterRoutes body's method-value route regs incorrectly is NOT the issue;
+    the real gotcha was internal helper method calls (`h.permanentlyDeleteItems`,
+    `h.handleAISearch`, `h.queryLibraryStats`) that sed's collaborator-prefix
+    replacements miss. Always grep `\bh\.[a-zA-Z]` per file after conversion.
+- NEXT: Phase 3 -- collapse the remaining Services to package funcs:
+  `collections.Service` (already an empty delegating struct -> remove, callers
+  use package funcs), `geo.Service`, `ml.Service`. Resolve `auth.Service`:
+  make `auth.JWTSecret` a package var set at startup and convert methods to
+  package funcs (CLI create-user/generate-token also use it). Update the handler
+  package vars that currently hold `*Service` to call the package funcs instead,
+  and drop the `svc`/`authService` indirection + the RegisterRoutes service
+  params. Update server.Deps + main.go accordingly.
 

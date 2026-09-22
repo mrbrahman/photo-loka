@@ -16,21 +16,13 @@ type Organizer interface {
 	AlbumFolderAbsPath(collection *collections.Collection, albumDate, albumName string) string
 }
 
-// Handler provides HTTP handlers for album operations.
-type Handler struct {
-	organizer Organizer
-}
-
-// NewHandler creates a new albums Handler.
-func NewHandler(organizer Organizer) *Handler {
-	return &Handler{
-		organizer: organizer,
-	}
-}
+// organizer performs album folder operations. Set via RegisterRoutes.
+var organizer Organizer
 
 // RegisterRoutes registers album routes on the given router group.
-func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
-	rg.POST("/updateAlbumName", h.updateAlbumName)
+func RegisterRoutes(rg *gin.RouterGroup, org Organizer) {
+	organizer = org
+	rg.POST("/updateAlbumName", updateAlbumName)
 }
 
 // updateAlbumNameRequest is the request body for album rename.
@@ -42,7 +34,7 @@ type updateAlbumNameRequest struct {
 }
 
 // updateAlbumName renames an album and updates file paths.
-func (h *Handler) updateAlbumName(c *gin.Context) {
+func updateAlbumName(c *gin.Context) {
 	var req updateAlbumNameRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -91,7 +83,7 @@ func (h *Handler) updateAlbumName(c *gin.Context) {
 	// Rename physical folder on disk (skip for VIRTUAL_ALBUM)
 	if collection.AlbumType != "VIRTUAL_ALBUM" {
 		// Check if destination folder already exists
-		newPath := h.organizer.AlbumFolderAbsPath(collection, req.AlbumDate, req.NewAlbumName)
+		newPath := organizer.AlbumFolderAbsPath(collection, req.AlbumDate, req.NewAlbumName)
 		if _, err := os.Stat(newPath); err == nil {
 			c.JSON(http.StatusConflict, gin.H{
 				"error": gin.H{"message": "Destination folder already exists", "code": "FOLDER_EXISTS"},
@@ -99,7 +91,7 @@ func (h *Handler) updateAlbumName(c *gin.Context) {
 			return
 		}
 
-		if err := h.organizer.RenameAlbumFolder(collection, req.AlbumDate, req.CurrAlbumName, req.AlbumDate, req.NewAlbumName); err != nil {
+		if err := organizer.RenameAlbumFolder(collection, req.AlbumDate, req.CurrAlbumName, req.AlbumDate, req.NewAlbumName); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error": gin.H{"message": "Failed to rename folder: " + err.Error(), "code": "RENAME_FAILED"},
 			})
@@ -119,7 +111,7 @@ func (h *Handler) updateAlbumName(c *gin.Context) {
 }
 
 // searchForExistingAlbums searches for albums matching a query string.
-func (h *Handler) searchForExistingAlbums(c *gin.Context) {
+func searchForExistingAlbums(c *gin.Context) {
 	searchStr := c.Query("searchStr")
 	if searchStr == "" {
 		c.JSON(http.StatusBadRequest, gin.H{

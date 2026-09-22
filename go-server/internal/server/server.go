@@ -22,58 +22,49 @@ import (
 	"photo-loka/internal/collections"
 	"photo-loka/internal/config"
 	"photo-loka/internal/dashboard"
-	"photo-loka/internal/database"
 	"photo-loka/internal/frames"
 	"photo-loka/internal/geo"
 	"photo-loka/internal/indexing"
 	"photo-loka/internal/items"
+	"photo-loka/internal/jobs"
 	"photo-loka/internal/media"
 	"photo-loka/internal/ml"
+	"photo-loka/internal/queue"
+	"photo-loka/internal/scheduler"
 	"photo-loka/internal/search"
 )
 
 // Server holds the Gin engine and application dependencies.
 type Server struct {
-	Router             *gin.Engine
-	Config             *config.StartupConfig
-	DB                 *database.DBHandle
-	AuthService        *auth.Service
-	FrameIPChecker     auth.FrameIPChecker
-	CollectionsHandler *collections.Handler
-	AlbumsHandler      *albums.Handler
-	SearchHandler      *search.Handler
-	MediaHandler       *media.Handler
-	DashboardHandler   *dashboard.Handler
-	IndexingHandler    *indexing.Handler
-	GeoHandler         *geo.Handler
-	MLHandler          *ml.Handler
-	ItemsHandler       *items.Handler
-	FramesHandler      *frames.Handler
-	ConfigHandler      *admin.ConfigHandler
-	UsersHandler       *admin.UsersHandler
-	JobsHandler        *admin.JobsHandler
-	AuthnHandler       *authn.Handler
+	Router *gin.Engine
+	Config *config.StartupConfig
+}
+
+// Deps bundles the application collaborators that the route packages need.
+// Handlers are now package-level (their routes are registered via each
+// package's RegisterRoutes function), so the server just threads these
+// collaborators through to those registration calls.
+type Deps struct {
+	AuthService    *auth.Service
+	FrameIPChecker auth.FrameIPChecker
+	CollectionsSvc *collections.Service
+	Organizer      *indexing.Organizer
+	MLClient       *ml.Client
+	MLService      *ml.Service
+	GeoService     *geo.Service
+	Indexer        *indexing.Indexer
+	IndexQueue     *queue.Queue
+	VideoQueue     *queue.Queue
+	FrameManager   *frames.Manager
+	Scheduler      *scheduler.Scheduler
+	FileWatcher    *jobs.FileWatcher
+	ScheduledIdx   *jobs.ScheduledIndexing
+	ThumbsDir      string
+	FacesDir       string
 }
 
 // New creates a configured Server with all routes and middleware.
-func New(cfg *config.StartupConfig, db *database.DBHandle, authSvc *auth.Service,
-	collectionsHandler *collections.Handler,
-	albumsHandler *albums.Handler,
-	searchHandler *search.Handler,
-	mediaHandler *media.Handler,
-	dashboardHandler *dashboard.Handler,
-	indexingHandler *indexing.Handler,
-	geoHandler *geo.Handler,
-	mlHandler *ml.Handler,
-	itemsHandler *items.Handler,
-	framesHandler *frames.Handler,
-	configHandler *admin.ConfigHandler,
-	usersHandler *admin.UsersHandler,
-	jobsHandler *admin.JobsHandler,
-	authnHandler *authn.Handler,
-	frameIPChecker auth.FrameIPChecker,
-	webFS http.FileSystem,
-) *Server {
+func New(cfg *config.StartupConfig, deps Deps, webFS http.FileSystem) *Server {
 	gin.SetMode(gin.ReleaseMode)
 
 	router := gin.New()
@@ -86,34 +77,17 @@ func New(cfg *config.StartupConfig, db *database.DBHandle, authSvc *auth.Service
 	router.Use(staticFileHandler(webFS))
 
 	s := &Server{
-		Router:             router,
-		Config:             cfg,
-		DB:                 db,
-		AuthService:        authSvc,
-		FrameIPChecker:     frameIPChecker,
-		CollectionsHandler: collectionsHandler,
-		AlbumsHandler:      albumsHandler,
-		SearchHandler:      searchHandler,
-		MediaHandler:       mediaHandler,
-		DashboardHandler:   dashboardHandler,
-		IndexingHandler:    indexingHandler,
-		GeoHandler:         geoHandler,
-		MLHandler:          mlHandler,
-		ItemsHandler:       itemsHandler,
-		FramesHandler:      framesHandler,
-		ConfigHandler:      configHandler,
-		UsersHandler:       usersHandler,
-		JobsHandler:        jobsHandler,
-		AuthnHandler:       authnHandler,
+		Router: router,
+		Config: cfg,
 	}
 
-	s.setupRoutes()
+	s.setupRoutes(deps)
 
 	return s
 }
 
 // setupRoutes mounts all route groups.
-func (s *Server) setupRoutes() {
+func (s *Server) setupRoutes(deps Deps) {
 	// Health and ping
 	s.Router.GET("/ping", func(c *gin.Context) {
 		c.Status(http.StatusNoContent)
@@ -124,49 +98,49 @@ func (s *Server) setupRoutes() {
 
 	// Public auth routes (no auth required)
 	authnGroup := s.Router.Group("/api/authn")
-	s.AuthnHandler.RegisterRoutes(authnGroup)
+	authn.RegisterRoutes(authnGroup, deps.AuthService)
 
 	// Public frame routes (no auth required)
-	s.FramesHandler.RegisterPublicRoutes(&s.Router.RouterGroup)
+	frames.RegisterPublicRoutes(&s.Router.RouterGroup, deps.FrameManager)
 
 	// Public API routes (authenticated but non-admin)
 	publicAPI := s.Router.Group("/api")
-	publicAPI.Use(auth.AuthMiddleware(s.AuthService))
+	publicAPI.Use(auth.AuthMiddleware(deps.AuthService))
 	{
 		// Collections summary (non-admin)
-		s.CollectionsHandler.RegisterPublicRoutes(publicAPI)
+		collections.RegisterPublicRoutes(publicAPI, deps.CollectionsSvc)
 	}
 
 	// Authenticated routes
 	apiGroup := s.Router.Group("/api")
-	apiGroup.Use(auth.AuthMiddleware(s.AuthService))
+	apiGroup.Use(auth.AuthMiddleware(deps.AuthService))
 	{
-		s.SearchHandler.RegisterRoutes(apiGroup)
-		s.AlbumsHandler.RegisterRoutes(apiGroup)
-		s.ItemsHandler.RegisterRoutes(apiGroup)
-		s.GeoHandler.RegisterRoutes(apiGroup)
-		s.MLHandler.RegisterRoutes(apiGroup)
+		search.RegisterRoutes(apiGroup, deps.MLClient)
+		albums.RegisterRoutes(apiGroup, deps.Organizer)
+		items.RegisterRoutes(apiGroup, deps.Organizer, deps.MLService, deps.ThumbsDir)
+		geo.RegisterRoutes(apiGroup, deps.GeoService)
+		ml.RegisterRoutes(apiGroup, deps.MLService)
 	}
 
 	// Media routes (with frame IP bypass)
 	mediaGroup := s.Router.Group("/api")
-	mediaGroup.Use(auth.MediaAuthMiddleware(s.AuthService, s.FrameIPChecker))
+	mediaGroup.Use(auth.MediaAuthMiddleware(deps.AuthService, deps.FrameIPChecker))
 	{
-		s.MediaHandler.RegisterRoutes(mediaGroup)
+		media.RegisterRoutes(mediaGroup, deps.ThumbsDir, deps.FacesDir)
 	}
 
 	// Admin routes
 	adminGroup := s.Router.Group("/api/admin")
-	adminGroup.Use(auth.AuthMiddleware(s.AuthService))
+	adminGroup.Use(auth.AuthMiddleware(deps.AuthService))
 	adminGroup.Use(auth.AdminMiddleware())
 	{
-		s.CollectionsHandler.RegisterAdminRoutes(adminGroup)
-		s.DashboardHandler.RegisterRoutes(adminGroup)
-		s.IndexingHandler.RegisterRoutes(adminGroup)
-		s.FramesHandler.RegisterAdminRoutes(adminGroup)
-		s.ConfigHandler.RegisterRoutes(adminGroup)
-		s.UsersHandler.RegisterRoutes(adminGroup)
-		s.JobsHandler.RegisterRoutes(adminGroup)
+		collections.RegisterAdminRoutes(adminGroup, deps.CollectionsSvc)
+		dashboard.RegisterRoutes(adminGroup)
+		indexing.RegisterRoutes(adminGroup, deps.Indexer, deps.IndexQueue, deps.VideoQueue)
+		frames.RegisterAdminRoutes(adminGroup, deps.FrameManager)
+		admin.RegisterConfigRoutes(adminGroup)
+		admin.RegisterUsersRoutes(adminGroup, deps.AuthService)
+		admin.RegisterJobsRoutes(adminGroup, deps.Scheduler, deps.FileWatcher, deps.ScheduledIdx, deps.FrameManager)
 	}
 }
 

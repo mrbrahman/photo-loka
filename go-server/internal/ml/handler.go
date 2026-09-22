@@ -6,31 +6,26 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Handler provides HTTP route handlers for face recognition operations.
-type Handler struct {
-	service *Service
-}
-
-// NewHandler creates a new ML Handler.
-func NewHandler(service *Service) *Handler {
-	return &Handler{service: service}
-}
+// svc is the package-level ML service used by the route handlers. Set via
+// RegisterRoutes. The ml.Service indirection is trimmed in a later phase.
+var svc *Service
 
 // RegisterRoutes registers face-related routes on the given router group.
-func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
-	rg.POST("/recognizeFaces/:uuid", h.recognizeFaces)
-	rg.GET("/getFaces/:uuid", h.getFaces)
-	rg.GET("/getFacesByPerson", h.getFacesByPerson)
-	rg.PUT("/nameFaceCluster/:clusterId", h.nameFaceCluster)
-	rg.PUT("/updatePersonName", h.updatePersonName)
-	rg.GET("/faceSuggestions/:clusterId", h.faceSuggestions)
-	rg.GET("/searchPersonNames", h.searchPersonNames)
-	rg.PUT("/dismissFaceCluster/:clusterId", h.dismissFaceCluster)
+func RegisterRoutes(rg *gin.RouterGroup, service *Service) {
+	svc = service
+	rg.POST("/recognizeFaces/:uuid", recognizeFaces)
+	rg.GET("/getFaces/:uuid", getFaces)
+	rg.GET("/getFacesByPerson", getFacesByPerson)
+	rg.PUT("/nameFaceCluster/:clusterId", nameFaceCluster)
+	rg.PUT("/updatePersonName", updatePersonName)
+	rg.GET("/faceSuggestions/:clusterId", faceSuggestions)
+	rg.GET("/searchPersonNames", searchPersonNames)
+	rg.PUT("/dismissFaceCluster/:clusterId", dismissFaceCluster)
 }
 
 // recognizeFaces triggers face recognition for a media item.
 // POST /recognizeFaces/:uuid
-func (h *Handler) recognizeFaces(c *gin.Context) {
+func recognizeFaces(c *gin.Context) {
 	uuid := c.Param("uuid")
 	if uuid == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
@@ -40,7 +35,7 @@ func (h *Handler) recognizeFaces(c *gin.Context) {
 		return
 	}
 
-	result, err := h.service.ProcessFaceRecognition(uuid, nil)
+	result, err := svc.ProcessFaceRecognition(uuid, nil)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": "face recognition failed: " + err.Error(),
@@ -54,7 +49,7 @@ func (h *Handler) recognizeFaces(c *gin.Context) {
 
 // getFaces returns all face records for a given uuid.
 // GET /getFaces/:uuid
-func (h *Handler) getFaces(c *gin.Context) {
+func getFaces(c *gin.Context) {
 	uuid := c.Param("uuid")
 	if uuid == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
@@ -64,7 +59,7 @@ func (h *Handler) getFaces(c *gin.Context) {
 		return
 	}
 
-	faces, err := h.service.GetFacesByUUID(uuid)
+	faces, err := svc.GetFacesByUUID(uuid)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": "failed to get faces: " + err.Error(),
@@ -82,7 +77,7 @@ func (h *Handler) getFaces(c *gin.Context) {
 
 // getFacesByPerson returns all face records for a given person name.
 // GET /getFacesByPerson?name=X
-func (h *Handler) getFacesByPerson(c *gin.Context) {
+func getFacesByPerson(c *gin.Context) {
 	name := c.Query("name")
 	if name == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
@@ -92,7 +87,7 @@ func (h *Handler) getFacesByPerson(c *gin.Context) {
 		return
 	}
 
-	faces, err := h.service.GetFacesByPerson(name)
+	faces, err := svc.GetFacesByPerson(name)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": "failed to get faces by person: " + err.Error(),
@@ -110,7 +105,7 @@ func (h *Handler) getFacesByPerson(c *gin.Context) {
 
 // nameFaceCluster assigns a name to a face cluster.
 // PUT /nameFaceCluster/:clusterId (body: {name})
-func (h *Handler) nameFaceCluster(c *gin.Context) {
+func nameFaceCluster(c *gin.Context) {
 	clusterID := c.Param("clusterId")
 	if clusterID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
@@ -132,7 +127,7 @@ func (h *Handler) nameFaceCluster(c *gin.Context) {
 		return
 	}
 
-	rowsAffected, err := h.service.NameFaceCluster(clusterID, body.Name)
+	rowsAffected, err := svc.NameFaceCluster(clusterID, body.Name)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": "failed to name face cluster: " + err.Error(),
@@ -146,7 +141,7 @@ func (h *Handler) nameFaceCluster(c *gin.Context) {
 
 // updatePersonName renames a person across all face records.
 // PUT /updatePersonName (body: {oldName, newName})
-func (h *Handler) updatePersonName(c *gin.Context) {
+func updatePersonName(c *gin.Context) {
 	var body struct {
 		OldName string `json:"oldName" binding:"required"`
 		NewName string `json:"newName" binding:"required"`
@@ -160,7 +155,7 @@ func (h *Handler) updatePersonName(c *gin.Context) {
 		return
 	}
 
-	rowsAffected, err := h.service.UpdatePersonName(body.OldName, body.NewName)
+	rowsAffected, err := svc.UpdatePersonName(body.OldName, body.NewName)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": "failed to update person name: " + err.Error(),
@@ -174,7 +169,7 @@ func (h *Handler) updatePersonName(c *gin.Context) {
 
 // faceSuggestions returns name suggestions for a face cluster from the ML service.
 // GET /faceSuggestions/:clusterId
-func (h *Handler) faceSuggestions(c *gin.Context) {
+func faceSuggestions(c *gin.Context) {
 	clusterID := c.Param("clusterId")
 	if clusterID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
@@ -184,7 +179,7 @@ func (h *Handler) faceSuggestions(c *gin.Context) {
 		return
 	}
 
-	suggestions, err := h.service.GetFaceSuggestions(clusterID)
+	suggestions, err := svc.GetFaceSuggestions(clusterID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": "failed to get face suggestions: " + err.Error(),
@@ -198,7 +193,7 @@ func (h *Handler) faceSuggestions(c *gin.Context) {
 
 // searchPersonNames searches for person names matching a query string.
 // GET /searchPersonNames?q=X
-func (h *Handler) searchPersonNames(c *gin.Context) {
+func searchPersonNames(c *gin.Context) {
 	query := c.Query("q")
 	if query == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
@@ -208,7 +203,7 @@ func (h *Handler) searchPersonNames(c *gin.Context) {
 		return
 	}
 
-	names, err := h.service.SearchPersonNames(query)
+	names, err := svc.SearchPersonNames(query)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": "failed to search person names: " + err.Error(),
@@ -226,7 +221,7 @@ func (h *Handler) searchPersonNames(c *gin.Context) {
 
 // dismissFaceCluster marks a face cluster as dismissed.
 // PUT /dismissFaceCluster/:clusterId
-func (h *Handler) dismissFaceCluster(c *gin.Context) {
+func dismissFaceCluster(c *gin.Context) {
 	clusterID := c.Param("clusterId")
 	if clusterID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
@@ -236,7 +231,7 @@ func (h *Handler) dismissFaceCluster(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.DismissCluster(clusterID); err != nil {
+	if err := svc.DismissCluster(clusterID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": "failed to dismiss cluster: " + err.Error(),
 			"code":    "DB_ERROR",

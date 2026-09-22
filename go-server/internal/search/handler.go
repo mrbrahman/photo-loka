@@ -14,31 +14,23 @@ import (
 	"photo-loka/internal/ml"
 )
 
-// Handler provides HTTP handlers for search operations.
-type Handler struct {
-	mlClient *ml.Client
-}
-
-// NewHandler creates a new search Handler.
-func NewHandler(mlClient *ml.Client) *Handler {
-	return &Handler{
-		mlClient: mlClient,
-	}
-}
+// mlClient is the package-level ML client used for AI search. Set via RegisterRoutes.
+var mlClient *ml.Client
 
 // RegisterRoutes registers search routes on the given router group.
-func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
-	rg.GET("/getAll", h.getAll)
-	rg.POST("/search", h.search)
-	rg.GET("/getItemInfo", h.getItemInfo)
-	rg.GET("/getGpsCoordinates", h.getGpsCoordinates)
-	rg.GET("/searchForExistingAlbums", h.searchForExistingAlbums)
-	rg.POST("/searchByGpsCoordinates", h.searchByGpsCoordinates)
-	rg.GET("/getTrashedItems", h.getTrashedItems)
+func RegisterRoutes(rg *gin.RouterGroup, client *ml.Client) {
+	mlClient = client
+	rg.GET("/getAll", getAll)
+	rg.POST("/search", search)
+	rg.GET("/getItemInfo", getItemInfo)
+	rg.GET("/getGpsCoordinates", getGpsCoordinates)
+	rg.GET("/searchForExistingAlbums", searchForExistingAlbums)
+	rg.POST("/searchByGpsCoordinates", searchByGpsCoordinates)
+	rg.GET("/getTrashedItems", getTrashedItems)
 }
 
 // getAll returns all items within a date range (default: last 365 days), grouped by day.
-func (h *Handler) getAll(c *gin.Context) {
+func getAll(c *gin.Context) {
 	cidStr := c.Query("collection_id")
 	if cidStr == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -86,7 +78,7 @@ type searchRequest struct {
 var aiSearchRe = regexp.MustCompile(`(?i)^ai:"?(.+?)"?$`)
 
 // search runs a full-text search query.
-func (h *Handler) search(c *gin.Context) {
+func search(c *gin.Context) {
 	var req searchRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -106,7 +98,7 @@ func (h *Handler) search(c *gin.Context) {
 	searchText := strings.TrimSpace(req.SearchText)
 	if matches := aiSearchRe.FindStringSubmatch(searchText); matches != nil {
 		aiQuery := matches[1]
-		h.handleAISearch(c, req.CollectionID, aiQuery)
+		handleAISearch(c, req.CollectionID, aiQuery)
 		return
 	}
 
@@ -122,15 +114,15 @@ func (h *Handler) search(c *gin.Context) {
 }
 
 // handleAISearch performs semantic search via the ML service.
-func (h *Handler) handleAISearch(c *gin.Context, collectionID *int64, query string) {
-	if h.mlClient == nil {
+func handleAISearch(c *gin.Context, collectionID *int64, query string) {
+	if mlClient == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{
 			"error": gin.H{"message": "ML service not configured", "code": "ML_UNAVAILABLE"},
 		})
 		return
 	}
 
-	result, err := h.mlClient.SearchByText(query)
+	result, err := mlClient.SearchByText(query)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{"message": "AI search failed: " + err.Error(), "code": "ML_ERROR"},
@@ -174,7 +166,7 @@ func (h *Handler) handleAISearch(c *gin.Context, collectionID *int64, query stri
 }
 
 // getItemInfo returns full metadata for a single item.
-func (h *Handler) getItemInfo(c *gin.Context) {
+func getItemInfo(c *gin.Context) {
 	uuid := c.Query("uuid")
 	if uuid == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -202,7 +194,7 @@ func (h *Handler) getItemInfo(c *gin.Context) {
 }
 
 // getGpsCoordinates returns rounded GPS coordinates for map display.
-func (h *Handler) getGpsCoordinates(c *gin.Context) {
+func getGpsCoordinates(c *gin.Context) {
 	var collectionID *int64
 	if cidStr := c.Query("collection_id"); cidStr != "" {
 		cid, err := strconv.ParseInt(cidStr, 10, 64)
@@ -227,7 +219,7 @@ func (h *Handler) getGpsCoordinates(c *gin.Context) {
 }
 
 // searchForExistingAlbums searches for existing albums by name.
-func (h *Handler) searchForExistingAlbums(c *gin.Context) {
+func searchForExistingAlbums(c *gin.Context) {
 	searchStr := c.Query("searchStr")
 	if searchStr == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -288,7 +280,7 @@ type searchByGpsRequest struct {
 }
 
 // searchByGpsCoordinates searches for items within GPS bounding box.
-func (h *Handler) searchByGpsCoordinates(c *gin.Context) {
+func searchByGpsCoordinates(c *gin.Context) {
 	var req searchByGpsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -313,7 +305,7 @@ func (h *Handler) searchByGpsCoordinates(c *gin.Context) {
 }
 
 // getTrashedItems returns all trashed items for a collection.
-func (h *Handler) getTrashedItems(c *gin.Context) {
+func getTrashedItems(c *gin.Context) {
 	var collectionID *int64
 	if cidStr := c.Query("collection_id"); cidStr != "" {
 		cid, err := strconv.ParseInt(cidStr, 10, 64)

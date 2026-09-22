@@ -10,36 +10,36 @@ import (
 	"photo-loka/internal/utils"
 )
 
-// Handler provides HTTP handlers for collections.
-type Handler struct {
-	service              *Service
-	OnCollectionChanged  func(collectionID int64) // Called after create/update to restart watchers/cron
-}
+// svc is the package-level collections service used by the route handlers.
+// Set via RegisterPublicRoutes/RegisterAdminRoutes. The Service indirection is
+// trimmed in a later phase.
+var svc *Service
 
-// NewHandler creates a new collections Handler.
-func NewHandler(service *Service) *Handler {
-	return &Handler{service: service}
-}
+// OnCollectionChanged is called after create/update to restart watchers/cron.
+// Wired from main.
+var OnCollectionChanged func(collectionID int64)
 
 // RegisterPublicRoutes registers authenticated (non-admin) collection routes.
-func (h *Handler) RegisterPublicRoutes(rg *gin.RouterGroup) {
-	rg.GET("/collections", h.getCollections)
+func RegisterPublicRoutes(rg *gin.RouterGroup, service *Service) {
+	svc = service
+	rg.GET("/collections", getCollections)
 }
 
 // RegisterAdminRoutes registers admin-only collection routes.
-func (h *Handler) RegisterAdminRoutes(rg *gin.RouterGroup) {
-	rg.GET("/getAllCollections", h.getAllCollections)
-	rg.POST("/createNewCollection", h.createNewCollection)
-	rg.PUT("/updateCollection/:id", h.updateCollection)
-	rg.GET("/listSubDirs", h.listSubDirs)
-	rg.POST("/validateFolderPattern", h.validateFolderPattern)
-	rg.POST("/setIntakeStatus/:collection_id/:intakeIndex", h.setIntakeStatus)
-	rg.POST("/setAllIntakeStatus/:collection_id", h.setAllIntakeStatus)
+func RegisterAdminRoutes(rg *gin.RouterGroup, service *Service) {
+	svc = service
+	rg.GET("/getAllCollections", getAllCollections)
+	rg.POST("/createNewCollection", createNewCollection)
+	rg.PUT("/updateCollection/:id", updateCollection)
+	rg.GET("/listSubDirs", listSubDirs)
+	rg.POST("/validateFolderPattern", validateFolderPattern)
+	rg.POST("/setIntakeStatus/:collection_id/:intakeIndex", setIntakeStatus)
+	rg.POST("/setAllIntakeStatus/:collection_id", setAllIntakeStatus)
 }
 
 // getCollections returns the collection summary list for authenticated users.
-func (h *Handler) getCollections(c *gin.Context) {
-	summaries, err := h.service.GetSummary()
+func getCollections(c *gin.Context) {
+	summaries, err := svc.GetSummary()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{"message": err.Error(), "code": "INTERNAL_ERROR"},
@@ -55,8 +55,8 @@ func (h *Handler) getCollections(c *gin.Context) {
 }
 
 // getAllCollections returns all collections with full details (admin).
-func (h *Handler) getAllCollections(c *gin.Context) {
-	collections, err := h.service.GetAll()
+func getAllCollections(c *gin.Context) {
+	collections, err := svc.GetAll()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{"message": err.Error(), "code": "INTERNAL_ERROR"},
@@ -72,7 +72,7 @@ func (h *Handler) getAllCollections(c *gin.Context) {
 }
 
 // createNewCollection creates a new collection (admin).
-func (h *Handler) createNewCollection(c *gin.Context) {
+func createNewCollection(c *gin.Context) {
 	var col Collection
 	if err := c.ShouldBindJSON(&col); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -81,7 +81,7 @@ func (h *Handler) createNewCollection(c *gin.Context) {
 		return
 	}
 
-	id, err := h.service.Create(&col)
+	id, err := svc.Create(&col)
 	if err != nil {
 		if appErr, ok := err.(*auth.AppError); ok {
 			c.JSON(appErr.StatusCode, gin.H{
@@ -98,13 +98,13 @@ func (h *Handler) createNewCollection(c *gin.Context) {
 	c.JSON(http.StatusCreated, id)
 
 	// Restart watchers/cron for the new collection
-	if h.OnCollectionChanged != nil {
-		go h.OnCollectionChanged(id)
+	if OnCollectionChanged != nil {
+		go OnCollectionChanged(id)
 	}
 }
 
 // updateCollection updates an existing collection (admin).
-func (h *Handler) updateCollection(c *gin.Context) {
+func updateCollection(c *gin.Context) {
 	idStr := c.Param("id")
 	collectionID, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
@@ -122,7 +122,7 @@ func (h *Handler) updateCollection(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.Update(collectionID, &col); err != nil {
+	if err := svc.Update(collectionID, &col); err != nil {
 		if appErr, ok := err.(*auth.AppError); ok {
 			c.JSON(appErr.StatusCode, gin.H{
 				"error": gin.H{"message": appErr.Message, "code": appErr.Code},
@@ -138,13 +138,13 @@ func (h *Handler) updateCollection(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true})
 
 	// Restart watchers/cron for the updated collection
-	if h.OnCollectionChanged != nil {
-		go h.OnCollectionChanged(collectionID)
+	if OnCollectionChanged != nil {
+		go OnCollectionChanged(collectionID)
 	}
 }
 
 // listSubDirs lists subdirectories of a given path (admin).
-func (h *Handler) listSubDirs(c *gin.Context) {
+func listSubDirs(c *gin.Context) {
 	dirPath := c.Query("path")
 	if dirPath == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -153,14 +153,14 @@ func (h *Handler) listSubDirs(c *gin.Context) {
 		return
 	}
 
-	if !h.service.IsValidDir(dirPath) {
+	if !svc.IsValidDir(dirPath) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": gin.H{"message": "Path is not a valid directory", "code": "INVALID_PATH"},
 		})
 		return
 	}
 
-	dirs, err := h.service.ListSubDirs(dirPath)
+	dirs, err := svc.ListSubDirs(dirPath)
 	if err != nil {
 		if appErr, ok := err.(*auth.AppError); ok {
 			c.JSON(appErr.StatusCode, gin.H{
@@ -187,7 +187,7 @@ type validateFolderPatternRequest struct {
 }
 
 // validateFolderPattern validates a folder pattern string (admin).
-func (h *Handler) validateFolderPattern(c *gin.Context) {
+func validateFolderPattern(c *gin.Context) {
 	var req validateFolderPatternRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -228,7 +228,7 @@ func (h *Handler) validateFolderPattern(c *gin.Context) {
 }
 
 // setIntakeStatus sets the status of a single intake config entry (admin).
-func (h *Handler) setIntakeStatus(c *gin.Context) {
+func setIntakeStatus(c *gin.Context) {
 	collectionIDStr := c.Param("collection_id")
 	collectionID, err := strconv.ParseInt(collectionIDStr, 10, 64)
 	if err != nil {
@@ -257,7 +257,7 @@ func (h *Handler) setIntakeStatus(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.SetIntakeStatus(collectionID, intakeIndex, body.Status); err != nil {
+	if err := svc.SetIntakeStatus(collectionID, intakeIndex, body.Status); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{"message": err.Error(), "code": "INTERNAL_ERROR"},
 		})
@@ -265,15 +265,15 @@ func (h *Handler) setIntakeStatus(c *gin.Context) {
 	}
 
 	// Restart watchers/cron to reflect the status change
-	if h.OnCollectionChanged != nil {
-		go h.OnCollectionChanged(collectionID)
+	if OnCollectionChanged != nil {
+		go OnCollectionChanged(collectionID)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
 // setAllIntakeStatus sets the status of all intake config entries (admin).
-func (h *Handler) setAllIntakeStatus(c *gin.Context) {
+func setAllIntakeStatus(c *gin.Context) {
 	collectionIDStr := c.Param("collection_id")
 	collectionID, err := strconv.ParseInt(collectionIDStr, 10, 64)
 	if err != nil {
@@ -293,7 +293,7 @@ func (h *Handler) setAllIntakeStatus(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.SetAllIntakeStatus(collectionID, body.Status); err != nil {
+	if err := svc.SetAllIntakeStatus(collectionID, body.Status); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{"message": err.Error(), "code": "INTERNAL_ERROR"},
 		})
@@ -301,8 +301,8 @@ func (h *Handler) setAllIntakeStatus(c *gin.Context) {
 	}
 
 	// Restart watchers/cron to reflect the status change
-	if h.OnCollectionChanged != nil {
-		go h.OnCollectionChanged(collectionID)
+	if OnCollectionChanged != nil {
+		go OnCollectionChanged(collectionID)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true})

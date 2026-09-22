@@ -14,31 +14,26 @@ import (
 	"photo-loka/internal/scheduler"
 )
 
-// JobsHandler handles job monitoring and control endpoints.
-type JobsHandler struct {
-	scheduler         *scheduler.Scheduler
-	fileWatcher       *jobs.FileWatcher
-	scheduledIndexing *jobs.ScheduledIndexing
-	frameManager      *frames.Manager
-}
+// Package-level collaborators for the admin job handlers, set via
+// RegisterJobsRoutes. These are genuine stateful objects created in main.
+var (
+	jobsScheduler    *scheduler.Scheduler
+	jobsFileWatcher  *jobs.FileWatcher
+	jobsScheduledIdx *jobs.ScheduledIndexing
+	jobsFrameManager *frames.Manager
+)
 
-// NewJobsHandler creates a new JobsHandler.
-func NewJobsHandler(sched *scheduler.Scheduler, fw *jobs.FileWatcher, si *jobs.ScheduledIndexing, fm *frames.Manager) *JobsHandler {
-	return &JobsHandler{
-		scheduler:         sched,
-		fileWatcher:       fw,
-		scheduledIndexing: si,
-		frameManager:      fm,
-	}
-}
-
-// RegisterRoutes registers job management routes on the given router group.
-func (h *JobsHandler) RegisterRoutes(rg *gin.RouterGroup) {
-	rg.GET("/jobs", h.getJobs)
-	rg.POST("/startAllWatchers", h.startAllWatchers)
-	rg.POST("/stopAllWatchers", h.stopAllWatchers)
-	rg.POST("/startScheduledIndexing", h.startScheduledIndexing)
-	rg.POST("/stopScheduledIndexing", h.stopScheduledIndexing)
+// RegisterJobsRoutes registers job management routes on the given router group.
+func RegisterJobsRoutes(rg *gin.RouterGroup, sched *scheduler.Scheduler, fw *jobs.FileWatcher, si *jobs.ScheduledIndexing, fm *frames.Manager) {
+	jobsScheduler = sched
+	jobsFileWatcher = fw
+	jobsScheduledIdx = si
+	jobsFrameManager = fm
+	rg.GET("/jobs", getJobs)
+	rg.POST("/startAllWatchers", startAllWatchers)
+	rg.POST("/stopAllWatchers", stopAllWatchers)
+	rg.POST("/startScheduledIndexing", startScheduledIndexing)
+	rg.POST("/stopScheduledIndexing", stopScheduledIndexing)
 }
 
 // watcherStatus describes an intake watcher and its current state.
@@ -89,7 +84,7 @@ type scheduledConfig struct {
 
 // getJobs returns the current state of all jobs.
 // GET /api/admin/jobs
-func (h *JobsHandler) getJobs(c *gin.Context) {
+func getJobs(c *gin.Context) {
 	// Get all collections
 	cols, err := collections.GetAll()
 	if err != nil {
@@ -103,7 +98,7 @@ func (h *JobsHandler) getJobs(c *gin.Context) {
 	}
 
 	// Build a map of active watchers for quick lookup
-	activeWatchers := h.fileWatcher.ListAll()
+	activeWatchers := jobsFileWatcher.ListAll()
 	activeWatcherPaths := make(map[string]bool)
 	for _, w := range activeWatchers {
 		key := fmt.Sprintf("%d:%s", w.CollectionID, w.IntakePath)
@@ -111,7 +106,7 @@ func (h *JobsHandler) getJobs(c *gin.Context) {
 	}
 
 	// Build a set of active scheduled jobs from the scheduler
-	allSchedulerJobs := h.scheduler.ListAllJobs()
+	allSchedulerJobs := jobsScheduler.ListAllJobs()
 	activeScheduledNames := make(map[string]string) // name -> pattern
 	for _, j := range allSchedulerJobs {
 		activeScheduledNames[j.Name] = j.Pattern
@@ -190,7 +185,7 @@ func (h *JobsHandler) getJobs(c *gin.Context) {
 				frameJob["frame_id"] = parts[1]
 				frameJob["type"] = parts[2]
 				// Look up frame name from DB via manager
-				if frames, err := h.frameManager.GetAllFrames(); err == nil {
+				if frames, err := jobsFrameManager.GetAllFrames(); err == nil {
 					for _, f := range frames {
 						if fmt.Sprintf("%v", f["frame_id"]) == parts[1] {
 							frameJob["frame_name"] = f["frame_name"]
@@ -232,8 +227,8 @@ func (h *JobsHandler) getJobs(c *gin.Context) {
 
 // startAllWatchers starts file watchers for all collections.
 // POST /api/admin/startAllWatchers
-func (h *JobsHandler) startAllWatchers(c *gin.Context) {
-	if err := h.fileWatcher.StartForAllCollections(); err != nil {
+func startAllWatchers(c *gin.Context) {
+	if err := jobsFileWatcher.StartForAllCollections(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{
 				"message": err.Error(),
@@ -248,14 +243,14 @@ func (h *JobsHandler) startAllWatchers(c *gin.Context) {
 
 // stopAllWatchers stops all active file watchers.
 // POST /api/admin/stopAllWatchers
-func (h *JobsHandler) stopAllWatchers(c *gin.Context) {
-	h.fileWatcher.StopAll()
+func stopAllWatchers(c *gin.Context) {
+	jobsFileWatcher.StopAll()
 	c.Status(http.StatusOK)
 }
 
 // startScheduledIndexing schedules all cron jobs for scheduled intake paths.
-func (h *JobsHandler) startScheduledIndexing(c *gin.Context) {
-	if err := h.scheduledIndexing.ScheduleAll(); err != nil {
+func startScheduledIndexing(c *gin.Context) {
+	if err := jobsScheduledIdx.ScheduleAll(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{"message": err.Error(), "code": "INTERNAL_ERROR"},
 		})
@@ -265,7 +260,7 @@ func (h *JobsHandler) startScheduledIndexing(c *gin.Context) {
 }
 
 // stopScheduledIndexing stops all scheduled indexing cron jobs.
-func (h *JobsHandler) stopScheduledIndexing(c *gin.Context) {
-	h.scheduledIndexing.StopAll()
+func stopScheduledIndexing(c *gin.Context) {
+	jobsScheduledIdx.StopAll()
 	c.Status(http.StatusOK)
 }

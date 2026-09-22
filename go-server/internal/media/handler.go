@@ -14,31 +14,25 @@ import (
 	"photo-loka/internal/database"
 )
 
-// Handler provides HTTP handlers for media serving (thumbnails, images, videos).
-type Handler struct {
+// Package-level media directories, set via RegisterRoutes.
+var (
 	thumbsDir string
 	facesDir  string
-}
-
-// NewHandler creates a new media Handler.
-func NewHandler(thumbsDir, facesDir string) *Handler {
-	return &Handler{
-		thumbsDir: thumbsDir,
-		facesDir:  facesDir,
-	}
-}
+)
 
 // RegisterRoutes registers media routes on the given router group.
-func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
-	rg.GET("/getThumbnail", h.getThumbnail)
-	rg.GET("/getImage", h.getImage)
-	rg.GET("/getVideo", h.getVideo)
-	rg.GET("/getFaceThumbnail", h.getFaceThumbnail)
+func RegisterRoutes(rg *gin.RouterGroup, thumbs, faces string) {
+	thumbsDir = thumbs
+	facesDir = faces
+	rg.GET("/getThumbnail", getThumbnail)
+	rg.GET("/getImage", getImage)
+	rg.GET("/getVideo", getVideo)
+	rg.GET("/getFaceThumbnail", getFaceThumbnail)
 }
 
 // getThumbnail serves a thumbnail image for the given uuid and height.
 // Thumbnails are stored at: thumbsDir/u[0]/u[1]/u[2]/uuid_hN.webp
-func (h *Handler) getThumbnail(c *gin.Context) {
+func getThumbnail(c *gin.Context) {
 	uuid := c.Query("uuid")
 	if uuid == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -66,7 +60,7 @@ func (h *Handler) getThumbnail(c *gin.Context) {
 	}
 
 	thumbPath := filepath.Join(
-		h.thumbsDir,
+		thumbsDir,
 		string(uuid[0]),
 		string(uuid[1]),
 		string(uuid[2]),
@@ -83,7 +77,7 @@ func (h *Handler) getThumbnail(c *gin.Context) {
 }
 
 // getImage serves a resized image (fit within 1920x1080) for the given uuid.
-func (h *Handler) getImage(c *gin.Context) {
+func getImage(c *gin.Context) {
 	uuid := c.Query("uuid")
 	if uuid == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -122,7 +116,7 @@ func (h *Handler) getImage(c *gin.Context) {
 
 // getVideo serves a video file with range request support.
 // If quality=compressed, tries the compressed webm first; otherwise serves original.
-func (h *Handler) getVideo(c *gin.Context) {
+func getVideo(c *gin.Context) {
 	uuid := c.Query("uuid")
 	if uuid == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -146,7 +140,7 @@ func (h *Handler) getVideo(c *gin.Context) {
 
 	if quality == "compressed" && len(uuid) >= 3 {
 		// Check for compressed versions in priority order (matching Node.js resolveVideoPath)
-		thumbDir := filepath.Join(h.thumbsDir, string(uuid[0]), string(uuid[1]), string(uuid[2]))
+		thumbDir := filepath.Join(thumbsDir, string(uuid[0]), string(uuid[1]), string(uuid[2]))
 		candidates := []string{
 			filepath.Join(thumbDir, uuid+"_2pass_vp9_compressed_video.webm"),
 			filepath.Join(thumbDir, uuid+"_2pass_vp8_compressed_video.webm"),
@@ -201,7 +195,7 @@ func (h *Handler) getVideo(c *gin.Context) {
 
 // getFaceThumbnail serves a face thumbnail image.
 // Path: facesDir/cluster_id/uuid.jpg
-func (h *Handler) getFaceThumbnail(c *gin.Context) {
+func getFaceThumbnail(c *gin.Context) {
 	uuid := c.Query("uuid")
 	if uuid == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -218,7 +212,7 @@ func (h *Handler) getFaceThumbnail(c *gin.Context) {
 		return
 	}
 
-	facePath := filepath.Join(h.facesDir, clusterID, uuid+".jpg")
+	facePath := filepath.Join(facesDir, clusterID, uuid+".jpg")
 
 	if _, err := os.Stat(facePath); os.IsNotExist(err) {
 		c.Status(http.StatusNotFound)
@@ -230,7 +224,7 @@ func (h *Handler) getFaceThumbnail(c *gin.Context) {
 }
 
 // getFilePathByUUID looks up the filename and collection_path for a given UUID.
-func (h *Handler) getFilePathByUUID(uuid string) (filename, collectionPath string, err error) {
+func getFilePathByUUID(uuid string) (filename, collectionPath string, err error) {
 	query := `
 		SELECT m.filename, c.collection_path
 		FROM metadata m

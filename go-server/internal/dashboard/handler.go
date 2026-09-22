@@ -10,9 +10,6 @@ import (
 	"photo-loka/internal/database"
 )
 
-// Handler provides HTTP handlers for the admin dashboard.
-type Handler struct{}
-
 // LibraryStats holds the overall library statistics.
 type LibraryStats struct {
 	TotalItems   int64               `json:"totalItems"`
@@ -39,19 +36,14 @@ type CollectionStat struct {
 	FreeSpace      *int64 `json:"freeSpace"`
 }
 
-// NewHandler creates a new dashboard Handler.
-func NewHandler() *Handler {
-	return &Handler{}
-}
-
 // RegisterRoutes registers dashboard routes on the given router group.
-func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
-	rg.GET("/dashboard/stats", h.getStats)
+func RegisterRoutes(rg *gin.RouterGroup) {
+	rg.GET("/dashboard/stats", getStats)
 }
 
 // getStats returns library and collection statistics.
-func (h *Handler) getStats(c *gin.Context) {
-	stats, err := h.queryLibraryStats()
+func getStats(c *gin.Context) {
+	stats, err := queryLibraryStats()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{"message": err.Error(), "code": "INTERNAL_ERROR"},
@@ -59,7 +51,7 @@ func (h *Handler) getStats(c *gin.Context) {
 		return
 	}
 
-	collStats, err := h.queryCollectionStats()
+	collStats, err := queryCollectionStats()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{"message": err.Error(), "code": "INTERNAL_ERROR"},
@@ -73,7 +65,7 @@ func (h *Handler) getStats(c *gin.Context) {
 }
 
 // queryLibraryStats runs the aggregate query for overall library stats.
-func (h *Handler) queryLibraryStats() (*LibraryStats, error) {
+func queryLibraryStats() (*LibraryStats, error) {
 	query := `
 		SELECT
 			count(*) filter (where coalesce(is_trashed, 0) = 0) as totalItems,
@@ -129,7 +121,7 @@ func (h *Handler) queryLibraryStats() (*LibraryStats, error) {
 }
 
 // queryCollectionStats returns per-collection item counts and disk info.
-func (h *Handler) queryCollectionStats() ([]CollectionStat, error) {
+func queryCollectionStats() ([]CollectionStat, error) {
 	query := `
 		SELECT
 			c.collection_id,
