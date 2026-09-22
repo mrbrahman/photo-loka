@@ -41,7 +41,10 @@ Do not conflate "here's how I'd do it" with "let me do it now". The user wants t
   * Follow this with a short summary (imperative mood)
   * Use the body for details if needed
   * Keep it short. Prefer single summary line; only add a brief body when it genuinely aids understanding. Avoid long, exhaustive bullet lists of every touched file -- summarize the change, not the diff
-  * For any agentic changes, use `agents:` as the prefix
+  * For changes to agentic config files (e.g. `AGENTS.md`), use `agents:` as
+    the prefix. This refers to the file being changed, not to whether an agent
+    made the change -- code changes an agent makes still use their normal scope
+    prefix (`go-server:`, `web:`, etc.)
 
 ## Database migrations
 

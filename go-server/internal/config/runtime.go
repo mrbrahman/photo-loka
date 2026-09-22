@@ -30,11 +30,18 @@ type RuntimeConfig struct {
 	PerformFaceRecognition          bool   `json:"performFaceRecognition"`
 }
 
+// Rt is the process-wide runtime config singleton. It is set by
+// LoadRuntimeConfig at startup and referenced directly by packages that need
+// runtime settings, instead of threading a *RuntimeConfig through constructors.
+var Rt *RuntimeConfig
+
 // LoadRuntimeConfig reads all rows from runtime_config and populates the struct.
 // Defaults are seeded by migration 013, so a fresh DB already has every key.
 // A key with no matching row keeps the Go zero value (so any newly added
 // setting must seed its default in a migration); a malformed stored value for a
 // typed key is a hard error, surfacing a corrupted/hand-edited row.
+//
+// The loaded instance is also published as the package-level singleton Rt.
 func LoadRuntimeConfig(db *sql.DB) (*RuntimeConfig, error) {
 	rc := &RuntimeConfig{db: db}
 
@@ -96,6 +103,9 @@ func LoadRuntimeConfig(db *sql.DB) (*RuntimeConfig, error) {
 	if perr != nil {
 		return nil, perr
 	}
+
+	// Publish as the process-wide singleton.
+	Rt = rc
 	return rc, nil
 }
 

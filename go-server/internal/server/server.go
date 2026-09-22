@@ -36,7 +36,7 @@ import (
 type Server struct {
 	Router             *gin.Engine
 	Config             *config.StartupConfig
-	DB                 *database.DB
+	DB                 *database.DBHandle
 	AuthService        *auth.Service
 	FrameIPChecker     auth.FrameIPChecker
 	CollectionsHandler *collections.Handler
@@ -56,7 +56,7 @@ type Server struct {
 }
 
 // New creates a configured Server with all routes and middleware.
-func New(cfg *config.StartupConfig, db *database.DB, authSvc *auth.Service,
+func New(cfg *config.StartupConfig, db *database.DBHandle, authSvc *auth.Service,
 	collectionsHandler *collections.Handler,
 	albumsHandler *albums.Handler,
 	searchHandler *search.Handler,

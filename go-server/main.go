@@ -476,7 +476,7 @@ func initAuthService() *auth.Service {
 }
 
 // cliDB holds a reference to the database for CLI cleanup.
-var cliDB *database.DB
+var cliDB *database.DBHandle
 
 func closeDB(_ *auth.Service) {
 	if cliDB != nil {

@@ -55,13 +55,27 @@ func (a *jsonPatchAgg) Done() string {
 	return string(b)
 }
 
-// DB wraps a *sql.DB connection to SQLite.
-type DB struct {
+// DB is the process-wide database connection. It is set by Open and referenced
+// directly by the package-level query functions across the app (db is treated
+// as a global resource in this single-process server). The DB struct/receiver
+// wrappers are being retired in favor of package-level functions that use this.
+var DB *sql.DB
+
+// dbHandle wraps a *sql.DB connection to SQLite.
+//
+// Deprecated: this wrapper is retained only so existing callers (main, CLI,
+// server) keep compiling during the lean-syntax migration. New code should use
+// the package-level DB variable directly. Once all callers are migrated this
+// type and its methods will be removed.
+type dbHandle struct {
 	Conn *sql.DB
 }
 
+// DBHandle is the exported alias kept for existing callers during migration.
+type DBHandle = dbHandle
+
 // Open opens the SQLite database, creates parent directories if needed, and runs migrations.
-func Open(dbFile string) (*DB, error) {
+func Open(dbFile string) (*dbHandle, error) {
 	// Register custom driver with aggregate functions
 	registerDriver()
 
@@ -83,23 +97,27 @@ func Open(dbFile string) (*DB, error) {
 		return nil, fmt.Errorf("pinging database: %w", err)
 	}
 
-	db := &DB{Conn: conn}
+	db := &dbHandle{Conn: conn}
 
 	if err := db.runMigrations(); err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("running migrations: %w", err)
 	}
 
+	// Publish the connection as the process-wide global. Package-level query
+	// functions (post-migration) use this directly.
+	DB = conn
+
 	return db, nil
 }
 
 // Close closes the database connection.
-func (d *DB) Close() error {
+func (d *dbHandle) Close() error {
 	return d.Conn.Close()
 }
 
 // runMigrations applies pending migrations based on PRAGMA user_version.
-func (d *DB) runMigrations() error {
+func (d *dbHandle) runMigrations() error {
 	var currentVersion int
 	err := d.Conn.QueryRow("PRAGMA user_version").Scan(&currentVersion)
 	if err != nil {
