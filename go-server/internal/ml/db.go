@@ -197,6 +197,7 @@ func queryFacesByPerson(name string) ([]map[string]interface{}, error) {
 
 	return scanRowsToMaps(rows)
 }
+
 // NameFaceCluster assigns a person_name to all face records with a given cluster_id.
 // Also updates cluster_name on the records. Returns the number of rows affected.
 func nameFaceClusterDB(clusterID, name string) (int64, error) {

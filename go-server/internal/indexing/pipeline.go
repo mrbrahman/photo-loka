@@ -480,4 +480,3 @@ func joinStrings(ss []string) string {
 	b, _ := json.Marshal(ss)
 	return string(b)
 }
-

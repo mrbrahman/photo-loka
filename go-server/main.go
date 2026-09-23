@@ -24,6 +24,7 @@ import (
 	"photo-loka/internal/geo"
 	"photo-loka/internal/indexing"
 	"photo-loka/internal/jobs"
+	"photo-loka/internal/lifecycle"
 	"photo-loka/internal/media"
 	"photo-loka/internal/ml"
 	"photo-loka/internal/queue"
@@ -161,18 +162,17 @@ func runServe() {
 	}
 	defer media.CloseExiftool()
 
-	// Open database
-	db, err := database.Open(cfg.DBFile)
-	if err != nil {
+	// Open database (publishes the package-level database.DB)
+	if err := database.Open(cfg.DBFile); err != nil {
 		slog.Error("failed to open database", "error", err)
 		os.Exit(1)
 	}
-	defer db.Close()
+	defer database.Close()
 
 	// Load runtime config from the database (table + defaults are created by
-	// migrations, which ran inside database.Open above).
-	rtCfg, err := config.LoadRuntimeConfig(db.Conn)
-	if err != nil {
+	// migrations, which ran inside database.Open above). This also publishes the
+	// config.Rt singleton used across packages.
+	if _, err := config.LoadRuntimeConfig(database.DB); err != nil {
 		slog.Error("failed to load runtime config", "error", err)
 		os.Exit(1)
 	}
@@ -194,8 +194,8 @@ func runServe() {
 	videoQueue := queue.New(2)
 
 	// Apply maxConcurrency from runtime config if set
-	if rtCfg.MaxConcurrency > 0 {
-		indexQueue.SetConcurrency(rtCfg.MaxConcurrency)
+	if config.Rt.MaxConcurrency > 0 {
+		indexQueue.SetConcurrency(config.Rt.MaxConcurrency)
 	}
 
 	// Create indexing components
@@ -248,9 +248,9 @@ func runServe() {
 		os.Exit(1)
 	}
 
-	// Create and run server. Handlers are package-level; the server threads the
-	// collaborators below into each package's RegisterRoutes.
-	srv := server.New(cfg, server.Deps{
+	// Configure the HTTP server. Handlers are package-level; the server threads
+	// the collaborators below into each package's RegisterRoutes.
+	server.Setup(cfg, server.Deps{
 		FrameIPChecker: frameManager,
 		Organizer:      organizer,
 		MLClient:       mlClient,
@@ -267,50 +267,25 @@ func runServe() {
 
 	slog.Info("starting Photo-Loka", "port", cfg.Port, "data_dir", cfg.DataDir)
 
-	// Startup activities
-	if rtCfg.StartFileWatcherAtStartup {
-		if err := fileWatcher.StartForAllCollections(); err != nil {
-			slog.Error("failed to start file watchers", "error", err)
-		}
-	} else {
-		// Mark immediate intakes as stopped in DB when watchers are disabled
-		collections.SetIntakeStatusByMethod("immediate", "stopped")
-		slog.Info("file watcher at startup disabled - marked immediate intakes as stopped")
+	// Startup orchestration (watchers, scheduled indexing, frames, cron jobs).
+	lifecycleDeps := lifecycle.Deps{
+		Scheduler:         sched,
+		FileWatcher:       fileWatcher,
+		ScheduledIndexing: scheduledIndexing,
+		FrameManager:      frameManager,
+		RateLimiter:       rateLimiter,
+		IndexQueue:        indexQueue,
+		VideoQueue:        videoQueue,
+		GeoQueue:          geoQueue,
 	}
-	if rtCfg.StartScheduledIndexingAtStartup {
-		if err := scheduledIndexing.ScheduleAll(); err != nil {
-			slog.Error("failed to schedule intake indexing", "error", err)
-		}
-	} else {
-		// Mark scheduled intakes as stopped in DB when scheduling is disabled
-		collections.SetIntakeStatusByMethod("scheduled", "stopped")
-		slog.Info("scheduled indexing at startup disabled - marked scheduled intakes as stopped")
-	}
-	if err := frameManager.LoadAllFrames(); err != nil {
-		slog.Error("failed to load frames", "error", err)
-	}
+	lifecycle.StartupActions(lifecycleDeps, auth.CleanupExpiredTokens)
 
-	// Schedule frame cron jobs (reset, pause/resume)
-	frameManager.ScheduleAllFrameJobs()
-
-	// Schedule token cleanup (daily at 3am)
-	sched.AddJob("token-cleanup", "0 3 * * *", func() {
-		auth.CleanupExpiredTokens()
-	})
-
-	if err := srv.Run(); err != nil {
+	if err := server.Run(); err != nil {
 		slog.Error("server error", "error", err)
 		os.Exit(1)
 	}
 
-	// Shutdown activities
-	sched.Stop()
-	fileWatcher.StopAll()
-	scheduledIndexing.StopAll()
-	rateLimiter.Save() // persist rate limit counters for next startup
-	indexQueue.Stop()
-	videoQueue.Stop()
-	geoQueue.Stop()
+	lifecycle.ShutdownCleanup(lifecycleDeps)
 }
 
 func runCreateUser() {
@@ -412,25 +387,16 @@ func initAuthCLI() {
 		os.Exit(1)
 	}
 
-	db, err := database.Open(cfg.DBFile)
-	if err != nil {
+	if err := database.Open(cfg.DBFile); err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening database: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Store db reference for cleanup
-	cliDB = db
-
 	auth.Init(cfg.JWTSecret)
 }
 
-// cliDB holds a reference to the database for CLI cleanup.
-var cliDB *database.DBHandle
-
 func closeDB() {
-	if cliDB != nil {
-		cliDB.Close()
-	}
+	database.Close()
 }
 
 // checkMLService pings the ML service health endpoint and warns if it's not reachable.

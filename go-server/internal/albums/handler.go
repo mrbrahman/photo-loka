@@ -27,8 +27,8 @@ func RegisterRoutes(rg *gin.RouterGroup, org Organizer) {
 
 // updateAlbumNameRequest is the request body for album rename.
 type updateAlbumNameRequest struct {
-	CollectionID int64  `json:"collection_id"`
-	AlbumDate    string `json:"album_date"`
+	CollectionID  int64  `json:"collection_id"`
+	AlbumDate     string `json:"album_date"`
 	CurrAlbumName string `json:"currAlbumName"`
 	NewAlbumName  string `json:"newAlbumName"`
 }

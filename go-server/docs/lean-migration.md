@@ -96,7 +96,9 @@ Services (stateless business logic): fold into package-level funcs:
 - [x] Phase 2
 - [x] Phase 3
 - [x] Phase 4
-- [ ] Phase 5
+- [x] Phase 5
+
+Migration COMPLETE. All phases green.
 
 ## Resume notes
 
@@ -302,4 +304,50 @@ what is next, any surprises.)
   and the dbHandle wrapper if nothing needs it after main is slimmed (main/CLI
   use db.Close()); consider returning just error from Open and exposing a
   package-level Close().
+
+- Phase 5 DONE (compiles green: `go build`/`go vet -tags "fts5
+  sqlite_math_functions" ./...` exit 0; `./build.sh` exit 0; `gofmt -l .` clean).
+  MIGRATION COMPLETE.
+  - Added `internal/lifecycle` (lifecycle.go): `Deps` bundles the stateful
+    collaborators (scheduler, watchers, frame manager, rate limiter, 3 queues);
+    `StartupActions(d, cleanupTokens func())` runs watcher/scheduled-indexing
+    start-or-mark-stopped per config.Rt, LoadAllFrames, ScheduleAllFrameJobs,
+    and registers the daily token-cleanup cron; `ShutdownCleanup(d)` stops
+    scheduler/watchers/queues and saves the rate limiter.
+  - server: dropped the `Server` struct. Package-level `router *gin.Engine` +
+    `cfg *config.StartupConfig` vars set by `Setup(cfg, deps, webFS)`;
+    `setupRoutes(deps)` is a package func; `Run()` is a package func. Deps
+    struct unchanged (still threads the non-singleton collaborators that
+    RegisterRoutes needs).
+  - database: removed the temporary `dbHandle` struct + `DBHandle` alias.
+    `Open(dbFile) error` now publishes the package-level `DB` and runs
+    migrations (runMigrations is a package func using `DB`); added package-level
+    `Close()`. main/CLI use `database.Open`/`database.Close`/`database.DB`.
+  - main.go runServe is now a clean linear sequence: preflight -> load startup
+    config -> init vips/exiftool -> database.Open -> LoadRuntimeConfig (sets
+    config.Rt) -> auth.Init/geo.Init/ml.Init -> create queues/indexer/scheduler/
+    frames/jobs -> wire collections.OnCollectionChanged -> resolve webFS ->
+    server.Setup -> lifecycle.StartupActions -> server.Run ->
+    lifecycle.ShutdownCleanup. Dropped the local rtCfg var (uses config.Rt);
+    CLI initAuthCLI/closeDB use the package-level database API.
+  - CLEANUP: ran `gofmt -w main.go internal/` to fix alignment/spacing drift
+    left by earlier phases' sed edits (struct-tag alignment, redundant parens,
+    blank lines). `gofmt -l .` now reports nothing.
+
+## Final state
+
+- `database.DB` (global *sql.DB) and `config.Rt` (singleton *RuntimeConfig) are
+  the two global resources. No wrapper types.
+- Handlers: package-level `RegisterRoutes(rg, ...deps)` + unexported funcs.
+- Services: collapsed to package funcs; auth/geo/ml expose `Init(...)` to set
+  their package-level collaborators; collections uses the db funcs directly.
+- Genuine "classes" kept as struct+New: queue.Queue, scheduler.Scheduler,
+  geo.RateLimiter, geo.Finalizer, frames.Manager, jobs.FileWatcher/
+  ScheduledIndexing, indexing.Indexer/Organizer, ml.Client.
+- server + lifecycle are package-level (Setup/Run, StartupActions/
+  ShutdownCleanup). main.go is a lean linear boot sequence.
+- Verification each phase and final: `go build` + `go vet -tags "fts5
+  sqlite_math_functions" ./...` exit 0, `./build.sh` produces the binary,
+  `gofmt -l .` clean. No automated tests exist (per project); user does manual
+  runtime testing.
 

@@ -16,7 +16,7 @@ const (
 	AccessTokenExpiry      = 15 * time.Minute
 	RefreshTokenExpiryDays = 30
 	MaxFailedAttempts      = 5
-	BcryptCost            = 10
+	BcryptCost             = 10
 )
 
 // jwtSecret is the process-wide HMAC signing key, set once via Init at startup.

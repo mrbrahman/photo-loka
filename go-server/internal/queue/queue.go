@@ -11,7 +11,7 @@ import (
 type Priority int
 
 const (
-	High   Priority = iota
+	High Priority = iota
 	Normal
 	Low
 )

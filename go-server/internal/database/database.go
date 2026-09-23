@@ -55,71 +55,60 @@ func (a *jsonPatchAgg) Done() string {
 	return string(b)
 }
 
-// DB is the process-wide database connection. It is set by Open and referenced
-// directly by the package-level query functions across the app (db is treated
-// as a global resource in this single-process server). The DB struct/receiver
-// wrappers are being retired in favor of package-level functions that use this.
+// DB is the process-wide database connection, set by Open and referenced
+// directly by the package-level query functions across the app (the database
+// is a global resource in this single-process server).
 var DB *sql.DB
 
-// dbHandle wraps a *sql.DB connection to SQLite.
-//
-// Deprecated: this wrapper is retained only so existing callers (main, CLI,
-// server) keep compiling during the lean-syntax migration. New code should use
-// the package-level DB variable directly. Once all callers are migrated this
-// type and its methods will be removed.
-type dbHandle struct {
-	Conn *sql.DB
-}
-
-// DBHandle is the exported alias kept for existing callers during migration.
-type DBHandle = dbHandle
-
-// Open opens the SQLite database, creates parent directories if needed, and runs migrations.
-func Open(dbFile string) (*dbHandle, error) {
+// Open opens the SQLite database, creates parent directories if needed, runs
+// migrations, and publishes the connection as the package-level DB.
+func Open(dbFile string) error {
 	// Register custom driver with aggregate functions
 	registerDriver()
 
 	// Create parent directory if it doesn't exist
 	dir := filepath.Dir(dbFile)
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		return nil, fmt.Errorf("creating database directory: %w", err)
+		return fmt.Errorf("creating database directory: %w", err)
 	}
 
 	dsn := fmt.Sprintf("file:%s?_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL", dbFile)
 	conn, err := sql.Open("sqlite3_photo_loka", dsn)
 	if err != nil {
-		return nil, fmt.Errorf("opening database: %w", err)
+		return fmt.Errorf("opening database: %w", err)
 	}
 
 	// Verify connection
 	if err := conn.Ping(); err != nil {
 		conn.Close()
-		return nil, fmt.Errorf("pinging database: %w", err)
+		return fmt.Errorf("pinging database: %w", err)
 	}
 
-	db := &dbHandle{Conn: conn}
-
-	if err := db.runMigrations(); err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("running migrations: %w", err)
-	}
-
-	// Publish the connection as the process-wide global. Package-level query
-	// functions (post-migration) use this directly.
+	// Publish as the process-wide global before running migrations so the
+	// migration helper (and everything else) uses the same connection.
 	DB = conn
 
-	return db, nil
+	if err := runMigrations(); err != nil {
+		conn.Close()
+		DB = nil
+		return fmt.Errorf("running migrations: %w", err)
+	}
+
+	return nil
 }
 
-// Close closes the database connection.
-func (d *dbHandle) Close() error {
-	return d.Conn.Close()
+// Close closes the process-wide database connection.
+func Close() error {
+	if DB == nil {
+		return nil
+	}
+	return DB.Close()
 }
 
 // runMigrations applies pending migrations based on PRAGMA user_version.
-func (d *dbHandle) runMigrations() error {
+func runMigrations() error {
 	var currentVersion int
-	err := d.Conn.QueryRow("PRAGMA user_version").Scan(&currentVersion)
+	err := DB.QueryRow("PRAGMA user_version").Scan(&currentVersion)
 	if err != nil {
 		return fmt.Errorf("reading user_version: %w", err)
 	}
@@ -145,7 +134,7 @@ func (d *dbHandle) runMigrations() error {
 				return fmt.Errorf("reading migration %s: %w", m.filename, err)
 			}
 
-			tx, err := d.Conn.Begin()
+			tx, err := DB.Begin()
 			if err != nil {
 				return fmt.Errorf("beginning transaction for %s: %w", m.filename, err)
 			}
@@ -161,7 +150,7 @@ func (d *dbHandle) runMigrations() error {
 				return fmt.Errorf("committing migration %s: %w", m.filename, err)
 			}
 
-			if _, err := d.Conn.Exec(fmt.Sprintf("PRAGMA user_version = %d", m.version)); err != nil {
+			if _, err := DB.Exec(fmt.Sprintf("PRAGMA user_version = %d", m.version)); err != nil {
 				return fmt.Errorf("setting user_version to %d: %w", m.version, err)
 			}
 

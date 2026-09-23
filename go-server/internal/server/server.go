@@ -34,11 +34,13 @@ import (
 	"photo-loka/internal/search"
 )
 
-// Server holds the Gin engine and application dependencies.
-type Server struct {
-	Router *gin.Engine
-	Config *config.StartupConfig
-}
+// Package-level engine and startup config, set by Setup. The HTTP layer is a
+// process-wide singleton, so there is no Server struct: Setup builds the engine
+// and mounts routes; Run serves it.
+var (
+	router *gin.Engine
+	cfg    *config.StartupConfig
+)
 
 // Deps bundles the application collaborators that the route packages need.
 // Handlers are now package-level (their routes are registered via each
@@ -61,11 +63,13 @@ type Deps struct {
 	FacesDir       string
 }
 
-// New creates a configured Server with all routes and middleware.
-func New(cfg *config.StartupConfig, deps Deps, webFS http.FileSystem) *Server {
+// Setup builds the Gin engine, installs middleware, and mounts all routes.
+func Setup(startupCfg *config.StartupConfig, deps Deps, webFS http.FileSystem) {
+	cfg = startupCfg
+
 	gin.SetMode(gin.ReleaseMode)
 
-	router := gin.New()
+	router = gin.New()
 	router.Use(gin.Recovery())
 
 	// Request logging middleware (skip thumbnail requests)
@@ -74,35 +78,28 @@ func New(cfg *config.StartupConfig, deps Deps, webFS http.FileSystem) *Server {
 	// Serve static files with Cache-Control: no-cache
 	router.Use(staticFileHandler(webFS))
 
-	s := &Server{
-		Router: router,
-		Config: cfg,
-	}
-
-	s.setupRoutes(deps)
-
-	return s
+	setupRoutes(deps)
 }
 
 // setupRoutes mounts all route groups.
-func (s *Server) setupRoutes(deps Deps) {
+func setupRoutes(deps Deps) {
 	// Health and ping
-	s.Router.GET("/ping", func(c *gin.Context) {
+	router.GET("/ping", func(c *gin.Context) {
 		c.Status(http.StatusNoContent)
 	})
-	s.Router.GET("/health", func(c *gin.Context) {
+	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
 	// Public auth routes (no auth required)
-	authnGroup := s.Router.Group("/api/authn")
+	authnGroup := router.Group("/api/authn")
 	authn.RegisterRoutes(authnGroup)
 
 	// Public frame routes (no auth required)
-	frames.RegisterPublicRoutes(&s.Router.RouterGroup, deps.FrameManager)
+	frames.RegisterPublicRoutes(&router.RouterGroup, deps.FrameManager)
 
 	// Public API routes (authenticated but non-admin)
-	publicAPI := s.Router.Group("/api")
+	publicAPI := router.Group("/api")
 	publicAPI.Use(auth.AuthMiddleware())
 	{
 		// Collections summary (non-admin)
@@ -110,7 +107,7 @@ func (s *Server) setupRoutes(deps Deps) {
 	}
 
 	// Authenticated routes
-	apiGroup := s.Router.Group("/api")
+	apiGroup := router.Group("/api")
 	apiGroup.Use(auth.AuthMiddleware())
 	{
 		search.RegisterRoutes(apiGroup, deps.MLClient)
@@ -121,14 +118,14 @@ func (s *Server) setupRoutes(deps Deps) {
 	}
 
 	// Media routes (with frame IP bypass)
-	mediaGroup := s.Router.Group("/api")
+	mediaGroup := router.Group("/api")
 	mediaGroup.Use(auth.MediaAuthMiddleware(deps.FrameIPChecker))
 	{
 		media.RegisterRoutes(mediaGroup, deps.ThumbsDir, deps.FacesDir)
 	}
 
 	// Admin routes
-	adminGroup := s.Router.Group("/api/admin")
+	adminGroup := router.Group("/api/admin")
 	adminGroup.Use(auth.AuthMiddleware())
 	adminGroup.Use(auth.AdminMiddleware())
 	{
@@ -143,12 +140,12 @@ func (s *Server) setupRoutes(deps Deps) {
 }
 
 // Run starts the HTTP server with graceful shutdown.
-func (s *Server) Run() error {
-	addr := fmt.Sprintf(":%d", s.Config.Port)
+func Run() error {
+	addr := fmt.Sprintf(":%d", cfg.Port)
 
 	srv := &http.Server{
 		Addr:    addr,
-		Handler: s.Router,
+		Handler: router,
 	}
 
 	// Channel to listen for interrupt signals
@@ -158,7 +155,7 @@ func (s *Server) Run() error {
 	// Start server in goroutine
 	errCh := make(chan error, 1)
 	go func() {
-		slog.Info("server started", "port", s.Config.Port)
+		slog.Info("server started", "port", cfg.Port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			errCh <- err
 		}

@@ -138,14 +138,14 @@ func getIndexerStatus(c *gin.Context) {
 	high, normal, low := indexQueue.QueueSizes()
 
 	c.JSON(http.StatusOK, gin.H{
-		"processingCnt":              status.Active,
-		"pendingCnt":                 status.Pending,
-		"completedCnt":               status.Completed,
-		"failedCnt":                  status.Failed,
-		"paused":                     status.IsPaused,
-		"isDynamic":                  false,
-		"maxConcurrency":             status.MaxConcurrency,
-		"dynamicTargetConcurrency":   nil,
+		"processingCnt":            status.Active,
+		"pendingCnt":               status.Pending,
+		"completedCnt":             status.Completed,
+		"failedCnt":                status.Failed,
+		"paused":                   status.IsPaused,
+		"isDynamic":                false,
+		"maxConcurrency":           status.MaxConcurrency,
+		"dynamicTargetConcurrency": nil,
 		"queueSizes": gin.H{
 			"high":   high,
 			"normal": normal,

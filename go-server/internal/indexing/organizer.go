@@ -536,5 +536,3 @@ func resolveNameCollision(targetPath string) string {
 	// Extremely unlikely: just return with a large number
 	return fmt.Sprintf("%s_9999%s", base, ext)
 }
-
-

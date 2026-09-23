@@ -274,7 +274,7 @@ func GetItemInfo(uuid string) (map[string]interface{}, error) {
 		if b, ok := val.([]byte); ok {
 			strVal := string(b)
 			// Try to parse as JSON if it looks like JSON
-			if (strings.HasPrefix(strVal, "[") || strings.HasPrefix(strVal, "{")) {
+			if strings.HasPrefix(strVal, "[") || strings.HasPrefix(strVal, "{") {
 				var jsonVal interface{}
 				if err := json.Unmarshal(b, &jsonVal); err == nil {
 					result[col] = jsonVal
