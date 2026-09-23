@@ -51,7 +51,6 @@ var (
 type Deps struct {
 	FrameIPChecker auth.FrameIPChecker
 	Organizer      *indexing.Organizer
-	MLClient       *ml.Client
 	Indexer        *indexing.Indexer
 	IndexQueue     *queue.Queue
 	VideoQueue     *queue.Queue
@@ -110,7 +109,7 @@ func setupRoutes(deps Deps) {
 	apiGroup := router.Group("/api")
 	apiGroup.Use(auth.AuthMiddleware())
 	{
-		search.RegisterRoutes(apiGroup, deps.MLClient)
+		search.RegisterRoutes(apiGroup)
 		albums.RegisterRoutes(apiGroup, deps.Organizer)
 		items.RegisterRoutes(apiGroup, deps.Organizer, deps.ThumbsDir)
 		geo.RegisterRoutes(apiGroup)

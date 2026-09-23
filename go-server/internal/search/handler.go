@@ -14,12 +14,8 @@ import (
 	"photo-loka/internal/ml"
 )
 
-// mlClient is the package-level ML client used for AI search. Set via RegisterRoutes.
-var mlClient *ml.Client
-
 // RegisterRoutes registers search routes on the given router group.
-func RegisterRoutes(rg *gin.RouterGroup, client *ml.Client) {
-	mlClient = client
+func RegisterRoutes(rg *gin.RouterGroup) {
 	rg.GET("/getAll", getAll)
 	rg.POST("/search", search)
 	rg.GET("/getItemInfo", getItemInfo)
@@ -115,14 +111,14 @@ func search(c *gin.Context) {
 
 // handleAISearch performs semantic search via the ML service.
 func handleAISearch(c *gin.Context, collectionID *int64, query string) {
-	if mlClient == nil {
+	if !ml.Available() {
 		c.JSON(http.StatusServiceUnavailable, gin.H{
 			"error": gin.H{"message": "ML service not configured", "code": "ML_UNAVAILABLE"},
 		})
 		return
 	}
 
-	result, err := mlClient.SearchByText(query)
+	result, err := ml.SearchByText(query)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{"message": "AI search failed: " + err.Error(), "code": "ML_ERROR"},

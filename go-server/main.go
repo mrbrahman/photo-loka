@@ -181,9 +181,6 @@ func runServe() {
 	// Initialize auth (JWT secret) -- stateless package-level singleton.
 	auth.Init(cfg.JWTSecret)
 
-	// ML client (shared by search and ML package)
-	mlClient := ml.NewClient(cfg.MLServiceURL)
-
 	// Create indexing queues
 	numCPU := runtime.NumCPU()
 	indexConcurrency := numCPU - 1
@@ -209,8 +206,8 @@ func runServe() {
 	geoFinalizer := geo.NewFinalizer(rateLimiter, cfg.GeonamesUsername)
 	geo.Init(geoFinalizer, geoQueue)
 
-	// Initialize ML package (client + face/thumbnail dirs).
-	ml.Init(mlClient, cfg.FacesDir, cfg.ThumbsDir)
+	// Initialize ML package (HTTP client + face/thumbnail dirs).
+	ml.Init(cfg.MLServiceURL, cfg.FacesDir, cfg.ThumbsDir)
 
 	// Scheduler
 	sched := scheduler.New()
@@ -253,7 +250,6 @@ func runServe() {
 	server.Setup(cfg, server.Deps{
 		FrameIPChecker: frameManager,
 		Organizer:      organizer,
-		MLClient:       mlClient,
 		Indexer:        indexer,
 		IndexQueue:     indexQueue,
 		VideoQueue:     videoQueue,

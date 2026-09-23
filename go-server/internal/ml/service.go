@@ -12,15 +12,16 @@ import (
 // ML operations (face recognition, image encoding) are package-level functions.
 // The package holds its collaborators as package vars, set once via Init.
 var (
-	client    *Client
+	client    *apiClient
 	facesDir  string
 	thumbsDir string
 	logger    = slog.Default().With("component", "ml-service")
 )
 
-// Init wires the ML client and directories. Called once at startup.
-func Init(c *Client, faces, thumbs string) {
-	client = c
+// Init builds the ML service HTTP client and stores the face/thumbnail
+// directories. Called once at startup with the ML service base URL.
+func Init(mlServiceURL, faces, thumbs string) {
+	client = newAPIClient(mlServiceURL)
 	facesDir = faces
 	thumbsDir = thumbs
 }
@@ -217,6 +218,18 @@ func UpdatePersonName(oldName, newName string) (int64, error) {
 // GetFaceSuggestions retrieves name suggestions for a face cluster from the ML service.
 func GetFaceSuggestions(clusterID string) (map[string]interface{}, error) {
 	return client.GetFaceSuggestions(clusterID)
+}
+
+// Available reports whether the ML client has been initialized (i.e. Init was
+// called). Used by callers that must degrade gracefully when ML is not wired.
+func Available() bool {
+	return client != nil
+}
+
+// SearchByText performs semantic (CLIP) search via the ML service and returns
+// the raw response.
+func SearchByText(query string) (map[string]interface{}, error) {
+	return client.SearchByText(query)
 }
 
 // SearchPersonNames searches for person names matching a query string.

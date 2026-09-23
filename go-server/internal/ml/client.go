@@ -11,16 +11,19 @@ import (
 	"time"
 )
 
-// Client is an HTTP client for the external ML service.
-type Client struct {
+// apiClient is an HTTP client for the external ML service. It is an internal
+// package type; callers use the package-level ML functions, which use the
+// singleton built by Init.
+type apiClient struct {
 	baseURL string
 	client  *http.Client
 	logger  *slog.Logger
 }
 
-// NewClient creates a new ML service client.
-func NewClient(baseURL string) *Client {
-	return &Client{
+// newAPIClient builds an apiClient for the given base URL with a reusable
+// http.Client (connection pooling + timeout).
+func newAPIClient(baseURL string) *apiClient {
+	return &apiClient{
 		baseURL: baseURL,
 		client: &http.Client{
 			Timeout: 60 * time.Second,
@@ -30,7 +33,7 @@ func NewClient(baseURL string) *Client {
 }
 
 // RecognizeFaces sends an image to the ML service for face detection and recognition.
-func (c *Client) RecognizeFaces(uuid, imagePath string, orientation int, xmpRegions interface{}) (map[string]interface{}, error) {
+func (c *apiClient) RecognizeFaces(uuid, imagePath string, orientation int, xmpRegions interface{}) (map[string]interface{}, error) {
 	c.logger.Info("calling face recognition", "uuid", uuid)
 
 	body := map[string]interface{}{
@@ -48,7 +51,7 @@ func (c *Client) RecognizeFaces(uuid, imagePath string, orientation int, xmpRegi
 // RecognizeFacesBuffer sends a pre-rotated 640px JPEG buffer to the ML service
 // for face detection and recognition. imageBytes must be a base64-encoded JPEG.
 // orientation is still passed so Python can transform XMP region coordinates.
-func (c *Client) RecognizeFacesBuffer(uuid, imageBytes string, orientation int, xmpRegions interface{}) (map[string]interface{}, error) {
+func (c *apiClient) RecognizeFacesBuffer(uuid, imageBytes string, orientation int, xmpRegions interface{}) (map[string]interface{}, error) {
 	c.logger.Info("calling buffer face recognition", "uuid", uuid)
 
 	body := map[string]interface{}{
@@ -65,7 +68,7 @@ func (c *Client) RecognizeFacesBuffer(uuid, imageBytes string, orientation int, 
 
 // EncodeImageBuffer sends a pre-rotated 640px JPEG buffer to the ML service
 // for CLIP embedding. imageBytes must be a base64-encoded JPEG.
-func (c *Client) EncodeImageBuffer(uuid, imageBytes string) (map[string]interface{}, error) {
+func (c *apiClient) EncodeImageBuffer(uuid, imageBytes string) (map[string]interface{}, error) {
 	c.logger.Info("calling buffer image encoding", "uuid", uuid)
 
 	body := map[string]interface{}{
@@ -77,7 +80,7 @@ func (c *Client) EncodeImageBuffer(uuid, imageBytes string) (map[string]interfac
 }
 
 // NameFaceCluster assigns a name to a face cluster.
-func (c *Client) NameFaceCluster(clusterID, name string) error {
+func (c *apiClient) NameFaceCluster(clusterID, name string) error {
 	body := map[string]interface{}{
 		"name": name,
 	}
@@ -87,7 +90,7 @@ func (c *Client) NameFaceCluster(clusterID, name string) error {
 }
 
 // UpdatePersonName renames a person across all face records.
-func (c *Client) UpdatePersonName(oldName, newName string) error {
+func (c *apiClient) UpdatePersonName(oldName, newName string) error {
 	body := map[string]interface{}{
 		"old_name": oldName,
 		"new_name": newName,
@@ -98,13 +101,13 @@ func (c *Client) UpdatePersonName(oldName, newName string) error {
 }
 
 // GetFaceSuggestions retrieves name suggestions for a face cluster.
-func (c *Client) GetFaceSuggestions(clusterID string) (map[string]interface{}, error) {
+func (c *apiClient) GetFaceSuggestions(clusterID string) (map[string]interface{}, error) {
 	endpoint := "/faces/suggestions?cluster_id=" + url.QueryEscape(clusterID)
 	return c.doJSONRequest(http.MethodGet, endpoint, nil)
 }
 
 // SearchByText performs semantic search by text query.
-func (c *Client) SearchByText(query string) (map[string]interface{}, error) {
+func (c *apiClient) SearchByText(query string) (map[string]interface{}, error) {
 	c.logger.Info("calling text search", "query", query)
 
 	body := map[string]interface{}{
@@ -116,7 +119,7 @@ func (c *Client) SearchByText(query string) (map[string]interface{}, error) {
 }
 
 // CleanupMLData removes ML data for a given uuid. Logs errors but does not return them.
-func (c *Client) CleanupMLData(uuid string) {
+func (c *apiClient) CleanupMLData(uuid string) {
 	endpoint := "/images/" + url.PathEscape(uuid)
 
 	req, err := http.NewRequest(http.MethodDelete, c.baseURL+endpoint, nil)
@@ -138,7 +141,7 @@ func (c *Client) CleanupMLData(uuid string) {
 }
 
 // doJSONRequest is a helper that marshals a body, makes an HTTP request, and unmarshals the response.
-func (c *Client) doJSONRequest(method, endpoint string, body interface{}) (map[string]interface{}, error) {
+func (c *apiClient) doJSONRequest(method, endpoint string, body interface{}) (map[string]interface{}, error) {
 	var reqBody io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
