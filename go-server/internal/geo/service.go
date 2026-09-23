@@ -6,18 +6,19 @@ import (
 	"photo-loka/internal/queue"
 )
 
-// Geo encoding operations are package-level functions backed by a single
-// finalizer and a dedicated queue, set once via Init.
+// Geo encoding operations are package-level functions backed by a dedicated
+// queue and the finalizer state (rate limiter + geonames user), set via Init.
 var (
-	finalizer *Finalizer
-	geoQueue  *queue.Queue
-	logger    = slog.Default().With("component", "geo-service")
+	geoQueue *queue.Queue
+	logger   = slog.Default().With("component", "geo-service")
 )
 
-// Init wires the finalizer and the geo queue. Called once at startup.
-func Init(f *Finalizer, q *queue.Queue) {
-	finalizer = f
+// Init wires the geo queue, rate limiter, and geonames username. Called once
+// at startup.
+func Init(q *queue.Queue, rl *RateLimiter, user string) {
 	geoQueue = q
+	rateLimiter = rl
+	geonamesUser = user
 }
 
 // Enqueue adds a single geo resolution task to the queue.
@@ -37,7 +38,7 @@ func Enqueue(uuid string, opts map[string]interface{}) {
 
 	task := queue.Task{
 		Fn: func() error {
-			return finalizer.FinalizeGeo(uuid, gpsLat, gpsLng, countryCode)
+			return FinalizeGeo(uuid, gpsLat, gpsLng, countryCode)
 		},
 		Priority:    queue.Normal,
 		Description: "geo:" + uuid,
@@ -76,7 +77,7 @@ func EnqueueMany(entries []map[string]interface{}) {
 
 		task := queue.Task{
 			Fn: func() error {
-				return finalizer.FinalizeGeo(capturedUUID, gpsLat, gpsLng, countryCode)
+				return FinalizeGeo(capturedUUID, gpsLat, gpsLng, countryCode)
 			},
 			Priority:    queue.Normal,
 			Description: "geo:" + capturedUUID,

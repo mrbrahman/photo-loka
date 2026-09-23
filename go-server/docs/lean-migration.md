@@ -89,6 +89,27 @@ Services (stateless business logic): fold into package-level funcs:
 - Phase 5: Add `internal/lifecycle` (StartupActions/ShutdownCleanup). Slim
   `server` to package-level `Setup`/`Run`. Slim `main.go`. Compile.
 
+## Post-migration follow-ups (fold remaining single-instance New* singletons)
+
+The 5-phase migration is complete. These follow-ups fold the remaining
+single-instance stateful objects into package-level singletons. The dividing
+line: `queue.Queue` has 3 live instances (indexQueue/videoQueue/geoQueue) so it
+stays a real struct+New class; everything else is instantiated exactly once in
+main and can be a package-level singleton (with an `Init` if it needs
+collaborators or a state file). Done incrementally, compile after each.
+
+- Phase 6: ml.Client internalized (DONE, committed). The ML HTTP client is now
+  an internal `apiClient` built in `ml.Init(mlServiceURL, faces, thumbs)`; the
+  exported `Client`/`NewClient` and the `mlClient` threaded through main/
+  server.Deps/search are gone. search calls `ml.SearchByText`/`ml.Available`.
+- Phase 7 (trivial folds): `indexing.Organizer` (holds only a logger) and
+  `geo.Finalizer` (holds rateLimiter+geonamesUser+logger) -> package-level.
+- Phase 8 (stateful singleton folds): `indexing.Indexer`, `geo.RateLimiter`,
+  `scheduler.Scheduler`, `frames.Manager`, `jobs.FileWatcher`/
+  `ScheduledIndexing`. Each has genuine runtime state but only one instance;
+  fold to package vars + package funcs (+ Init where needed). Keep
+  `queue.Queue` as struct+New (multiple instances).
+
 ## Status
 
 - [x] Phase 0
@@ -98,7 +119,50 @@ Services (stateless business logic): fold into package-level funcs:
 - [x] Phase 4
 - [x] Phase 5
 
-Migration COMPLETE. All phases green.
+Core migration COMPLETE. All phases green.
+
+Follow-ups:
+- [x] Phase 6 (ml.Client internalized)
+- [x] Phase 7 (fold Organizer, Finalizer)
+- [ ] Phase 8 (fold Indexer, RateLimiter, Scheduler, Manager, jobs)
+
+## Follow-up resume notes
+
+- Phase 6 DONE (committed): ml.Client -> internal apiClient built in
+  ml.Init(mlServiceURL, faces, thumbs); dropped exported Client/NewClient and
+  the mlClient threaded through main/server.Deps/search. search uses
+  ml.SearchByText / ml.Available.
+- Phase 7a DONE (build/vet/gofmt green): indexing.Organizer -> package funcs.
+  struct+NewOrganizer removed; methods are package funcs; logger -> orgLogger
+  package var. Indexer dropped organizer field. items handler calls
+  indexing.MoveItem/MarkFilePrivate/etc directly. albums removed its Organizer
+  INTERFACE + var/param and now imports indexing, calling
+  indexing.RenameAlbumFolder/AlbumFolderAbsPath (no cycle: indexing doesn't
+  import albums). server.Deps dropped Organizer; albums.RegisterRoutes() and
+  items.RegisterRoutes(thumbs) lost the arg.
+  LESSON: `sed 's/func (o *Organizer) //g'` also removes the `func` keyword ->
+  use replacement `func ` (kept keyword for Finalizer and it was clean).
+- Phase 7b DONE (build/vet/gofmt green): geo.Finalizer -> package funcs.
+  struct+NewFinalizer removed; rateLimiter/geonamesUser are package vars set by
+  geo.Init; logger -> geoLogger. geo.Init signature is now
+  Init(q *queue.Queue, rl *RateLimiter, user string). service.go dropped the
+  finalizer var and calls FinalizeGeo directly. main: dropped geoFinalizer;
+  geo.Init(geoQueue, rateLimiter, cfg.GeonamesUsername).
+- NEXT: Phase 8 (stateful singleton folds, one at a time, compile after each):
+  8a indexing.Indexer (holds 2 queues + logger; jobs.* hold *Indexer and call
+  idx.IndexFile/InitialIndexing/ScanForChanges/IndexQueue -> switch to
+  indexing.* package funcs; server.Deps.Indexer + IndexQueue/VideoQueue used by
+  indexing.RegisterRoutes too -- rework). 8b geo.RateLimiter (counters+mutex+
+  stateFile -> package vars; Finalizer already refs package `rateLimiter`, so
+  fold means those become direct package funcs Check/Increment/Save; lifecycle
+  calls RateLimiter.Save). 8c scheduler.Scheduler (cron+maps+mutex; used by
+  frames.Manager, jobs.ScheduledIndexing, admin.jobs handler, lifecycle). 8d
+  frames.Manager (in-memory frame state+SSE; handler, lifecycle, and the
+  auth.FrameIPChecker interface via AllFrameIPs). 8e jobs.FileWatcher/
+  ScheduledIndexing. KEEP queue.Queue (3 instances).
+  NOTE 8c/8d/8e are interdependent (frames needs scheduler; jobs need indexer+
+  scheduler); do scheduler first, then frames, then jobs. Reassess server.Deps
+  after each -- it should shrink toward near-empty.
 
 ## Resume notes
 

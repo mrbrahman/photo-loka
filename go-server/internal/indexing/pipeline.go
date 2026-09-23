@@ -20,7 +20,6 @@ import (
 
 // Indexer orchestrates the indexing pipeline for media files.
 type Indexer struct {
-	organizer  *Organizer
 	indexQueue *queue.Queue
 	videoQueue *queue.Queue
 	thumbsDir  string
@@ -28,9 +27,8 @@ type Indexer struct {
 }
 
 // NewIndexer creates a new Indexer instance.
-func NewIndexer(org *Organizer, indexQueue, videoQueue *queue.Queue, thumbsDir string) *Indexer {
+func NewIndexer(indexQueue, videoQueue *queue.Queue, thumbsDir string) *Indexer {
 	return &Indexer{
-		organizer:  org,
 		indexQueue: indexQueue,
 		videoQueue: videoQueue,
 		thumbsDir:  thumbsDir,
@@ -83,7 +81,7 @@ func (idx *Indexer) IndexFile(collection *collections.Collection, sourceFile str
 	}
 
 	// Step 2: Place file in collection
-	placeResult, err := idx.organizer.PlaceFileInCollection(collection, sourceFile, exifData.CaptureDateTime, inPlace)
+	placeResult, err := PlaceFileInCollection(collection, sourceFile, exifData.CaptureDateTime, inPlace)
 	if err != nil {
 		return fmt.Errorf("placing file %s in collection: %w", sourceFile, err)
 	}

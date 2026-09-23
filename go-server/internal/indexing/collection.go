@@ -20,7 +20,7 @@ func (idx *Indexer) InitialIndexing(collectionID int64) error {
 		return fmt.Errorf("collection %d not found", collectionID)
 	}
 
-	files, err := idx.organizer.ListAllFiles(collection.CollectionPath)
+	files, err := ListAllFiles(collection.CollectionPath)
 	if err != nil {
 		return fmt.Errorf("listing files for collection %d: %w", collectionID, err)
 	}
@@ -71,7 +71,7 @@ func (idx *Indexer) ScanForChanges(collectionID int64) error {
 	}
 
 	// Get current disk state
-	diskFiles, err := idx.organizer.GetFilesMtime(collection.CollectionPath)
+	diskFiles, err := GetFilesMtime(collection.CollectionPath)
 	if err != nil {
 		return fmt.Errorf("getting disk files for collection %d: %w", collectionID, err)
 	}

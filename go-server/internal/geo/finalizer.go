@@ -10,25 +10,17 @@ import (
 	"strings"
 )
 
-// Finalizer handles geo resolution logic for media items.
-type Finalizer struct {
+// Geo resolution is package-level (single instance). rateLimiter and
+// geonamesUser are set by Init; geoLogger is the finalizer's logger.
+var (
 	rateLimiter  *RateLimiter
 	geonamesUser string
-	logger       *slog.Logger
-}
-
-// NewFinalizer creates a new Finalizer instance.
-func NewFinalizer(rl *RateLimiter, geonamesUser string) *Finalizer {
-	return &Finalizer{
-		rateLimiter:  rl,
-		geonamesUser: geonamesUser,
-		logger:       slog.Default().With("component", "geo-finalizer"),
-	}
-}
+	geoLogger    = slog.Default().With("component", "geo-finalizer")
+)
 
 // FinalizeGeo is the main entry point for geo resolution.
 // It derives missing fields from DB if needed, then routes to US vs non-US processing.
-func (f *Finalizer) FinalizeGeo(uuid string, gpsLat, gpsLng *float64, countryCode *string) error {
+func FinalizeGeo(uuid string, gpsLat, gpsLng *float64, countryCode *string) error {
 	// If we don't have GPS or country info, try to get it from DB
 	if gpsLat == nil || gpsLng == nil || countryCode == nil {
 		ctx, err := GetGeoContext(uuid)
@@ -48,7 +40,7 @@ func (f *Finalizer) FinalizeGeo(uuid string, gpsLat, gpsLng *float64, countryCod
 
 	// No GPS coordinates - nothing we can do
 	if gpsLat == nil || gpsLng == nil {
-		f.logger.Debug("no GPS coordinates, skipping", "uuid", uuid)
+		geoLogger.Debug("no GPS coordinates, skipping", "uuid", uuid)
 		return UpdateGeoStatus(uuid, "NO_GPS")
 	}
 
@@ -57,22 +49,22 @@ func (f *Finalizer) FinalizeGeo(uuid string, gpsLat, gpsLng *float64, countryCod
 	var resolveMethod string
 	if countryCode != nil && *countryCode == "US" {
 		resolveMethod = "US"
-		err = f.finalizeUS(uuid, *gpsLat, *gpsLng)
+		err = finalizeUS(uuid, *gpsLat, *gpsLng)
 	} else {
 		resolveMethod = "non-US"
-		err = f.finalizeNonUS(uuid)
+		err = finalizeNonUS(uuid)
 	}
 
 	if err != nil {
 		return err
 	}
 
-	f.logger.Info("geo finalized", "uuid", uuid, "method", resolveMethod)
+	geoLogger.Info("geo finalized", "uuid", uuid, "method", resolveMethod)
 	return nil
 }
 
 // finalizeNonUS reads exiftool geo data from DB and builds address fields.
-func (f *Finalizer) finalizeNonUS(uuid string) error {
+func finalizeNonUS(uuid string) error {
 	responseJSON, err := GetExiftoolGeoLookup(uuid)
 	if err != nil {
 		return fmt.Errorf("failed to get exiftool geo lookup for %s: %w", uuid, err)
@@ -130,7 +122,7 @@ func (f *Finalizer) finalizeNonUS(uuid string) error {
 
 // finalizeUS attempts geo resolution for US addresses.
 // Priority: exact match -> proximity match -> geonames API lookup.
-func (f *Finalizer) finalizeUS(uuid string, lat, lng float64) error {
+func finalizeUS(uuid string, lat, lng float64) error {
 	// Try exact coordinate match first
 	match, err := FindExactGeoMatch(lat, lng)
 	if err != nil {
@@ -170,18 +162,18 @@ func (f *Finalizer) finalizeUS(uuid string, lat, lng float64) error {
 	}
 
 	// Fall back to geonames API
-	return f.lookupGeonames(uuid, lat, lng)
+	return lookupGeonames(uuid, lat, lng)
 }
 
 // lookupGeonames calls the geonames findNearestAddressJSON API and stores the result.
-func (f *Finalizer) lookupGeonames(uuid string, lat, lng float64) error {
-	if !f.rateLimiter.Check() {
+func lookupGeonames(uuid string, lat, lng float64) error {
+	if !rateLimiter.Check() {
 		return UpdateGeoStatus(uuid, "RATE_LIMITED")
 	}
 
 	apiURL := fmt.Sprintf(
 		"http://api.geonames.org/findNearestAddressJSON?lat=%f&lng=%f&username=%s",
-		lat, lng, url.QueryEscape(f.geonamesUser),
+		lat, lng, url.QueryEscape(geonamesUser),
 	)
 
 	resp, err := http.Get(apiURL)
@@ -190,8 +182,8 @@ func (f *Finalizer) lookupGeonames(uuid string, lat, lng float64) error {
 	}
 	defer resp.Body.Close()
 
-	f.rateLimiter.Increment()
-	f.rateLimiter.Save()
+	rateLimiter.Increment()
+	rateLimiter.Save()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -207,7 +199,7 @@ func (f *Finalizer) lookupGeonames(uuid string, lat, lng float64) error {
 
 	// Store the lookup result
 	if err := InsertGeoLookup(uuid, "geonames", "findNearestAddress", &requestParams, &responseStr); err != nil {
-		f.logger.Error("failed to insert geo lookup", "uuid", uuid, "error", err)
+		geoLogger.Error("failed to insert geo lookup", "uuid", uuid, "error", err)
 	}
 
 	// Parse the response
@@ -222,11 +214,11 @@ func (f *Finalizer) lookupGeonames(uuid string, lat, lng float64) error {
 		return UpdateGeoStatus(uuid, "NO_ADDRESS_FOUND")
 	}
 
-	return f.resolveFromAddress(uuid, address, "FOUND_VIA_API", nil)
+	return resolveFromAddress(uuid, address, "FOUND_VIA_API", nil)
 }
 
 // resolveFromAddress builds geo fields from a parsed address object and updates the DB.
-func (f *Finalizer) resolveFromAddress(uuid string, address map[string]interface{}, status string, matchedUUID *string) error {
+func resolveFromAddress(uuid string, address map[string]interface{}, status string, matchedUUID *string) error {
 	// Resolve the city BEFORE composing the address string. geonames
 	// findNearestAddress sometimes returns an empty placename; in that case we
 	// fall back to a postal-code city lookup. The address string must use the
@@ -244,7 +236,7 @@ func (f *Finalizer) resolveFromAddress(uuid string, address map[string]interface
 			if cc, ok := address["countryCode"].(string); ok && cc != "" {
 				countryCode = cc
 			}
-			resolvedCity, err := f.resolveCity(uuid, postalcode, countryCode)
+			resolvedCity, err := resolveCity(uuid, postalcode, countryCode)
 			if err == nil && resolvedCity != "" {
 				cityStr = resolvedCity
 			}
@@ -311,7 +303,7 @@ func (f *Finalizer) resolveFromAddress(uuid string, address map[string]interface
 
 // resolveCity attempts to find a city name from a postal code.
 // It first checks the DB cache, then calls the geonames postalCodeLookup API.
-func (f *Finalizer) resolveCity(uuid, postalcode, country string) (string, error) {
+func resolveCity(uuid, postalcode, country string) (string, error) {
 	// Check cache first
 	responseJSON, err := FindPostalCodeMatch(postalcode, country)
 	if err != nil {
@@ -319,17 +311,17 @@ func (f *Finalizer) resolveCity(uuid, postalcode, country string) (string, error
 	}
 
 	if responseJSON != "" {
-		return f.extractCityFromPostalResponse(responseJSON)
+		return extractCityFromPostalResponse(responseJSON)
 	}
 
 	// Call geonames API
-	if !f.rateLimiter.Check() {
+	if !rateLimiter.Check() {
 		return "", fmt.Errorf("rate limited")
 	}
 
 	apiURL := fmt.Sprintf(
 		"http://api.geonames.org/postalCodeLookupJSON?postalcode=%s&country=%s&username=%s",
-		url.QueryEscape(postalcode), url.QueryEscape(country), url.QueryEscape(f.geonamesUser),
+		url.QueryEscape(postalcode), url.QueryEscape(country), url.QueryEscape(geonamesUser),
 	)
 
 	resp, err := http.Get(apiURL)
@@ -338,8 +330,8 @@ func (f *Finalizer) resolveCity(uuid, postalcode, country string) (string, error
 	}
 	defer resp.Body.Close()
 
-	f.rateLimiter.Increment()
-	f.rateLimiter.Save()
+	rateLimiter.Increment()
+	rateLimiter.Save()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -355,14 +347,14 @@ func (f *Finalizer) resolveCity(uuid, postalcode, country string) (string, error
 
 	// Store the lookup
 	if err := InsertGeoLookup(uuid, "geonames", "postalCodeLookup", &requestParams, &responseStr); err != nil {
-		f.logger.Error("failed to insert postal code lookup", "uuid", uuid, "error", err)
+		geoLogger.Error("failed to insert postal code lookup", "uuid", uuid, "error", err)
 	}
 
-	return f.extractCityFromPostalResponse(responseStr)
+	return extractCityFromPostalResponse(responseStr)
 }
 
 // extractCityFromPostalResponse extracts the city/placeName from a postal code lookup response.
-func (f *Finalizer) extractCityFromPostalResponse(responseJSON string) (string, error) {
+func extractCityFromPostalResponse(responseJSON string) (string, error) {
 	var result map[string]interface{}
 	if err := json.Unmarshal([]byte(responseJSON), &result); err != nil {
 		return "", err

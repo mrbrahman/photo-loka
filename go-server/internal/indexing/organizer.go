@@ -24,30 +24,22 @@ type PlaceResult struct {
 	Filename  string
 }
 
-// Organizer handles file placement, moves, and trash operations.
-type Organizer struct {
-	logger *slog.Logger
-}
-
-// NewOrganizer creates a new Organizer instance.
-func NewOrganizer() *Organizer {
-	return &Organizer{
-		logger: slog.Default().With("component", "organizer"),
-	}
-}
+// File placement, moves, and trash operations are package-level functions
+// (single instance in this process). orgLogger is the package logger.
+var orgLogger = slog.Default().With("component", "organizer")
 
 // PlaceFileInCollection determines the target album folder for a file.
 // In-place mode: parses the existing folder path with the collection pattern.
 // Intake mode: formats a folder path from capture date and moves the file.
-func (o *Organizer) PlaceFileInCollection(collection *collections.Collection, filename string, captureDateTime *media.CaptureDateTime, inPlace bool) (*PlaceResult, error) {
+func PlaceFileInCollection(collection *collections.Collection, filename string, captureDateTime *media.CaptureDateTime, inPlace bool) (*PlaceResult, error) {
 	if inPlace {
-		return o.placeInPlace(collection, filename)
+		return placeInPlace(collection, filename)
 	}
-	return o.placeIntake(collection, filename, captureDateTime)
+	return placeIntake(collection, filename, captureDateTime)
 }
 
 // placeInPlace parses the folder structure to derive album date and name.
-func (o *Organizer) placeInPlace(collection *collections.Collection, filename string) (*PlaceResult, error) {
+func placeInPlace(collection *collections.Collection, filename string) (*PlaceResult, error) {
 	// Get relative path from collection root
 	relPath, err := filepath.Rel(collection.CollectionPath, filename)
 	if err != nil {
@@ -61,7 +53,7 @@ func (o *Organizer) placeInPlace(collection *collections.Collection, filename st
 	parsed := utils.ParsePattern(filepath.ToSlash(dir), collection.ApplyFolderPattern)
 	if parsed == nil {
 		// Could not parse - use folder name as album name, no date
-		o.logChange(collection.CollectionID, "in-place", "", &filename)
+		logChange(collection.CollectionID, "in-place", "", &filename)
 		return &PlaceResult{
 			AlbumDate: "",
 			AlbumName: dir,
@@ -74,7 +66,7 @@ func (o *Organizer) placeInPlace(collection *collections.Collection, filename st
 	albumName := parsed["album"]
 
 	// Audit the in-place index (path1 NULL, path2 = the file), matching Node.
-	o.logChange(collection.CollectionID, "in-place", "", &filename)
+	logChange(collection.CollectionID, "in-place", "", &filename)
 
 	return &PlaceResult{
 		AlbumDate: albumDate,
@@ -84,7 +76,7 @@ func (o *Organizer) placeInPlace(collection *collections.Collection, filename st
 }
 
 // placeIntake formats a target folder from the capture date and moves the file there.
-func (o *Organizer) placeIntake(collection *collections.Collection, filename string, captureDateTime *media.CaptureDateTime) (*PlaceResult, error) {
+func placeIntake(collection *collections.Collection, filename string, captureDateTime *media.CaptureDateTime) (*PlaceResult, error) {
 	if captureDateTime == nil {
 		return nil, fmt.Errorf("capture date/time is required for intake indexing of %s", filename)
 	}
@@ -123,7 +115,7 @@ func (o *Organizer) placeIntake(collection *collections.Collection, filename str
 		return nil, fmt.Errorf("creating target directory %s: %w", targetDir, err)
 	}
 	if !dirExisted {
-		o.logChange(collection.CollectionID, "create-dir", "", &targetDir)
+		logChange(collection.CollectionID, "create-dir", "", &targetDir)
 	}
 
 	// Move file to target directory
@@ -137,9 +129,9 @@ func (o *Organizer) placeIntake(collection *collections.Collection, filename str
 		return nil, fmt.Errorf("moving file to collection: %w", err)
 	}
 
-	o.logChange(collection.CollectionID, "move", filename, &targetPath)
+	logChange(collection.CollectionID, "move", filename, &targetPath)
 
-	o.logger.Info("file placed in collection",
+	orgLogger.Info("file placed in collection",
 		"source", filename,
 		"target", targetPath,
 		"album_date", albumDate,
@@ -154,9 +146,9 @@ func (o *Organizer) placeIntake(collection *collections.Collection, filename str
 }
 
 // RenameAlbumFolder renames an album folder from one name to another.
-func (o *Organizer) RenameAlbumFolder(collection *collections.Collection, currAlbumDate, currAlbumName, newAlbumDate, newAlbumName string) error {
-	currPath := o.AlbumFolderAbsPath(collection, currAlbumDate, currAlbumName)
-	newPath := o.AlbumFolderAbsPath(collection, newAlbumDate, newAlbumName)
+func RenameAlbumFolder(collection *collections.Collection, currAlbumDate, currAlbumName, newAlbumDate, newAlbumName string) error {
+	currPath := AlbumFolderAbsPath(collection, currAlbumDate, currAlbumName)
+	newPath := AlbumFolderAbsPath(collection, newAlbumDate, newAlbumName)
 
 	if currPath == newPath {
 		return nil
@@ -171,9 +163,9 @@ func (o *Organizer) RenameAlbumFolder(collection *collections.Collection, currAl
 		return fmt.Errorf("renaming album folder from %s to %s: %w", currPath, newPath, err)
 	}
 
-	o.logChange(collection.CollectionID, "RENAME_FOLDER", currPath, &newPath)
+	logChange(collection.CollectionID, "RENAME_FOLDER", currPath, &newPath)
 
-	o.logger.Info("album folder renamed",
+	orgLogger.Info("album folder renamed",
 		"from", currPath,
 		"to", newPath,
 	)
@@ -182,7 +174,7 @@ func (o *Organizer) RenameAlbumFolder(collection *collections.Collection, currAl
 }
 
 // AlbumFolderAbsPath returns the absolute path for an album folder.
-func (o *Organizer) AlbumFolderAbsPath(collection *collections.Collection, albumDate, albumName string) string {
+func AlbumFolderAbsPath(collection *collections.Collection, albumDate, albumName string) string {
 	// Parse album date
 	values := map[string]string{
 		"album": albumName,
@@ -209,7 +201,7 @@ func (o *Organizer) AlbumFolderAbsPath(collection *collections.Collection, album
 
 // MoveItem moves a file from src to dest, with EXDEV fallback (copy+delete).
 // If silent is true, the move is not logged to the file audit table.
-func (o *Organizer) MoveItem(collectionID int64, src, dest string, silent bool) error {
+func MoveItem(collectionID int64, src, dest string, silent bool) error {
 	// Ensure destination directory exists
 	if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
 		return fmt.Errorf("creating destination directory: %w", err)
@@ -220,14 +212,14 @@ func (o *Organizer) MoveItem(collectionID int64, src, dest string, silent bool) 
 	}
 
 	if !silent {
-		o.logChange(collectionID, "MOVE", src, &dest)
+		logChange(collectionID, "MOVE", src, &dest)
 	}
 
 	return nil
 }
 
 // MoveFileToTrash moves items to the collection's .trash folder.
-func (o *Organizer) MoveFileToTrash(collectionID int64, uuids []string) error {
+func MoveFileToTrash(collectionID int64, uuids []string) error {
 	filenames, err := GetFileNames(uuids)
 	if err != nil {
 		return fmt.Errorf("getting filenames for trash: %w", err)
@@ -236,7 +228,7 @@ func (o *Organizer) MoveFileToTrash(collectionID int64, uuids []string) error {
 	for _, uuid := range uuids {
 		filename, ok := filenames[uuid]
 		if !ok {
-			o.logger.Warn("uuid not found for trash", "uuid", uuid)
+			orgLogger.Warn("uuid not found for trash", "uuid", uuid)
 			continue
 		}
 
@@ -253,14 +245,14 @@ func (o *Organizer) MoveFileToTrash(collectionID int64, uuids []string) error {
 			return fmt.Errorf("updating DB for trashed item %s: %w", uuid, err)
 		}
 
-		o.logChange(collectionID, "TRASH", filename, &trashPath)
+		logChange(collectionID, "TRASH", filename, &trashPath)
 	}
 
 	return nil
 }
 
 // RestoreFromTrash restores trashed items by removing the '.Trash_' prefix.
-func (o *Organizer) RestoreFromTrash(collectionID int64, uuids []string) error {
+func RestoreFromTrash(collectionID int64, uuids []string) error {
 	filenames, err := GetFileNames(uuids)
 	if err != nil {
 		return fmt.Errorf("getting filenames for restore: %w", err)
@@ -269,7 +261,7 @@ func (o *Organizer) RestoreFromTrash(collectionID int64, uuids []string) error {
 	for _, uuid := range uuids {
 		trashPath, ok := filenames[uuid]
 		if !ok {
-			o.logger.Warn("uuid not found for restore", "uuid", uuid)
+			orgLogger.Warn("uuid not found for restore", "uuid", uuid)
 			continue
 		}
 
@@ -287,14 +279,14 @@ func (o *Organizer) RestoreFromTrash(collectionID int64, uuids []string) error {
 			return fmt.Errorf("updating DB for restored item %s: %w", uuid, err)
 		}
 
-		o.logChange(collectionID, "RESTORE", trashPath, &restoredPath)
+		logChange(collectionID, "RESTORE", trashPath, &restoredPath)
 	}
 
 	return nil
 }
 
 // MarkFilePrivate renames files to add a "private_" prefix.
-func (o *Organizer) MarkFilePrivate(collectionID int64, uuids []string) error {
+func MarkFilePrivate(collectionID int64, uuids []string) error {
 	filenames, err := GetFileNames(uuids)
 	if err != nil {
 		return fmt.Errorf("getting filenames for mark private: %w", err)
@@ -303,7 +295,7 @@ func (o *Organizer) MarkFilePrivate(collectionID int64, uuids []string) error {
 	for _, uuid := range uuids {
 		filename, ok := filenames[uuid]
 		if !ok {
-			o.logger.Warn("uuid not found for mark private", "uuid", uuid)
+			orgLogger.Warn("uuid not found for mark private", "uuid", uuid)
 			continue
 		}
 
@@ -320,14 +312,14 @@ func (o *Organizer) MarkFilePrivate(collectionID int64, uuids []string) error {
 			return fmt.Errorf("updating DB for private item %s: %w", uuid, err)
 		}
 
-		o.logChange(collectionID, "MARK_PRIVATE", filename, &newPath)
+		logChange(collectionID, "MARK_PRIVATE", filename, &newPath)
 	}
 
 	return nil
 }
 
 // UnmarkFilePrivate removes the leading dot from filenames.
-func (o *Organizer) UnmarkFilePrivate(collectionID int64, uuids []string) error {
+func UnmarkFilePrivate(collectionID int64, uuids []string) error {
 	filenames, err := GetFileNames(uuids)
 	if err != nil {
 		return fmt.Errorf("getting filenames for unmark private: %w", err)
@@ -336,7 +328,7 @@ func (o *Organizer) UnmarkFilePrivate(collectionID int64, uuids []string) error 
 	for _, uuid := range uuids {
 		filename, ok := filenames[uuid]
 		if !ok {
-			o.logger.Warn("uuid not found for unmark private", "uuid", uuid)
+			orgLogger.Warn("uuid not found for unmark private", "uuid", uuid)
 			continue
 		}
 
@@ -356,14 +348,14 @@ func (o *Organizer) UnmarkFilePrivate(collectionID int64, uuids []string) error 
 			return fmt.Errorf("updating DB for unprivate item %s: %w", uuid, err)
 		}
 
-		o.logChange(collectionID, "UNMARK_PRIVATE", filename, &newPath)
+		logChange(collectionID, "UNMARK_PRIVATE", filename, &newPath)
 	}
 
 	return nil
 }
 
 // ListAllFiles recursively walks a directory and returns all file paths.
-func (o *Organizer) ListAllFiles(collectionPath string) ([]string, error) {
+func ListAllFiles(collectionPath string) ([]string, error) {
 	var files []string
 
 	err := filepath.Walk(collectionPath, func(path string, info os.FileInfo, err error) error {
@@ -391,7 +383,7 @@ func (o *Organizer) ListAllFiles(collectionPath string) ([]string, error) {
 }
 
 // GetFilesMtime returns a map of filename->mtime (unix seconds) for all files in the directory.
-func (o *Organizer) GetFilesMtime(dir string) (map[string]int64, error) {
+func GetFilesMtime(dir string) (map[string]int64, error) {
 	result := make(map[string]int64)
 
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
@@ -419,7 +411,7 @@ func (o *Organizer) GetFilesMtime(dir string) (map[string]int64, error) {
 }
 
 // logChange records a file operation in the audit table if auditing is enabled.
-func (o *Organizer) logChange(collectionID int64, action, path1 string, path2 *string) {
+func logChange(collectionID int64, action, path1 string, path2 *string) {
 	if !config.Rt.AuditFiles {
 		return
 	}
@@ -431,7 +423,7 @@ func (o *Organizer) logChange(collectionID int64, action, path1 string, path2 *s
 		p1 = &path1
 	}
 	if err := FileAudit(collectionID, action, p1, path2); err != nil {
-		o.logger.Error("failed to log file audit",
+		orgLogger.Error("failed to log file audit",
 			"action", action,
 			"path1", path1,
 			"error", err,

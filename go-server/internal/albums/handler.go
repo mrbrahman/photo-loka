@@ -8,20 +8,11 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"photo-loka/internal/collections"
+	"photo-loka/internal/indexing"
 )
 
-// Organizer is the interface for album folder operations.
-type Organizer interface {
-	RenameAlbumFolder(collection *collections.Collection, currAlbumDate, currAlbumName, newAlbumDate, newAlbumName string) error
-	AlbumFolderAbsPath(collection *collections.Collection, albumDate, albumName string) string
-}
-
-// organizer performs album folder operations. Set via RegisterRoutes.
-var organizer Organizer
-
 // RegisterRoutes registers album routes on the given router group.
-func RegisterRoutes(rg *gin.RouterGroup, org Organizer) {
-	organizer = org
+func RegisterRoutes(rg *gin.RouterGroup) {
 	rg.POST("/updateAlbumName", updateAlbumName)
 }
 
@@ -83,7 +74,7 @@ func updateAlbumName(c *gin.Context) {
 	// Rename physical folder on disk (skip for VIRTUAL_ALBUM)
 	if collection.AlbumType != "VIRTUAL_ALBUM" {
 		// Check if destination folder already exists
-		newPath := organizer.AlbumFolderAbsPath(collection, req.AlbumDate, req.NewAlbumName)
+		newPath := indexing.AlbumFolderAbsPath(collection, req.AlbumDate, req.NewAlbumName)
 		if _, err := os.Stat(newPath); err == nil {
 			c.JSON(http.StatusConflict, gin.H{
 				"error": gin.H{"message": "Destination folder already exists", "code": "FOLDER_EXISTS"},
@@ -91,7 +82,7 @@ func updateAlbumName(c *gin.Context) {
 			return
 		}
 
-		if err := organizer.RenameAlbumFolder(collection, req.AlbumDate, req.CurrAlbumName, req.AlbumDate, req.NewAlbumName); err != nil {
+		if err := indexing.RenameAlbumFolder(collection, req.AlbumDate, req.CurrAlbumName, req.AlbumDate, req.NewAlbumName); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error": gin.H{"message": "Failed to rename folder: " + err.Error(), "code": "RENAME_FAILED"},
 			})

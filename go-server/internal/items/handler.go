@@ -21,14 +21,12 @@ import (
 // Package-level collaborators for the item route handlers, set via
 // RegisterRoutes. Runtime config uses the config.Rt singleton directly.
 var (
-	organizer *indexing.Organizer
 	thumbsDir string
 	logger    = slog.Default().With("component", "items-handler")
 )
 
 // RegisterRoutes registers all item-related routes on the given router group.
-func RegisterRoutes(rg *gin.RouterGroup, org *indexing.Organizer, thumbs string) {
-	organizer = org
+func RegisterRoutes(rg *gin.RouterGroup, thumbs string) {
 	thumbsDir = thumbs
 	rg.PUT("/updateRating", updateRating)
 	rg.PUT("/updateDescription", updateDescription)
@@ -148,7 +146,7 @@ func renameFile(c *gin.Context) {
 	newFilename := filepath.Join(dir, body.NewBasename)
 
 	// Move (rename) the file
-	if err := organizer.MoveItem(body.CollectionID, oldFilename, newFilename, false); err != nil {
+	if err := indexing.MoveItem(body.CollectionID, oldFilename, newFilename, false); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": "failed to rename file: " + err.Error(),
 			"code":    "FS_ERROR",
@@ -269,7 +267,7 @@ func trashItems(c *gin.Context) {
 		return
 	}
 
-	if err := organizer.MoveFileToTrash(body.CollectionID, body.UUIDs); err != nil {
+	if err := indexing.MoveFileToTrash(body.CollectionID, body.UUIDs); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": "failed to trash items: " + err.Error(),
 			"code":    "FS_ERROR",
@@ -299,9 +297,9 @@ func togglePrivate(c *gin.Context) {
 
 	var err error
 	if body.MakePrivate {
-		err = organizer.MarkFilePrivate(body.CollectionID, body.UUIDs)
+		err = indexing.MarkFilePrivate(body.CollectionID, body.UUIDs)
 	} else {
-		err = organizer.UnmarkFilePrivate(body.CollectionID, body.UUIDs)
+		err = indexing.UnmarkFilePrivate(body.CollectionID, body.UUIDs)
 	}
 
 	if err != nil {
@@ -331,7 +329,7 @@ func restoreFromTrash(c *gin.Context) {
 		return
 	}
 
-	if err := organizer.RestoreFromTrash(body.CollectionID, body.UUIDs); err != nil {
+	if err := indexing.RestoreFromTrash(body.CollectionID, body.UUIDs); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": "failed to restore items: " + err.Error(),
 			"code":    "FS_ERROR",
@@ -463,7 +461,7 @@ func moveItems(c *gin.Context) {
 	}
 
 	// Compute target folder absolute path
-	targetDir := organizer.AlbumFolderAbsPath(col, req.TargetAlbumDate, req.TargetAlbumName)
+	targetDir := indexing.AlbumFolderAbsPath(col, req.TargetAlbumDate, req.TargetAlbumName)
 
 	// Ensure target directory exists
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
@@ -503,7 +501,7 @@ func moveItems(c *gin.Context) {
 	// TODO: Consider parallelizing file moves (Node.js uses Promise.allSettled).
 	// Sequential is fine for same-device renames; parallelism helps for cross-device copy+delete.
 	for _, entry := range plan {
-		if err := organizer.MoveItem(req.CollectionID, entry.src, entry.dest, false); err != nil {
+		if err := indexing.MoveItem(req.CollectionID, entry.src, entry.dest, false); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error": gin.H{"message": fmt.Sprintf("Failed to move %s: %s", entry.uuid, err.Error()), "code": "MOVE_ERROR"},
 			})

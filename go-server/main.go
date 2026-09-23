@@ -196,15 +196,13 @@ func runServe() {
 	}
 
 	// Create indexing components
-	organizer := indexing.NewOrganizer()
-	indexer := indexing.NewIndexer(organizer, indexQueue, videoQueue, cfg.ThumbsDir)
+	indexer := indexing.NewIndexer(indexQueue, videoQueue, cfg.ThumbsDir)
 
-	// Initialize geo package (finalizer + dedicated single-threaded queue).
+	// Initialize geo package (dedicated single-threaded queue + rate limiter).
 	geoQueue := queue.New(1) // geo runs single-threaded due to rate limits
 	rateLimitStateFile := filepath.Join(cfg.DataDir, "rate_limit_state.json")
 	rateLimiter := geo.NewRateLimiter(rateLimitStateFile)
-	geoFinalizer := geo.NewFinalizer(rateLimiter, cfg.GeonamesUsername)
-	geo.Init(geoFinalizer, geoQueue)
+	geo.Init(geoQueue, rateLimiter, cfg.GeonamesUsername)
 
 	// Initialize ML package (HTTP client + face/thumbnail dirs).
 	ml.Init(cfg.MLServiceURL, cfg.FacesDir, cfg.ThumbsDir)
@@ -249,7 +247,6 @@ func runServe() {
 	// the collaborators below into each package's RegisterRoutes.
 	server.Setup(cfg, server.Deps{
 		FrameIPChecker: frameManager,
-		Organizer:      organizer,
 		Indexer:        indexer,
 		IndexQueue:     indexQueue,
 		VideoQueue:     videoQueue,
