@@ -7,23 +7,11 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"photo-loka/internal/config"
-	"photo-loka/internal/queue"
 )
 
-// Package-level collaborators for the indexing route handlers, set via
-// RegisterRoutes. indexer/queues are genuine stateful objects created in main;
-// runtime config uses the config.Rt singleton directly.
-var (
-	indexer    *Indexer
-	indexQueue *queue.Queue
-	videoQueue *queue.Queue
-)
-
-// RegisterRoutes registers all indexer-related admin routes.
-func RegisterRoutes(rg *gin.RouterGroup, idx *Indexer, idxQueue, vidQueue *queue.Queue) {
-	indexer = idx
-	indexQueue = idxQueue
-	videoQueue = vidQueue
+// RegisterRoutes registers all indexer-related admin routes. The indexing
+// queues and thumbnails dir are wired via Init at startup.
+func RegisterRoutes(rg *gin.RouterGroup) {
 	rg.POST("/startIndexingFirstTime", startIndexingFirstTime)
 	rg.POST("/scanForChanges/:collection_id", scanForChanges)
 	rg.POST("/startIntakeFileIndexing", startIntakeFileIndexing)
@@ -50,8 +38,8 @@ func startIndexingFirstTime(c *gin.Context) {
 	}
 
 	go func() {
-		if err := indexer.InitialIndexing(collectionID); err != nil {
-			indexer.logger.Error("initial indexing failed",
+		if err := InitialIndexing(collectionID); err != nil {
+			idxLogger.Error("initial indexing failed",
 				"collection_id", collectionID,
 				"error", err,
 			)
@@ -75,8 +63,8 @@ func scanForChanges(c *gin.Context) {
 	}
 
 	go func() {
-		if err := indexer.ScanForChanges(collectionID); err != nil {
-			indexer.logger.Error("scan for changes failed",
+		if err := ScanForChanges(collectionID); err != nil {
+			idxLogger.Error("scan for changes failed",
 				"collection_id", collectionID,
 				"error", err,
 			)
@@ -115,16 +103,16 @@ func startIntakeFileIndexing(c *gin.Context) {
 		var err error
 		if body.CollectionID != nil && body.Dir != nil {
 			// Mode 1: specific dir in specific collection
-			err = indexer.StartIntakeFileIndexing(*body.CollectionID, *body.Dir, body.StaleDays)
+			err = StartIntakeFileIndexing(*body.CollectionID, *body.Dir, body.StaleDays)
 		} else if body.Dir != nil {
 			// Mode 2: auto-find collection by intake path
-			err = indexer.StartIntakeByDir(*body.Dir, body.StaleDays)
+			err = StartIntakeByDir(*body.Dir, body.StaleDays)
 		} else {
 			// Mode 3: all scheduled intake paths for collection
-			err = indexer.StartIntakeForCollection(*body.CollectionID, body.StaleDays)
+			err = StartIntakeForCollection(*body.CollectionID, body.StaleDays)
 		}
 		if err != nil {
-			indexer.logger.Error("intake file indexing failed", "error", err)
+			idxLogger.Error("intake file indexing failed", "error", err)
 		}
 	}()
 
@@ -220,8 +208,8 @@ func refreshMetadataForCollection(c *gin.Context) {
 	}
 
 	go func() {
-		if err := indexer.RefreshMetadataForCollection(collectionID); err != nil {
-			indexer.logger.Error("refresh metadata for collection failed",
+		if err := RefreshMetadataForCollection(collectionID); err != nil {
+			idxLogger.Error("refresh metadata for collection failed",
 				"collection_id", collectionID,
 				"error", err,
 			)
@@ -253,8 +241,8 @@ func refreshMetadataForItem(c *gin.Context) {
 	}
 
 	go func() {
-		if err := indexer.RefreshMetadata(itemUUID, filename); err != nil {
-			indexer.logger.Error("refresh metadata for item failed",
+		if err := RefreshMetadata(itemUUID, filename); err != nil {
+			idxLogger.Error("refresh metadata for item failed",
 				"uuid", itemUUID,
 				"error", err,
 			)

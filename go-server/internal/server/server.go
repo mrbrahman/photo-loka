@@ -29,7 +29,6 @@ import (
 	"photo-loka/internal/jobs"
 	"photo-loka/internal/media"
 	"photo-loka/internal/ml"
-	"photo-loka/internal/queue"
 	"photo-loka/internal/scheduler"
 	"photo-loka/internal/search"
 )
@@ -50,9 +49,6 @@ var (
 // main and are not threaded here.
 type Deps struct {
 	FrameIPChecker auth.FrameIPChecker
-	Indexer        *indexing.Indexer
-	IndexQueue     *queue.Queue
-	VideoQueue     *queue.Queue
 	FrameManager   *frames.Manager
 	Scheduler      *scheduler.Scheduler
 	FileWatcher    *jobs.FileWatcher
@@ -129,7 +125,7 @@ func setupRoutes(deps Deps) {
 	{
 		collections.RegisterAdminRoutes(adminGroup)
 		dashboard.RegisterRoutes(adminGroup)
-		indexing.RegisterRoutes(adminGroup, deps.Indexer, deps.IndexQueue, deps.VideoQueue)
+		indexing.RegisterRoutes(adminGroup)
 		frames.RegisterAdminRoutes(adminGroup, deps.FrameManager)
 		admin.RegisterConfigRoutes(adminGroup)
 		admin.RegisterUsersRoutes(adminGroup)

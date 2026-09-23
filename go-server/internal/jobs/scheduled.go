@@ -14,17 +14,15 @@ import (
 // ScheduledIndexing manages cron-based intake indexing for collections.
 type ScheduledIndexing struct {
 	scheduler *scheduler.Scheduler
-	indexer   *indexing.Indexer
 	jobs      map[string]int64 // jobName -> collection_id
 	mu        sync.Mutex
 	logger    *slog.Logger
 }
 
 // NewScheduledIndexing creates a new ScheduledIndexing manager.
-func NewScheduledIndexing(sched *scheduler.Scheduler, indexer *indexing.Indexer) *ScheduledIndexing {
+func NewScheduledIndexing(sched *scheduler.Scheduler) *ScheduledIndexing {
 	return &ScheduledIndexing{
 		scheduler: sched,
-		indexer:   indexer,
 		jobs:      make(map[string]int64),
 		logger:    slog.Default().With("component", "scheduled-indexing"),
 	}
@@ -85,7 +83,7 @@ func (si *ScheduledIndexing) ScheduleForCollection(col *collections.Collection) 
 
 		err := si.scheduler.AddJob(jobName, schedule, func() {
 			// Check if indexer is idle before starting intake indexing
-			status := si.indexer.IndexQueue().GetStatus()
+			status := indexing.IndexQueue().GetStatus()
 			if status.Pending+status.Active > 0 {
 				si.logger.Debug("skipping scheduled intake - indexer busy",
 					"collection_id", collectionID,
@@ -96,7 +94,7 @@ func (si *ScheduledIndexing) ScheduleForCollection(col *collections.Collection) 
 				return
 			}
 
-			if err := si.indexer.StartIntakeFileIndexing(collectionID, intakePath, days); err != nil {
+			if err := indexing.StartIntakeFileIndexing(collectionID, intakePath, days); err != nil {
 				si.logger.Error("scheduled intake indexing failed",
 					"collection_id", collectionID,
 					"path", intakePath,

@@ -195,14 +195,13 @@ func runServe() {
 		indexQueue.SetConcurrency(config.Rt.MaxConcurrency)
 	}
 
-	// Create indexing components
-	indexer := indexing.NewIndexer(indexQueue, videoQueue, cfg.ThumbsDir)
+	// Initialize the indexing package (work queues + thumbnails dir).
+	indexing.Init(indexQueue, videoQueue, cfg.ThumbsDir)
 
 	// Initialize geo package (dedicated single-threaded queue + rate limiter).
 	geoQueue := queue.New(1) // geo runs single-threaded due to rate limits
 	rateLimitStateFile := filepath.Join(cfg.DataDir, "rate_limit_state.json")
-	rateLimiter := geo.NewRateLimiter(rateLimitStateFile)
-	geo.Init(geoQueue, rateLimiter, cfg.GeonamesUsername)
+	geo.Init(geoQueue, rateLimitStateFile, cfg.GeonamesUsername)
 
 	// Initialize ML package (HTTP client + face/thumbnail dirs).
 	ml.Init(cfg.MLServiceURL, cfg.FacesDir, cfg.ThumbsDir)
@@ -214,8 +213,8 @@ func runServe() {
 	frameManager := frames.NewManager(sched)
 
 	// Jobs
-	fileWatcher := jobs.NewFileWatcher(indexer)
-	scheduledIndexing := jobs.NewScheduledIndexing(sched, indexer)
+	fileWatcher := jobs.NewFileWatcher()
+	scheduledIndexing := jobs.NewScheduledIndexing(sched)
 
 	// Wire collection change callback to restart watchers/cron
 	collections.OnCollectionChanged = func(collectionID int64) {
@@ -247,9 +246,6 @@ func runServe() {
 	// the collaborators below into each package's RegisterRoutes.
 	server.Setup(cfg, server.Deps{
 		FrameIPChecker: frameManager,
-		Indexer:        indexer,
-		IndexQueue:     indexQueue,
-		VideoQueue:     videoQueue,
 		FrameManager:   frameManager,
 		Scheduler:      sched,
 		FileWatcher:    fileWatcher,
@@ -266,7 +262,6 @@ func runServe() {
 		FileWatcher:       fileWatcher,
 		ScheduledIndexing: scheduledIndexing,
 		FrameManager:      frameManager,
-		RateLimiter:       rateLimiter,
 		IndexQueue:        indexQueue,
 		VideoQueue:        videoQueue,
 		GeoQueue:          geoQueue,

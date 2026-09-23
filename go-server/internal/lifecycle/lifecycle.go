@@ -23,7 +23,6 @@ type Deps struct {
 	FileWatcher       *jobs.FileWatcher
 	ScheduledIndexing *jobs.ScheduledIndexing
 	FrameManager      *frames.Manager
-	RateLimiter       *geo.RateLimiter
 	IndexQueue        *queue.Queue
 	VideoQueue        *queue.Queue
 	GeoQueue          *queue.Queue
@@ -70,7 +69,7 @@ func ShutdownCleanup(d Deps) {
 	d.Scheduler.Stop()
 	d.FileWatcher.StopAll()
 	d.ScheduledIndexing.StopAll()
-	d.RateLimiter.Save() // persist rate limit counters for next startup
+	geo.SaveRateLimiter() // persist rate limit counters for next startup
 	d.IndexQueue.Stop()
 	d.VideoQueue.Stop()
 	d.GeoQueue.Stop()

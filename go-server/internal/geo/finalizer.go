@@ -10,10 +10,10 @@ import (
 	"strings"
 )
 
-// Geo resolution is package-level (single instance). rateLimiter and
-// geonamesUser are set by Init; geoLogger is the finalizer's logger.
+// Geo resolution is package-level (single instance). geonamesUser is set by
+// Init; geoLogger is the finalizer's logger. Rate limiting lives in
+// ratelimiter.go (also package-level).
 var (
-	rateLimiter  *RateLimiter
 	geonamesUser string
 	geoLogger    = slog.Default().With("component", "geo-finalizer")
 )
@@ -167,7 +167,7 @@ func finalizeUS(uuid string, lat, lng float64) error {
 
 // lookupGeonames calls the geonames findNearestAddressJSON API and stores the result.
 func lookupGeonames(uuid string, lat, lng float64) error {
-	if !rateLimiter.Check() {
+	if !rateCheck() {
 		return UpdateGeoStatus(uuid, "RATE_LIMITED")
 	}
 
@@ -182,8 +182,8 @@ func lookupGeonames(uuid string, lat, lng float64) error {
 	}
 	defer resp.Body.Close()
 
-	rateLimiter.Increment()
-	rateLimiter.Save()
+	rateIncrement()
+	SaveRateLimiter()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -315,7 +315,7 @@ func resolveCity(uuid, postalcode, country string) (string, error) {
 	}
 
 	// Call geonames API
-	if !rateLimiter.Check() {
+	if !rateCheck() {
 		return "", fmt.Errorf("rate limited")
 	}
 
@@ -330,8 +330,8 @@ func resolveCity(uuid, postalcode, country string) (string, error) {
 	}
 	defer resp.Body.Close()
 
-	rateLimiter.Increment()
-	rateLimiter.Save()
+	rateIncrement()
+	SaveRateLimiter()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

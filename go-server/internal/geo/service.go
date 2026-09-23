@@ -13,12 +13,12 @@ var (
 	logger   = slog.Default().With("component", "geo-service")
 )
 
-// Init wires the geo queue, rate limiter, and geonames username. Called once
-// at startup.
-func Init(q *queue.Queue, rl *RateLimiter, user string) {
+// Init wires the geo queue, initializes the rate limiter from its state file,
+// and sets the geonames username. Called once at startup.
+func Init(q *queue.Queue, rateLimitStateFile, user string) {
 	geoQueue = q
-	rateLimiter = rl
 	geonamesUser = user
+	initRateLimiter(rateLimitStateFile)
 }
 
 // Enqueue adds a single geo resolution task to the queue.

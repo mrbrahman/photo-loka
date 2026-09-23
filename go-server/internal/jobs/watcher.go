@@ -25,15 +25,13 @@ type WatcherInfo struct {
 type FileWatcher struct {
 	mu       sync.Mutex
 	watchers []WatcherInfo
-	indexer  *indexing.Indexer
 	logger   *slog.Logger
 }
 
 // NewFileWatcher creates a new FileWatcher.
-func NewFileWatcher(indexer *indexing.Indexer) *FileWatcher {
+func NewFileWatcher() *FileWatcher {
 	return &FileWatcher{
-		indexer: indexer,
-		logger:  slog.Default().With("component", "file-watcher"),
+		logger: slog.Default().With("component", "file-watcher"),
 	}
 }
 
@@ -221,11 +219,11 @@ func (fw *FileWatcher) enqueueFile(collectionID int64, filePath string) {
 
 	col := collection
 	f := filePath
-	fw.indexer.IndexQueue().Enqueue(queue.Task{
+	indexing.IndexQueue().Enqueue(queue.Task{
 		Priority:    queue.High,
 		Description: f,
 		Fn: func() error {
-			return fw.indexer.IndexFile(col, f, "", false)
+			return indexing.IndexFile(col, f, "", false)
 		},
 	})
 

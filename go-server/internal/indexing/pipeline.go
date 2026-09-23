@@ -18,27 +18,26 @@ import (
 	"photo-loka/internal/utils"
 )
 
-// Indexer orchestrates the indexing pipeline for media files.
-type Indexer struct {
+// The indexing pipeline is package-level (single instance in this process).
+// Init wires the two work queues and the thumbnails dir; idxLogger is the
+// pipeline logger.
+var (
 	indexQueue *queue.Queue
 	videoQueue *queue.Queue
 	thumbsDir  string
-	logger     *slog.Logger
-}
+	idxLogger  = slog.Default().With("component", "indexer")
+)
 
-// NewIndexer creates a new Indexer instance.
-func NewIndexer(indexQueue, videoQueue *queue.Queue, thumbsDir string) *Indexer {
-	return &Indexer{
-		indexQueue: indexQueue,
-		videoQueue: videoQueue,
-		thumbsDir:  thumbsDir,
-		logger:     slog.Default().With("component", "indexer"),
-	}
+// Init wires the indexing queues and thumbnails directory. Called once at startup.
+func Init(idxQueue, vidQueue *queue.Queue, thumbs string) {
+	indexQueue = idxQueue
+	videoQueue = vidQueue
+	thumbsDir = thumbs
 }
 
 // IndexQueue returns the indexing queue for external enqueue operations.
-func (idx *Indexer) IndexQueue() *queue.Queue {
-	return idx.indexQueue
+func IndexQueue() *queue.Queue {
+	return indexQueue
 }
 
 // IndexFile runs the full indexing pipeline for a single file:
@@ -50,7 +49,7 @@ func (idx *Indexer) IndexQueue() *queue.Queue {
 // 6. Queue video compression if enabled
 // 7. Insert or update DB row
 // 8. Log completion time
-func (idx *Indexer) IndexFile(collection *collections.Collection, sourceFile string, existingUUID string, inPlace bool) error {
+func IndexFile(collection *collections.Collection, sourceFile string, existingUUID string, inPlace bool) error {
 	start := time.Now()
 
 	// Step 1: Extract metadata
@@ -76,7 +75,7 @@ func (idx *Indexer) IndexFile(collection *collections.Collection, sourceFile str
 					TzOffsetMinutes: dt.TzOffsetMinutes,
 				}
 			}
-			idx.logger.Info("audio file without EXIF date, using file_modified_at for placement", "file", sourceFile)
+			idxLogger.Info("audio file without EXIF date, using file_modified_at for placement", "file", sourceFile)
 		}
 	}
 
@@ -119,21 +118,21 @@ func (idx *Indexer) IndexFile(collection *collections.Collection, sourceFile str
 
 	if exifData.Mediatype == "video" {
 		// Extract a frame from the video first, then generate thumbnails from that frame.
-		framePath, err := media.GenerateVideoThumbnail(fileUUID, finalFile, idx.thumbsDir)
+		framePath, err := media.GenerateVideoThumbnail(fileUUID, finalFile, thumbsDir)
 		if err != nil {
-			idx.logger.Warn("video thumbnail extraction failed", "file", finalFile, "error", err)
+			idxLogger.Warn("video thumbnail extraction failed", "file", finalFile, "error", err)
 		} else {
 			var thumbErr error
-			mlBuf, thumbErr = media.CreateImageThumbnails(fileUUID, framePath, idx.thumbsDir)
+			mlBuf, thumbErr = media.CreateImageThumbnails(fileUUID, framePath, thumbsDir)
 			if thumbErr != nil {
-				idx.logger.Warn("thumbnail creation from video frame failed", "file", finalFile, "error", thumbErr)
+				idxLogger.Warn("thumbnail creation from video frame failed", "file", finalFile, "error", thumbErr)
 			}
 		}
 	} else if exifData.Mediatype == "image" {
 		var err error
-		mlBuf, err = media.CreateImageThumbnails(fileUUID, finalFile, idx.thumbsDir)
+		mlBuf, err = media.CreateImageThumbnails(fileUUID, finalFile, thumbsDir)
 		if err != nil {
-			idx.logger.Warn("thumbnail creation failed", "file", finalFile, "error", err)
+			idxLogger.Warn("thumbnail creation failed", "file", finalFile, "error", err)
 		}
 	}
 
@@ -149,11 +148,11 @@ func (idx *Indexer) IndexFile(collection *collections.Collection, sourceFile str
 
 		vidUUID := fileUUID
 		vidFile := finalFile
-		idx.indexQueue.Enqueue(queue.Task{
+		indexQueue.Enqueue(queue.Task{
 			Priority:    queue.Low,
 			Description: vidFile,
 			Fn: func() error {
-				return media.CompressVideo(vidUUID, vidFile, idx.thumbsDir, encoder)
+				return media.CompressVideo(vidUUID, vidFile, thumbsDir, encoder)
 			},
 		})
 	}
@@ -209,7 +208,7 @@ func (idx *Indexer) IndexFile(collection *collections.Collection, sourceFile str
 			if hasData {
 				geoJSON, _ := json.Marshal(exifData.ExiftoolGeoJSON)
 				if err := InsertGeoLookup(fileUUID, "exiftool", "geolocation", string(geoJSON)); err != nil {
-					idx.logger.Warn("failed to store exiftool geo data", "uuid", fileUUID, "error", err)
+					idxLogger.Warn("failed to store exiftool geo data", "uuid", fileUUID, "error", err)
 				}
 			}
 		}
@@ -235,7 +234,7 @@ func (idx *Indexer) IndexFile(collection *collections.Collection, sourceFile str
 	if (exifData.Mediatype == "image" || exifData.Mediatype == "video") && config.Rt.PerformFaceRecognition {
 		faceUUID := fileUUID
 		buf := mlBuf // capture for closure
-		idx.indexQueue.Enqueue(queue.Task{
+		indexQueue.Enqueue(queue.Task{
 			Priority:    queue.Normal,
 			Description: "face:" + faceUUID,
 			Fn: func() error {
@@ -246,7 +245,7 @@ func (idx *Indexer) IndexFile(collection *collections.Collection, sourceFile str
 		// Image encoding (CLIP) is intentionally not enabled in the pipeline yet.
 		// The buffer endpoint and ProcessImageEncoding are wired up and ready;
 		// uncomment to enable semantic-search indexing during indexing.
-		// idx.indexQueue.Enqueue(queue.Task{
+		// indexQueue.Enqueue(queue.Task{
 		// 	Priority:    queue.Normal,
 		// 	Description: "encode:" + faceUUID,
 		// 	Fn: func() error {
@@ -257,7 +256,7 @@ func (idx *Indexer) IndexFile(collection *collections.Collection, sourceFile str
 
 	// Step 10: Log completion
 	duration := time.Since(start)
-	idx.logger.Info("file indexed",
+	idxLogger.Info("file indexed",
 		"uuid", fileUUID,
 		"file", finalFile,
 		"mediatype", exifData.Mediatype,
@@ -268,7 +267,7 @@ func (idx *Indexer) IndexFile(collection *collections.Collection, sourceFile str
 }
 
 // RefreshMetadata re-extracts metadata for an already indexed file and updates the DB.
-func (idx *Indexer) RefreshMetadata(uuid string, filename string) error {
+func RefreshMetadata(uuid string, filename string) error {
 	exifData, err := media.ExtractMetadata(filename)
 	if err != nil {
 		return fmt.Errorf("extracting metadata for refresh of %s: %w", uuid, err)
@@ -376,7 +375,7 @@ func (idx *Indexer) RefreshMetadata(uuid string, filename string) error {
 		return fmt.Errorf("updating metadata for %s: %w", uuid, err)
 	}
 
-	idx.logger.Debug("metadata refreshed", "uuid", uuid)
+	idxLogger.Debug("metadata refreshed", "uuid", uuid)
 	return nil
 }
 

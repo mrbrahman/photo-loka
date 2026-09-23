@@ -14,7 +14,7 @@ import (
 
 // StartIntakeFileIndexing finds pending files in the intake directory that are
 // older than staleDays, and enqueues each for indexing (inPlace=false).
-func (idx *Indexer) StartIntakeFileIndexing(collectionID int64, dir string, staleDays int) error {
+func StartIntakeFileIndexing(collectionID int64, dir string, staleDays int) error {
 	collection, err := collections.Get(collectionID)
 	if err != nil {
 		return fmt.Errorf("getting collection %d: %w", collectionID, err)
@@ -23,11 +23,11 @@ func (idx *Indexer) StartIntakeFileIndexing(collectionID int64, dir string, stal
 		return fmt.Errorf("collection %d not found", collectionID)
 	}
 
-	return idx.enqueueIntakeFiles(collection, dir, staleDays)
+	return enqueueIntakeFiles(collection, dir, staleDays)
 }
 
 // StartIntakeByDir finds the collection that owns the given intake path and runs indexing.
-func (idx *Indexer) StartIntakeByDir(dir string, staleDays int) error {
+func StartIntakeByDir(dir string, staleDays int) error {
 	collection, err := collections.GetByIntakePath(dir)
 	if err != nil {
 		return fmt.Errorf("finding collection for intake path %s: %w", dir, err)
@@ -38,14 +38,14 @@ func (idx *Indexer) StartIntakeByDir(dir string, staleDays int) error {
 
 	// If staleDays not explicitly provided, try to get from the intake config
 	if staleDays <= 0 {
-		staleDays = idx.getStaleDaysForPath(collection, dir)
+		staleDays = getStaleDaysForPath(collection, dir)
 	}
 
-	return idx.enqueueIntakeFiles(collection, dir, staleDays)
+	return enqueueIntakeFiles(collection, dir, staleDays)
 }
 
 // StartIntakeForCollection runs intake indexing for all scheduled intake paths in a collection.
-func (idx *Indexer) StartIntakeForCollection(collectionID int64, staleDays int) error {
+func StartIntakeForCollection(collectionID int64, staleDays int) error {
 	collection, err := collections.Get(collectionID)
 	if err != nil {
 		return fmt.Errorf("getting collection %d: %w", collectionID, err)
@@ -74,8 +74,8 @@ func (idx *Indexer) StartIntakeForCollection(collectionID int64, staleDays int) 
 			}
 		}
 
-		if err := idx.enqueueIntakeFiles(collection, path, days); err != nil {
-			idx.logger.Error("intake indexing failed for path", "path", path, "error", err)
+		if err := enqueueIntakeFiles(collection, path, days); err != nil {
+			idxLogger.Error("intake indexing failed for path", "path", path, "error", err)
 		}
 	}
 
@@ -83,7 +83,7 @@ func (idx *Indexer) StartIntakeForCollection(collectionID int64, staleDays int) 
 }
 
 // getStaleDaysForPath extracts the staleDays config for a given intake path.
-func (idx *Indexer) getStaleDaysForPath(collection *collections.Collection, dir string) int {
+func getStaleDaysForPath(collection *collections.Collection, dir string) int {
 	intakeConfigs := parseIntakeConfigs(collection)
 	for _, ic := range intakeConfigs {
 		path, _ := ic["path"].(string)
@@ -110,7 +110,7 @@ func parseIntakeConfigs(collection *collections.Collection) []map[string]interfa
 	return configs
 }
 
-func (idx *Indexer) enqueueIntakeFiles(collection *collections.Collection, dir string, staleDays int) error {
+func enqueueIntakeFiles(collection *collections.Collection, dir string, staleDays int) error {
 
 	cutoffTime := time.Now().AddDate(0, 0, -staleDays)
 
@@ -127,16 +127,16 @@ func (idx *Indexer) enqueueIntakeFiles(collection *collections.Collection, dir s
 			Priority:    queue.High,
 			Description: f,
 			Fn: func() error {
-				return idx.IndexFile(col, f, "", false)
+				return IndexFile(col, f, "", false)
 			},
 		})
 	}
 
 	if len(tasks) > 0 {
-		idx.indexQueue.EnqueueMany(tasks)
+		indexQueue.EnqueueMany(tasks)
 	}
 
-	idx.logger.Info("intake indexing started",
+	idxLogger.Info("intake indexing started",
 		"collection_id", collection.CollectionID,
 		"dir", dir,
 		"stale_days", staleDays,
