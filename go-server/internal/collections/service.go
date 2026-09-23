@@ -28,52 +28,27 @@ type intakeConfig struct {
 	Method string `json:"method"`
 }
 
-// Service provides business logic for collections.
-type Service struct{}
-
-// NewService creates a new collections Service.
-func NewService() *Service {
-	return &Service{}
-}
+// This file holds the collections business logic (validation + filesystem
+// helpers) as package-level functions. The raw SQL lives in db.go.
 
 // Create validates and creates a new collection.
-func (s *Service) Create(col *Collection) (int64, error) {
+func Create(col *Collection) (int64, error) {
 	if err := validateCollection(col); err != nil {
 		return 0, err
 	}
-	return Create(col)
+	return insertCollection(col)
 }
 
 // Update validates and updates an existing collection.
-func (s *Service) Update(collectionID int64, col *Collection) error {
+func Update(collectionID int64, col *Collection) error {
 	if err := validateCollection(col); err != nil {
 		return err
 	}
-	return Update(collectionID, col)
-}
-
-// GetAll returns all collections.
-func (s *Service) GetAll() ([]Collection, error) {
-	return GetAll()
-}
-
-// Get returns a single collection by ID.
-func (s *Service) Get(collectionID int64) (*Collection, error) {
-	return Get(collectionID)
-}
-
-// GetDefault returns the default collection.
-func (s *Service) GetDefault() (*Collection, error) {
-	return GetDefault()
-}
-
-// GetSummary returns a lightweight list of collections.
-func (s *Service) GetSummary() ([]CollectionSummary, error) {
-	return GetSummary()
+	return updateCollectionRow(collectionID, col)
 }
 
 // ListSubDirs reads a directory and returns the names of its subdirectories.
-func (s *Service) ListSubDirs(dirPath string) ([]string, error) {
+func ListSubDirs(dirPath string) ([]string, error) {
 	entries, err := os.ReadDir(dirPath)
 	if err != nil {
 		return nil, &auth.AppError{
@@ -94,7 +69,7 @@ func (s *Service) ListSubDirs(dirPath string) ([]string, error) {
 }
 
 // IsValidDir checks if the given path exists and is a directory.
-func (s *Service) IsValidDir(path string) bool {
+func IsValidDir(path string) bool {
 	info, err := os.Stat(path)
 	if err != nil {
 		return false
@@ -103,13 +78,13 @@ func (s *Service) IsValidDir(path string) bool {
 }
 
 // SetIntakeStatus updates the status of a single intake config entry.
-func (s *Service) SetIntakeStatus(collectionID int64, index int, status string) error {
-	return SetIntakeStatusByIndex(collectionID, index, status)
+func SetIntakeStatus(collectionID int64, index int, status string) error {
+	return setIntakeStatusByIndex(collectionID, index, status)
 }
 
 // SetAllIntakeStatus updates the status of all intake config entries.
-func (s *Service) SetAllIntakeStatus(collectionID int64, status string) error {
-	return SetAllIntakeStatus(collectionID, status)
+func SetAllIntakeStatus(collectionID int64, status string) error {
+	return setAllIntakeStatusRows(collectionID, status)
 }
 
 // validateCollection checks that a collection has valid fields.

@@ -22,15 +22,13 @@ import (
 // RegisterRoutes. Runtime config uses the config.Rt singleton directly.
 var (
 	organizer *indexing.Organizer
-	mlService *ml.Service
 	thumbsDir string
 	logger    = slog.Default().With("component", "items-handler")
 )
 
 // RegisterRoutes registers all item-related routes on the given router group.
-func RegisterRoutes(rg *gin.RouterGroup, org *indexing.Organizer, mlSvc *ml.Service, thumbs string) {
+func RegisterRoutes(rg *gin.RouterGroup, org *indexing.Organizer, thumbs string) {
 	organizer = org
-	mlService = mlSvc
 	thumbsDir = thumbs
 	rg.PUT("/updateRating", updateRating)
 	rg.PUT("/updateDescription", updateDescription)
@@ -405,7 +403,7 @@ func permanentlyDeleteItems(uuids []string) []string {
 		media.DeleteCompressedVideo(uuid, thumbsDir)
 
 		// 4. Cleanup face/ML data (DB + external ML service)
-		mlService.CleanupMLData(uuid)
+		ml.CleanupMLData(uuid)
 
 		// 5. Delete metadata row from DB
 		if err := indexing.DeleteMetadata(uuid); err != nil {

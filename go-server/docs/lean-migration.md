@@ -94,7 +94,7 @@ Services (stateless business logic): fold into package-level funcs:
 - [x] Phase 0
 - [x] Phase 1
 - [x] Phase 2
-- [ ] Phase 3
+- [x] Phase 3
 - [ ] Phase 4
 - [ ] Phase 5
 
@@ -202,4 +202,70 @@ what is next, any surprises.)
   package vars that currently hold `*Service` to call the package funcs instead,
   and drop the `svc`/`authService` indirection + the RegisterRoutes service
   params. Update server.Deps + main.go accordingly.
+
+- Phase 3 DONE (compiles green: `go build`/`go vet -tags "fts5
+  sqlite_math_functions" ./...` exit 0; `./build.sh` exit 0). grep confirms NO
+  `type Service struct` / `func NewService` in collections/geo/ml/auth.
+  - All 4 services collapsed to package-level funcs. Each package now holds its
+    collaborators as package vars set once via an `Init(...)` func (auth, geo,
+    ml) or uses globals directly (collections uses database.DB).
+  - auth: `Init(secret)` sets package `jwtSecret`; `logger` is a package var.
+    All Service methods -> package funcs (Login, RefreshAccessToken, Logout,
+    VerifyAccessToken, CreateUser, UnlockUser, GenerateAPIToken, GetAllUsers,
+    UpdateUserRole, CleanupExpiredTokens). Middleware `AuthMiddleware()` /
+    `MediaAuthMiddleware(frameChecker)` dropped the `*Service` param.
+  - geo: `Init(finalizer, queue)` sets package vars `finalizer`/`geoQueue`;
+    Enqueue/EnqueueMany/Status/QueueSizes -> package funcs.
+  - ml: `Init(client, faces, thumbs)` sets package vars; service methods ->
+    package funcs.
+  - collections: Service removed; validated `Create`/`Update` + `ListSubDirs`/
+    `IsValidDir`/`SetIntakeStatus`/`SetAllIntakeStatus` are package funcs in
+    service.go; passthroughs (Get/GetAll/GetDefault/GetSummary) call db funcs
+    directly from the handler.
+  - COLLISION RESOLUTION (recurring theme): where a service func and a db func
+    shared a name in the same package, the raw db-layer func was renamed to an
+    unexported name and the exported package func is the business entry point:
+    * auth/db.go: CreateUser->insertUser, GetUserByUsername->getUserByUsername,
+      IncrementFailedAttempts->incrementFailedAttempts, LockUser->lockUser,
+      UnlockUser->clearUserLock, ResetFailedAttempts->resetFailedAttempts,
+      SaveRefreshToken->saveRefreshToken, GetRefreshToken->getRefreshToken,
+      DeleteRefreshToken->deleteRefreshToken,
+      CleanupExpiredTokens->deleteExpiredTokens, GetAllUsers->getAllUsers,
+      UpdateUserRole->updateUserRole. (Cross-package callers only use the
+      exported service-level funcs, so this is safe.)
+    * collections/db.go: Create->insertCollection, Update->updateCollectionRow,
+      SetIntakeStatusByIndex->setIntakeStatusByIndex,
+      SetAllIntakeStatus->setAllIntakeStatusRows. (Cross-package still uses
+      exported Get/GetAll/GetByIntakePath/SetIntakeStatusByMethod.)
+    * ml/db.go: GetItemForRecognition->getItemForRecognition,
+      SaveFaceResults->saveFaceResults, GetFacesByUUID->getFacesByUUID,
+      GetFacesByPerson->queryFacesByPerson (extra rename to dodge the handler's
+      getFacesByPerson route func), NameFaceCluster->nameFaceClusterDB,
+      UpdatePersonName->updatePersonNameDB, SearchPersonNames->searchPersonNamesDB,
+      DismissCluster->dismissClusterDB, UndismissCluster->undismissClusterDB,
+      DeleteFaceData->deleteFaceData.
+  - indexing.Indexer: dropped `geoService`/`mlService` fields + SetGeoService/
+    SetMLService; pipeline calls `geo.Enqueue` and `ml.ProcessFaceRecognition`
+    directly. The old `!= nil` "is enrichment wired" guards were removed (geo/ml
+    are always initialized now); the ML face-recognition guard keeps the
+    `config.Rt.PerformFaceRecognition` check.
+  - handlers: authn/admin.users drop authService var+param -> call `auth.*`;
+    ml/geo drop `svc` var -> call package funcs; collections drops `svc`.
+    RegisterRoutes signatures updated (no service params).
+  - server.Deps: dropped AuthService, CollectionsSvc, MLService, GeoService.
+    Middleware calls updated to no-param form. main.go: `auth.Init`, `geo.Init`,
+    `ml.Init`; removed collectionsSvc/geoService/mlService vars; CLI uses
+    `initAuthCLI()` + `auth.CreateUser/UnlockUser/GenerateAPIToken`; `closeDB()`
+    is now no-arg.
+  - LESSON: recursive self-call is the trap when a package func and the db func
+    it wraps share a name after receiver-strip (e.g. `func UnlockUser` calling
+    `UnlockUser`). Grep `return <Name>\(` / `:= <Name>\(` in the collapsed
+    service file to catch these before compiling.
+- NEXT: Phase 4 -- trim the genuine stateful constructors to drop db/config
+  params now that both are global. Candidates: `indexing.Indexer`/`Organizer`
+  and `jobs.*`/`frames.Manager` still take `*config.RuntimeConfig` (use
+  `config.Rt`). `geo.NewRateLimiter` takes rtConfig too. Review each: replace
+  the threaded `cfg`/`rtCfg` param with `config.Rt`. Keep the genuine runtime
+  state (queues, watchers, cron, in-memory maps). Then Phase 5: internal/lifecycle
+  + package-level server + slim main.go.
 

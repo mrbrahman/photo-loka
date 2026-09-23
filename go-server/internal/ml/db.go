@@ -46,7 +46,7 @@ type ItemForRecognition struct {
 }
 
 // GetItemForRecognition retrieves the filename, orientation, mediatype, and xmpregion for a uuid.
-func GetItemForRecognition(uuid string) (*ItemForRecognition, error) {
+func getItemForRecognition(uuid string) (*ItemForRecognition, error) {
 	item := &ItemForRecognition{}
 	var xmpregion sql.NullString
 	err := database.DB.QueryRow(
@@ -64,7 +64,7 @@ func GetItemForRecognition(uuid string) (*ItemForRecognition, error) {
 
 // SaveFaceResults deletes old face data for a uuid, inserts new faces and unmatched entries,
 // and updates the metadata.faces field.
-func SaveFaceResults(uuid string, faces []map[string]interface{}, unmatched []map[string]interface{}) error {
+func saveFaceResults(uuid string, faces []map[string]interface{}, unmatched []map[string]interface{}) error {
 	tx, err := database.DB.Begin()
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
@@ -156,7 +156,7 @@ func SaveFaceResults(uuid string, faces []map[string]interface{}, unmatched []ma
 }
 
 // GetFacesByUUID returns all face records for a given uuid.
-func GetFacesByUUID(uuid string) ([]map[string]interface{}, error) {
+func getFacesByUUID(uuid string) ([]map[string]interface{}, error) {
 	rows, err := database.DB.Query(
 		`SELECT uuid, face_idx, person_name, gender, age, confidence, bbox,
 				landmarks, pose, cluster_id, cluster_name, cluster_confidence,
@@ -178,7 +178,7 @@ func GetFacesByUUID(uuid string) ([]map[string]interface{}, error) {
 }
 
 // GetFacesByPerson returns all face records for a given person name.
-func GetFacesByPerson(name string) ([]map[string]interface{}, error) {
+func queryFacesByPerson(name string) ([]map[string]interface{}, error) {
 	rows, err := database.DB.Query(
 		`SELECT uuid, face_idx, person_name, gender, age, confidence, bbox,
 				landmarks, pose, cluster_id, cluster_name, cluster_confidence,
@@ -199,7 +199,7 @@ func GetFacesByPerson(name string) ([]map[string]interface{}, error) {
 }
 // NameFaceCluster assigns a person_name to all face records with a given cluster_id.
 // Also updates cluster_name on the records. Returns the number of rows affected.
-func NameFaceCluster(clusterID, name string) (int64, error) {
+func nameFaceClusterDB(clusterID, name string) (int64, error) {
 	tx, err := database.DB.Begin()
 	if err != nil {
 		return 0, fmt.Errorf("failed to begin transaction: %w", err)
@@ -236,7 +236,7 @@ func NameFaceCluster(clusterID, name string) (int64, error) {
 
 // UpdatePersonName renames a person across all face records.
 // Returns the number of rows affected.
-func UpdatePersonName(oldName, newName string) (int64, error) {
+func updatePersonNameDB(oldName, newName string) (int64, error) {
 	tx, err := database.DB.Begin()
 	if err != nil {
 		return 0, fmt.Errorf("failed to begin transaction: %w", err)
@@ -273,7 +273,7 @@ func UpdatePersonName(oldName, newName string) (int64, error) {
 
 // SearchPersonNames searches for person names matching the query (prefix LIKE).
 // Returns up to 20 results.
-func SearchPersonNames(query string) ([]string, error) {
+func searchPersonNamesDB(query string) ([]string, error) {
 	rows, err := database.DB.Query(
 		`SELECT DISTINCT person_name FROM face_recognition
 		 WHERE person_name IS NOT NULL AND person_name LIKE ? || '%'
@@ -299,7 +299,7 @@ func SearchPersonNames(query string) ([]string, error) {
 }
 
 // DismissCluster inserts a cluster_id into the face_dismissed_clusters table.
-func DismissCluster(clusterID string) error {
+func dismissClusterDB(clusterID string) error {
 	_, err := database.DB.Exec(
 		`INSERT OR IGNORE INTO face_dismissed_clusters (cluster_id) VALUES (?)`,
 		clusterID,
@@ -308,7 +308,7 @@ func DismissCluster(clusterID string) error {
 }
 
 // UndismissCluster removes a cluster_id from the face_dismissed_clusters table.
-func UndismissCluster(clusterID string) error {
+func undismissClusterDB(clusterID string) error {
 	_, err := database.DB.Exec(
 		`DELETE FROM face_dismissed_clusters WHERE cluster_id = ?`,
 		clusterID,
@@ -318,7 +318,7 @@ func UndismissCluster(clusterID string) error {
 
 // DeleteFaceData removes all face records for a uuid and returns the affected cluster_ids
 // for thumbnail cleanup.
-func DeleteFaceData(uuid string) ([]string, error) {
+func deleteFaceData(uuid string) ([]string, error) {
 	// Get cluster_ids before deletion
 	rows, err := database.DB.Query(
 		`SELECT DISTINCT cluster_id FROM face_recognition WHERE uuid = ?`,

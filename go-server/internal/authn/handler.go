@@ -8,13 +8,8 @@ import (
 	"photo-loka/internal/auth"
 )
 
-// authService is the package-level auth service used by the route handlers.
-// Set via RegisterRoutes. The auth.Service indirection is trimmed in a later phase.
-var authService *auth.Service
-
 // RegisterRoutes registers authentication routes on the given router group.
-func RegisterRoutes(rg *gin.RouterGroup, authSvc *auth.Service) {
-	authService = authSvc
+func RegisterRoutes(rg *gin.RouterGroup) {
 	rg.POST("/login", login)
 	rg.POST("/refresh", refresh)
 	rg.POST("/logout", logout)
@@ -38,7 +33,7 @@ func login(c *gin.Context) {
 		return
 	}
 
-	tokenPair, err := authService.Login(body.Username, body.Password)
+	tokenPair, err := auth.Login(body.Username, body.Password)
 	if err != nil {
 		statusCode := http.StatusUnauthorized
 		code := "LOGIN_FAILED"
@@ -85,7 +80,7 @@ func refresh(c *gin.Context) {
 		return
 	}
 
-	tokenPair, err := authService.RefreshAccessToken(refreshToken)
+	tokenPair, err := auth.RefreshAccessToken(refreshToken)
 	if err != nil {
 		statusCode := http.StatusUnauthorized
 		code := "REFRESH_FAILED"
@@ -134,7 +129,7 @@ func refresh(c *gin.Context) {
 func logout(c *gin.Context) {
 	refreshToken, err := c.Cookie("refreshToken")
 	if err == nil && refreshToken != "" {
-		authService.Logout(refreshToken)
+		auth.Logout(refreshToken)
 	}
 
 	// Clear the cookie

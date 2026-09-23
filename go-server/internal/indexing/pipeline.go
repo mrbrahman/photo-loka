@@ -25,8 +25,6 @@ type Indexer struct {
 	videoQueue *queue.Queue
 	thumbsDir  string
 	config     *config.RuntimeConfig
-	geoService *geo.Service
-	mlService  *ml.Service
 	logger     *slog.Logger
 }
 
@@ -40,16 +38,6 @@ func NewIndexer(org *Organizer, indexQueue, videoQueue *queue.Queue, thumbsDir s
 		config:     cfg,
 		logger:     slog.Default().With("component", "indexer"),
 	}
-}
-
-// SetGeoService sets the geo service for geo finalization after indexing.
-func (idx *Indexer) SetGeoService(gs *geo.Service) {
-	idx.geoService = gs
-}
-
-// SetMLService sets the ML service for face recognition after indexing.
-func (idx *Indexer) SetMLService(ms *ml.Service) {
-	idx.mlService = ms
 }
 
 // IndexQueue returns the indexing queue for external enqueue operations.
@@ -231,7 +219,7 @@ func (idx *Indexer) IndexFile(collection *collections.Collection, sourceFile str
 		}
 
 		// Enqueue geo finalization
-		if idx.geoService != nil {
+		{
 			opts := map[string]interface{}{
 				"gps_lat": *exifData.GPSLat,
 				"gps_lng": *exifData.GPSLng,
@@ -241,22 +229,21 @@ func (idx *Indexer) IndexFile(collection *collections.Collection, sourceFile str
 					opts["country_code"] = cc
 				}
 			}
-			idx.geoService.Enqueue(fileUUID, opts)
+			geo.Enqueue(fileUUID, opts)
 		}
 	}
 
 	// Step 9: Enqueue face recognition and image encoding for images and videos.
 	// For videos, the first-frame buffer from step 5 is passed through.
 	// Passing nil (e.g. if thumbnail failed) causes the service to re-read the file.
-	if (exifData.Mediatype == "image" || exifData.Mediatype == "video") && idx.mlService != nil && idx.config.PerformFaceRecognition {
-		mlSvc := idx.mlService
+	if (exifData.Mediatype == "image" || exifData.Mediatype == "video") && idx.config.PerformFaceRecognition {
 		faceUUID := fileUUID
 		buf := mlBuf // capture for closure
 		idx.indexQueue.Enqueue(queue.Task{
 			Priority:    queue.Normal,
 			Description: "face:" + faceUUID,
 			Fn: func() error {
-				_, err := mlSvc.ProcessFaceRecognition(faceUUID, buf)
+				_, err := ml.ProcessFaceRecognition(faceUUID, buf)
 				return err
 			},
 		})

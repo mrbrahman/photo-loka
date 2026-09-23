@@ -10,14 +10,8 @@ import (
 	"photo-loka/internal/auth"
 )
 
-// authService is the package-level auth service used by the admin user
-// handlers. Set via RegisterUsersRoutes. The auth.Service indirection is
-// trimmed in a later phase.
-var authService *auth.Service
-
 // RegisterUsersRoutes registers user management routes on the given router group.
-func RegisterUsersRoutes(rg *gin.RouterGroup, authSvc *auth.Service) {
-	authService = authSvc
+func RegisterUsersRoutes(rg *gin.RouterGroup) {
 	rg.GET("/users", getUsers)
 	rg.POST("/users", createUser)
 	rg.PATCH("/users/:userId/role", updateRole)
@@ -28,7 +22,7 @@ func RegisterUsersRoutes(rg *gin.RouterGroup, authSvc *auth.Service) {
 // getUsers returns all users.
 // GET /api/admin/users
 func getUsers(c *gin.Context) {
-	users, err := authService.GetAllUsers()
+	users, err := auth.GetAllUsers()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{
@@ -83,7 +77,7 @@ func createUser(c *gin.Context) {
 		return
 	}
 
-	userID, err := authService.CreateUser(body.Username, body.Password, body.Role)
+	userID, err := auth.CreateUser(body.Username, body.Password, body.Role)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 			c.JSON(http.StatusConflict, gin.H{
@@ -161,7 +155,7 @@ func updateRole(c *gin.Context) {
 		return
 	}
 
-	if err := authService.UpdateUserRole(targetUserID, body.Role); err != nil {
+	if err := auth.UpdateUserRole(targetUserID, body.Role); err != nil {
 		statusCode := http.StatusInternalServerError
 		if appErr, ok := err.(*auth.AppError); ok {
 			statusCode = appErr.StatusCode
@@ -197,7 +191,7 @@ func unlockUser(c *gin.Context) {
 	// We need to look up the user first. For now, we'll use GetAllUsers and find the match.
 	// However, the service's UnlockUser takes username. Let's use a different approach:
 	// We'll add UnlockUserByID or look up all users.
-	users, err := authService.GetAllUsers()
+	users, err := auth.GetAllUsers()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{
@@ -227,7 +221,7 @@ func unlockUser(c *gin.Context) {
 		return
 	}
 
-	if err := authService.UnlockUser(username); err != nil {
+	if err := auth.UnlockUser(username); err != nil {
 		statusCode := http.StatusInternalServerError
 		if appErr, ok := err.(*auth.AppError); ok {
 			statusCode = appErr.StatusCode
@@ -279,7 +273,7 @@ func generateToken(c *gin.Context) {
 	}
 
 	// Look up username by userId
-	users, err := authService.GetAllUsers()
+	users, err := auth.GetAllUsers()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{
@@ -309,7 +303,7 @@ func generateToken(c *gin.Context) {
 		return
 	}
 
-	token, err := authService.GenerateAPIToken(username, body.ExpiresInDays)
+	token, err := auth.GenerateAPIToken(username, body.ExpiresInDays)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{

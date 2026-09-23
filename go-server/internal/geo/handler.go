@@ -6,15 +6,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// svc is the package-level geo service used by the route handlers. Set via
-// RegisterRoutes (the service is created in main and passed in). The geo.Service
-// indirection is removed in a later phase; for now the handler holds it here
-// instead of on a Handler struct.
-var svc *Service
-
 // RegisterRoutes registers geo-related routes on the given router group.
-func RegisterRoutes(rg *gin.RouterGroup, service *Service) {
-	svc = service
+func RegisterRoutes(rg *gin.RouterGroup) {
 	rg.GET("/getReverseGeoEncodingStatus", getStatus)
 	rg.POST("/enqueueReverseGeoEncoding", enqueueOne)
 	rg.POST("/enqueueManyReverseGeoEncoding", enqueueMany)
@@ -22,8 +15,8 @@ func RegisterRoutes(rg *gin.RouterGroup, service *Service) {
 
 // getStatus returns the current geo queue status.
 func getStatus(c *gin.Context) {
-	status := svc.Status()
-	high, normal, low := svc.QueueSizes()
+	status := Status()
+	high, normal, low := QueueSizes()
 
 	c.JSON(http.StatusOK, gin.H{
 		"processingCnt":  status.Active,
@@ -51,7 +44,7 @@ func enqueueOne(c *gin.Context) {
 		return
 	}
 
-	svc.Enqueue(body.UUID, nil)
+	Enqueue(body.UUID, nil)
 	c.Status(http.StatusAccepted)
 }
 
@@ -64,6 +57,6 @@ func enqueueMany(c *gin.Context) {
 		return
 	}
 
-	svc.EnqueueMany(entries)
+	EnqueueMany(entries)
 	c.Status(http.StatusAccepted)
 }

@@ -32,7 +32,7 @@ type CollectionSummary struct {
 }
 
 // Create inserts a new collection and returns the new collection_id.
-func Create(col *Collection) (int64, error) {
+func insertCollection(col *Collection) (int64, error) {
 	query := `
 		INSERT INTO collections (
 			collection_name, collection_path, album_type, intake_configs,
@@ -64,7 +64,7 @@ func Create(col *Collection) (int64, error) {
 }
 
 // Update updates an existing collection by ID.
-func Update(collectionID int64, col *Collection) error {
+func updateCollectionRow(collectionID int64, col *Collection) error {
 	query := `
 		UPDATE collections SET
 			collection_name = ?,
@@ -270,7 +270,7 @@ func GetByIntakePath(dirPath string) (*Collection, error) {
 }
 
 // SetIntakeStatusByIndex updates the status field of a specific intake config entry by index.
-func SetIntakeStatusByIndex(collectionID int64, index int, status string) error {
+func setIntakeStatusByIndex(collectionID int64, index int, status string) error {
 	// Use json_set to update the status at the given array index
 	query := fmt.Sprintf(`
 		UPDATE collections
@@ -294,7 +294,7 @@ func SetIntakeStatusByIndex(collectionID int64, index int, status string) error 
 }
 
 // SetAllIntakeStatus updates the status field of all intake config entries for a collection.
-func SetAllIntakeStatus(collectionID int64, status string) error {
+func setAllIntakeStatusRows(collectionID int64, status string) error {
 	// First get the current intake_configs to know how many entries exist
 	var intakeConfigsStr sql.NullString
 	err := database.DB.QueryRow(
@@ -327,7 +327,7 @@ func SetAllIntakeStatus(collectionID int64, status string) error {
 		if method, _ := entry["method"].(string); method == "on-demand" {
 			continue // on-demand intakes have no background process to stop/start
 		}
-		if err := SetIntakeStatusByIndex(collectionID, i, status); err != nil {
+		if err := setIntakeStatusByIndex(collectionID, i, status); err != nil {
 			return err
 		}
 	}

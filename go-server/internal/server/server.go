@@ -43,15 +43,13 @@ type Server struct {
 // Deps bundles the application collaborators that the route packages need.
 // Handlers are now package-level (their routes are registered via each
 // package's RegisterRoutes function), so the server just threads these
-// collaborators through to those registration calls.
+// collaborators through to those registration calls. Services that collapsed
+// to package-level singletons (auth, collections, geo, ml) are initialized in
+// main and are not threaded here.
 type Deps struct {
-	AuthService    *auth.Service
 	FrameIPChecker auth.FrameIPChecker
-	CollectionsSvc *collections.Service
 	Organizer      *indexing.Organizer
 	MLClient       *ml.Client
-	MLService      *ml.Service
-	GeoService     *geo.Service
 	Indexer        *indexing.Indexer
 	IndexQueue     *queue.Queue
 	VideoQueue     *queue.Queue
@@ -98,48 +96,48 @@ func (s *Server) setupRoutes(deps Deps) {
 
 	// Public auth routes (no auth required)
 	authnGroup := s.Router.Group("/api/authn")
-	authn.RegisterRoutes(authnGroup, deps.AuthService)
+	authn.RegisterRoutes(authnGroup)
 
 	// Public frame routes (no auth required)
 	frames.RegisterPublicRoutes(&s.Router.RouterGroup, deps.FrameManager)
 
 	// Public API routes (authenticated but non-admin)
 	publicAPI := s.Router.Group("/api")
-	publicAPI.Use(auth.AuthMiddleware(deps.AuthService))
+	publicAPI.Use(auth.AuthMiddleware())
 	{
 		// Collections summary (non-admin)
-		collections.RegisterPublicRoutes(publicAPI, deps.CollectionsSvc)
+		collections.RegisterPublicRoutes(publicAPI)
 	}
 
 	// Authenticated routes
 	apiGroup := s.Router.Group("/api")
-	apiGroup.Use(auth.AuthMiddleware(deps.AuthService))
+	apiGroup.Use(auth.AuthMiddleware())
 	{
 		search.RegisterRoutes(apiGroup, deps.MLClient)
 		albums.RegisterRoutes(apiGroup, deps.Organizer)
-		items.RegisterRoutes(apiGroup, deps.Organizer, deps.MLService, deps.ThumbsDir)
-		geo.RegisterRoutes(apiGroup, deps.GeoService)
-		ml.RegisterRoutes(apiGroup, deps.MLService)
+		items.RegisterRoutes(apiGroup, deps.Organizer, deps.ThumbsDir)
+		geo.RegisterRoutes(apiGroup)
+		ml.RegisterRoutes(apiGroup)
 	}
 
 	// Media routes (with frame IP bypass)
 	mediaGroup := s.Router.Group("/api")
-	mediaGroup.Use(auth.MediaAuthMiddleware(deps.AuthService, deps.FrameIPChecker))
+	mediaGroup.Use(auth.MediaAuthMiddleware(deps.FrameIPChecker))
 	{
 		media.RegisterRoutes(mediaGroup, deps.ThumbsDir, deps.FacesDir)
 	}
 
 	// Admin routes
 	adminGroup := s.Router.Group("/api/admin")
-	adminGroup.Use(auth.AuthMiddleware(deps.AuthService))
+	adminGroup.Use(auth.AuthMiddleware())
 	adminGroup.Use(auth.AdminMiddleware())
 	{
-		collections.RegisterAdminRoutes(adminGroup, deps.CollectionsSvc)
+		collections.RegisterAdminRoutes(adminGroup)
 		dashboard.RegisterRoutes(adminGroup)
 		indexing.RegisterRoutes(adminGroup, deps.Indexer, deps.IndexQueue, deps.VideoQueue)
 		frames.RegisterAdminRoutes(adminGroup, deps.FrameManager)
 		admin.RegisterConfigRoutes(adminGroup)
-		admin.RegisterUsersRoutes(adminGroup, deps.AuthService)
+		admin.RegisterUsersRoutes(adminGroup)
 		admin.RegisterJobsRoutes(adminGroup, deps.Scheduler, deps.FileWatcher, deps.ScheduledIdx, deps.FrameManager)
 	}
 }

@@ -6,24 +6,22 @@ import (
 	"photo-loka/internal/queue"
 )
 
-// Service provides the public API for geo encoding operations and manages the queue.
-type Service struct {
+// Geo encoding operations are package-level functions backed by a single
+// finalizer and a dedicated queue, set once via Init.
+var (
 	finalizer *Finalizer
-	queue     *queue.Queue
-	logger    *slog.Logger
-}
+	geoQueue  *queue.Queue
+	logger    = slog.Default().With("component", "geo-service")
+)
 
-// NewService creates a new geo Service.
-func NewService(finalizer *Finalizer, geoQueue *queue.Queue) *Service {
-	return &Service{
-		finalizer: finalizer,
-		queue:     geoQueue,
-		logger:    slog.Default().With("component", "geo-service"),
-	}
+// Init wires the finalizer and the geo queue. Called once at startup.
+func Init(f *Finalizer, q *queue.Queue) {
+	finalizer = f
+	geoQueue = q
 }
 
 // Enqueue adds a single geo resolution task to the queue.
-func (s *Service) Enqueue(uuid string, opts map[string]interface{}) {
+func Enqueue(uuid string, opts map[string]interface{}) {
 	var gpsLat, gpsLng *float64
 	var countryCode *string
 
@@ -39,17 +37,17 @@ func (s *Service) Enqueue(uuid string, opts map[string]interface{}) {
 
 	task := queue.Task{
 		Fn: func() error {
-			return s.finalizer.FinalizeGeo(uuid, gpsLat, gpsLng, countryCode)
+			return finalizer.FinalizeGeo(uuid, gpsLat, gpsLng, countryCode)
 		},
 		Priority:    queue.Normal,
 		Description: "geo:" + uuid,
 	}
 
-	s.queue.Enqueue(task)
+	geoQueue.Enqueue(task)
 }
 
 // EnqueueMany adds multiple geo resolution tasks to the queue in bulk.
-func (s *Service) EnqueueMany(entries []map[string]interface{}) {
+func EnqueueMany(entries []map[string]interface{}) {
 	tasks := make([]queue.Task, 0, len(entries))
 
 	for _, entry := range entries {
@@ -78,7 +76,7 @@ func (s *Service) EnqueueMany(entries []map[string]interface{}) {
 
 		task := queue.Task{
 			Fn: func() error {
-				return s.finalizer.FinalizeGeo(capturedUUID, gpsLat, gpsLng, countryCode)
+				return finalizer.FinalizeGeo(capturedUUID, gpsLat, gpsLng, countryCode)
 			},
 			Priority:    queue.Normal,
 			Description: "geo:" + capturedUUID,
@@ -88,17 +86,17 @@ func (s *Service) EnqueueMany(entries []map[string]interface{}) {
 	}
 
 	if len(tasks) > 0 {
-		s.queue.EnqueueMany(tasks)
-		s.logger.Info("enqueued geo tasks", "count", len(tasks))
+		geoQueue.EnqueueMany(tasks)
+		logger.Info("enqueued geo tasks", "count", len(tasks))
 	}
 }
 
 // Status returns the current queue status.
-func (s *Service) Status() queue.Status {
-	return s.queue.GetStatus()
+func Status() queue.Status {
+	return geoQueue.GetStatus()
 }
 
 // QueueSizes returns the pending task counts by priority.
-func (s *Service) QueueSizes() (high, normal, low int) {
-	return s.queue.QueueSizes()
+func QueueSizes() (high, normal, low int) {
+	return geoQueue.QueueSizes()
 }

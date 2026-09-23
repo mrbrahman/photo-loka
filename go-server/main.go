@@ -178,13 +178,10 @@ func runServe() {
 	}
 	slog.Info("runtime config loaded from database")
 
-	// Create auth service
-	authSvc := auth.NewService(cfg.JWTSecret)
+	// Initialize auth (JWT secret) -- stateless package-level singleton.
+	auth.Init(cfg.JWTSecret)
 
-	// Create collections service
-	collectionsSvc := collections.NewService()
-
-	// ML client (shared by search and ML service)
+	// ML client (shared by search and ML package)
 	mlClient := ml.NewClient(cfg.MLServiceURL)
 
 	// Create indexing queues
@@ -205,19 +202,15 @@ func runServe() {
 	organizer := indexing.NewOrganizer(rtCfg)
 	indexer := indexing.NewIndexer(organizer, indexQueue, videoQueue, cfg.ThumbsDir, rtCfg)
 
-	// Create geo components
+	// Initialize geo package (finalizer + dedicated single-threaded queue).
 	geoQueue := queue.New(1) // geo runs single-threaded due to rate limits
 	rateLimitStateFile := filepath.Join(cfg.DataDir, "rate_limit_state.json")
 	rateLimiter := geo.NewRateLimiter(rtCfg, rateLimitStateFile)
 	geoFinalizer := geo.NewFinalizer(rateLimiter, cfg.GeonamesUsername)
-	geoService := geo.NewService(geoFinalizer, geoQueue)
+	geo.Init(geoFinalizer, geoQueue)
 
-	// Create ML service
-	mlService := ml.NewService(mlClient, cfg.FacesDir, cfg.ThumbsDir)
-
-	// Wire geo and ML services into the indexer for post-indexing enrichments
-	indexer.SetGeoService(geoService)
-	indexer.SetMLService(mlService)
+	// Initialize ML package (client + face/thumbnail dirs).
+	ml.Init(mlClient, cfg.FacesDir, cfg.ThumbsDir)
 
 	// Scheduler
 	sched := scheduler.New()
@@ -258,13 +251,9 @@ func runServe() {
 	// Create and run server. Handlers are package-level; the server threads the
 	// collaborators below into each package's RegisterRoutes.
 	srv := server.New(cfg, server.Deps{
-		AuthService:    authSvc,
 		FrameIPChecker: frameManager,
-		CollectionsSvc: collectionsSvc,
 		Organizer:      organizer,
 		MLClient:       mlClient,
-		MLService:      mlService,
-		GeoService:     geoService,
 		Indexer:        indexer,
 		IndexQueue:     indexQueue,
 		VideoQueue:     videoQueue,
@@ -306,7 +295,7 @@ func runServe() {
 
 	// Schedule token cleanup (daily at 3am)
 	sched.AddJob("token-cleanup", "0 3 * * *", func() {
-		authSvc.CleanupExpiredTokens()
+		auth.CleanupExpiredTokens()
 	})
 
 	if err := srv.Run(); err != nil {
@@ -346,10 +335,10 @@ func runCreateUser() {
 		os.Exit(1)
 	}
 
-	authSvc := initAuthService()
-	defer closeDB(authSvc)
+	initAuthCLI()
+	defer closeDB()
 
-	userID, err := authSvc.CreateUser(*username, *password, *role)
+	userID, err := auth.CreateUser(*username, *password, *role)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating user: %v\n", err)
 		os.Exit(1)
@@ -373,10 +362,10 @@ func runUnlockUser() {
 		os.Exit(1)
 	}
 
-	authSvc := initAuthService()
-	defer closeDB(authSvc)
+	initAuthCLI()
+	defer closeDB()
 
-	if err := authSvc.UnlockUser(*username); err != nil {
+	if err := auth.UnlockUser(*username); err != nil {
 		fmt.Fprintf(os.Stderr, "Error unlocking user: %v\n", err)
 		os.Exit(1)
 	}
@@ -402,10 +391,10 @@ func runGenerateToken() {
 		days = d
 	}
 
-	authSvc := initAuthService()
-	defer closeDB(authSvc)
+	initAuthCLI()
+	defer closeDB()
 
-	token, err := authSvc.GenerateAPIToken(username, days)
+	token, err := auth.GenerateAPIToken(username, days)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error generating token: %v\n", err)
 		os.Exit(1)
@@ -414,9 +403,9 @@ func runGenerateToken() {
 	fmt.Printf("API token for %s (expires in %d days):\n\n%s\n", username, days, token)
 }
 
-// initAuthService loads config, opens DB, and returns an auth Service for CLI commands.
-// Caller is responsible for calling closeDB.
-func initAuthService() *auth.Service {
+// initAuthCLI loads config, opens the DB, and initializes the auth package for
+// CLI commands. Caller is responsible for calling closeDB.
+func initAuthCLI() {
 	cfg, err := config.LoadStartupConfig()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
@@ -432,13 +421,13 @@ func initAuthService() *auth.Service {
 	// Store db reference for cleanup
 	cliDB = db
 
-	return auth.NewService(cfg.JWTSecret)
+	auth.Init(cfg.JWTSecret)
 }
 
 // cliDB holds a reference to the database for CLI cleanup.
 var cliDB *database.DBHandle
 
-func closeDB(_ *auth.Service) {
+func closeDB() {
 	if cliDB != nil {
 		cliDB.Close()
 	}

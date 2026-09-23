@@ -10,24 +10,17 @@ import (
 	"photo-loka/internal/utils"
 )
 
-// svc is the package-level collections service used by the route handlers.
-// Set via RegisterPublicRoutes/RegisterAdminRoutes. The Service indirection is
-// trimmed in a later phase.
-var svc *Service
-
 // OnCollectionChanged is called after create/update to restart watchers/cron.
 // Wired from main.
 var OnCollectionChanged func(collectionID int64)
 
 // RegisterPublicRoutes registers authenticated (non-admin) collection routes.
-func RegisterPublicRoutes(rg *gin.RouterGroup, service *Service) {
-	svc = service
+func RegisterPublicRoutes(rg *gin.RouterGroup) {
 	rg.GET("/collections", getCollections)
 }
 
 // RegisterAdminRoutes registers admin-only collection routes.
-func RegisterAdminRoutes(rg *gin.RouterGroup, service *Service) {
-	svc = service
+func RegisterAdminRoutes(rg *gin.RouterGroup) {
 	rg.GET("/getAllCollections", getAllCollections)
 	rg.POST("/createNewCollection", createNewCollection)
 	rg.PUT("/updateCollection/:id", updateCollection)
@@ -39,7 +32,7 @@ func RegisterAdminRoutes(rg *gin.RouterGroup, service *Service) {
 
 // getCollections returns the collection summary list for authenticated users.
 func getCollections(c *gin.Context) {
-	summaries, err := svc.GetSummary()
+	summaries, err := GetSummary()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{"message": err.Error(), "code": "INTERNAL_ERROR"},
@@ -56,7 +49,7 @@ func getCollections(c *gin.Context) {
 
 // getAllCollections returns all collections with full details (admin).
 func getAllCollections(c *gin.Context) {
-	collections, err := svc.GetAll()
+	collections, err := GetAll()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{"message": err.Error(), "code": "INTERNAL_ERROR"},
@@ -81,7 +74,7 @@ func createNewCollection(c *gin.Context) {
 		return
 	}
 
-	id, err := svc.Create(&col)
+	id, err := Create(&col)
 	if err != nil {
 		if appErr, ok := err.(*auth.AppError); ok {
 			c.JSON(appErr.StatusCode, gin.H{
@@ -122,7 +115,7 @@ func updateCollection(c *gin.Context) {
 		return
 	}
 
-	if err := svc.Update(collectionID, &col); err != nil {
+	if err := Update(collectionID, &col); err != nil {
 		if appErr, ok := err.(*auth.AppError); ok {
 			c.JSON(appErr.StatusCode, gin.H{
 				"error": gin.H{"message": appErr.Message, "code": appErr.Code},
@@ -153,14 +146,14 @@ func listSubDirs(c *gin.Context) {
 		return
 	}
 
-	if !svc.IsValidDir(dirPath) {
+	if !IsValidDir(dirPath) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": gin.H{"message": "Path is not a valid directory", "code": "INVALID_PATH"},
 		})
 		return
 	}
 
-	dirs, err := svc.ListSubDirs(dirPath)
+	dirs, err := ListSubDirs(dirPath)
 	if err != nil {
 		if appErr, ok := err.(*auth.AppError); ok {
 			c.JSON(appErr.StatusCode, gin.H{
@@ -257,7 +250,7 @@ func setIntakeStatus(c *gin.Context) {
 		return
 	}
 
-	if err := svc.SetIntakeStatus(collectionID, intakeIndex, body.Status); err != nil {
+	if err := SetIntakeStatus(collectionID, intakeIndex, body.Status); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{"message": err.Error(), "code": "INTERNAL_ERROR"},
 		})
@@ -293,7 +286,7 @@ func setAllIntakeStatus(c *gin.Context) {
 		return
 	}
 
-	if err := svc.SetAllIntakeStatus(collectionID, body.Status); err != nil {
+	if err := SetAllIntakeStatus(collectionID, body.Status); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{"message": err.Error(), "code": "INTERNAL_ERROR"},
 		})

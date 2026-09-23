@@ -6,13 +6,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// svc is the package-level ML service used by the route handlers. Set via
-// RegisterRoutes. The ml.Service indirection is trimmed in a later phase.
-var svc *Service
-
 // RegisterRoutes registers face-related routes on the given router group.
-func RegisterRoutes(rg *gin.RouterGroup, service *Service) {
-	svc = service
+func RegisterRoutes(rg *gin.RouterGroup) {
 	rg.POST("/recognizeFaces/:uuid", recognizeFaces)
 	rg.GET("/getFaces/:uuid", getFaces)
 	rg.GET("/getFacesByPerson", getFacesByPerson)
@@ -35,7 +30,7 @@ func recognizeFaces(c *gin.Context) {
 		return
 	}
 
-	result, err := svc.ProcessFaceRecognition(uuid, nil)
+	result, err := ProcessFaceRecognition(uuid, nil)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": "face recognition failed: " + err.Error(),
@@ -59,7 +54,7 @@ func getFaces(c *gin.Context) {
 		return
 	}
 
-	faces, err := svc.GetFacesByUUID(uuid)
+	faces, err := GetFacesByUUID(uuid)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": "failed to get faces: " + err.Error(),
@@ -87,7 +82,7 @@ func getFacesByPerson(c *gin.Context) {
 		return
 	}
 
-	faces, err := svc.GetFacesByPerson(name)
+	faces, err := GetFacesByPerson(name)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": "failed to get faces by person: " + err.Error(),
@@ -127,7 +122,7 @@ func nameFaceCluster(c *gin.Context) {
 		return
 	}
 
-	rowsAffected, err := svc.NameFaceCluster(clusterID, body.Name)
+	rowsAffected, err := NameFaceCluster(clusterID, body.Name)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": "failed to name face cluster: " + err.Error(),
@@ -155,7 +150,7 @@ func updatePersonName(c *gin.Context) {
 		return
 	}
 
-	rowsAffected, err := svc.UpdatePersonName(body.OldName, body.NewName)
+	rowsAffected, err := UpdatePersonName(body.OldName, body.NewName)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": "failed to update person name: " + err.Error(),
@@ -179,7 +174,7 @@ func faceSuggestions(c *gin.Context) {
 		return
 	}
 
-	suggestions, err := svc.GetFaceSuggestions(clusterID)
+	suggestions, err := GetFaceSuggestions(clusterID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": "failed to get face suggestions: " + err.Error(),
@@ -203,7 +198,7 @@ func searchPersonNames(c *gin.Context) {
 		return
 	}
 
-	names, err := svc.SearchPersonNames(query)
+	names, err := SearchPersonNames(query)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": "failed to search person names: " + err.Error(),
@@ -231,7 +226,7 @@ func dismissFaceCluster(c *gin.Context) {
 		return
 	}
 
-	if err := svc.DismissCluster(clusterID); err != nil {
+	if err := DismissCluster(clusterID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": "failed to dismiss cluster: " + err.Error(),
 			"code":    "DB_ERROR",
