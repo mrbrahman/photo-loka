@@ -95,7 +95,7 @@ Services (stateless business logic): fold into package-level funcs:
 - [x] Phase 1
 - [x] Phase 2
 - [x] Phase 3
-- [ ] Phase 4
+- [x] Phase 4
 - [ ] Phase 5
 
 ## Resume notes
@@ -268,4 +268,38 @@ what is next, any surprises.)
   the threaded `cfg`/`rtCfg` param with `config.Rt`. Keep the genuine runtime
   state (queues, watchers, cron, in-memory maps). Then Phase 5: internal/lifecycle
   + package-level server + slim main.go.
+
+- Phase 4 DONE (compiles green: `go build`/`go vet -tags "fts5
+  sqlite_math_functions" ./...` exit 0; `./build.sh` exit 0). grep confirms NO
+  constructor takes `*config.RuntimeConfig` and NO struct field is of that type
+  (only the `LoadRuntimeConfig(db *sql.DB)` loader signature + `config.Rt`
+  reads remain).
+  - Only 3 constructors still threaded `*config.RuntimeConfig` (db was already
+    globalized in Phase 1): `geo.NewRateLimiter`, `indexing.NewIndexer`,
+    `indexing.NewOrganizer`. Each dropped the field + param and now reads the
+    `config.Rt` singleton at use time:
+    * geo.RateLimiter: dropped `rtConfig` field; `Check`/status read
+      `config.Rt.GeonamesHourlyLimit`/`GeonamesDailyLimit`.
+    * indexing.Indexer: dropped `config` field; pipeline reads
+      `config.Rt.VideoEncoder` / `config.Rt.PerformFaceRecognition`.
+    * indexing.Organizer: dropped `config` field; reads `config.Rt.AuditFiles`.
+  - main.go: `indexing.NewOrganizer()`, `indexing.NewIndexer(org, idxQ, vidQ,
+    thumbsDir)`, `geo.NewRateLimiter(stateFile)` -- all lost their rtCfg arg.
+    The local `rtCfg` (from LoadRuntimeConfig) is still used for one-time startup
+    reads (MaxConcurrency, StartFileWatcher/ScheduledIndexingAtStartup); it is
+    the same pointer as config.Rt. Left as-is; Phase 5 slims main further.
+  - Genuine runtime state kept as struct+New: queue.Queue, scheduler.Scheduler,
+    geo.RateLimiter (counters+state file), frames.Manager (in-memory frame
+    state/SSE), jobs.FileWatcher/ScheduledIndexing (fsnotify/cron handles),
+    indexing.Indexer/Organizer (queues, organizer collaborator).
+- NEXT: Phase 5 -- add `internal/lifecycle` with StartupActions()/
+  ShutdownCleanup() to move the startup/shutdown orchestration out of main
+  (start watchers, schedule frames/token-cleanup cron; stop queues, save rate
+  limiter). Slim `server` to package-level Setup/Run (drop the Server struct).
+  Slim main.go to: load config -> set globals -> init vips/exiftool/db ->
+  build collaborators -> lifecycle.StartupActions -> server.Run ->
+  lifecycle.ShutdownCleanup. Also remove the temporary database.DBHandle alias
+  and the dbHandle wrapper if nothing needs it after main is slimmed (main/CLI
+  use db.Close()); consider returning just error from Open and exposing a
+  package-level Close().
 

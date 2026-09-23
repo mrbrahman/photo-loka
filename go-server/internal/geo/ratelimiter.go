@@ -10,13 +10,13 @@ import (
 )
 
 // RateLimiter enforces hourly and daily limits for geonames API calls.
+// Limits are read from the config.Rt singleton at check time.
 type RateLimiter struct {
 	mu          sync.Mutex
 	hourlyCount int
 	dailyCount  int
 	currentHour int
 	currentDay  int
-	rtConfig    *config.RuntimeConfig
 	stateFile   string
 }
 
@@ -28,13 +28,12 @@ type rateLimiterState struct {
 	CurrentDay  int `json:"current_day"`
 }
 
-// NewRateLimiter creates a new RateLimiter with the given limits.
+// NewRateLimiter creates a new RateLimiter.
 // If a state file exists and the saved hour/day match the current time,
 // the counters are restored from disk.
-func NewRateLimiter(rtConfig *config.RuntimeConfig, stateFile string) *RateLimiter {
+func NewRateLimiter(stateFile string) *RateLimiter {
 	now := time.Now()
 	rl := &RateLimiter{
-		rtConfig:    rtConfig,
 		stateFile:   stateFile,
 		currentHour: now.Hour(),
 		currentDay:  now.YearDay(),
@@ -81,7 +80,7 @@ func (r *RateLimiter) Check() bool {
 		r.currentDay = now.YearDay()
 	}
 
-	return r.hourlyCount < r.rtConfig.GeonamesHourlyLimit && r.dailyCount < r.rtConfig.GeonamesDailyLimit
+	return r.hourlyCount < config.Rt.GeonamesHourlyLimit && r.dailyCount < config.Rt.GeonamesDailyLimit
 }
 
 // Increment increases both hourly and daily counters by one.
@@ -122,9 +121,9 @@ func (r *RateLimiter) Status() map[string]interface{} {
 
 	return map[string]interface{}{
 		"hourly_count": r.hourlyCount,
-		"hourly_limit": r.rtConfig.GeonamesHourlyLimit,
+		"hourly_limit": config.Rt.GeonamesHourlyLimit,
 		"daily_count":  r.dailyCount,
-		"daily_limit":  r.rtConfig.GeonamesDailyLimit,
+		"daily_limit":  config.Rt.GeonamesDailyLimit,
 		"current_hour": r.currentHour,
 		"current_day":  r.currentDay,
 	}

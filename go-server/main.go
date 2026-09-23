@@ -199,13 +199,13 @@ func runServe() {
 	}
 
 	// Create indexing components
-	organizer := indexing.NewOrganizer(rtCfg)
-	indexer := indexing.NewIndexer(organizer, indexQueue, videoQueue, cfg.ThumbsDir, rtCfg)
+	organizer := indexing.NewOrganizer()
+	indexer := indexing.NewIndexer(organizer, indexQueue, videoQueue, cfg.ThumbsDir)
 
 	// Initialize geo package (finalizer + dedicated single-threaded queue).
 	geoQueue := queue.New(1) // geo runs single-threaded due to rate limits
 	rateLimitStateFile := filepath.Join(cfg.DataDir, "rate_limit_state.json")
-	rateLimiter := geo.NewRateLimiter(rtCfg, rateLimitStateFile)
+	rateLimiter := geo.NewRateLimiter(rateLimitStateFile)
 	geoFinalizer := geo.NewFinalizer(rateLimiter, cfg.GeonamesUsername)
 	geo.Init(geoFinalizer, geoQueue)
 

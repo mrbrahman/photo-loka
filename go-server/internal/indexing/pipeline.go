@@ -24,18 +24,16 @@ type Indexer struct {
 	indexQueue *queue.Queue
 	videoQueue *queue.Queue
 	thumbsDir  string
-	config     *config.RuntimeConfig
 	logger     *slog.Logger
 }
 
 // NewIndexer creates a new Indexer instance.
-func NewIndexer(org *Organizer, indexQueue, videoQueue *queue.Queue, thumbsDir string, cfg *config.RuntimeConfig) *Indexer {
+func NewIndexer(org *Organizer, indexQueue, videoQueue *queue.Queue, thumbsDir string) *Indexer {
 	return &Indexer{
 		organizer:  org,
 		indexQueue: indexQueue,
 		videoQueue: videoQueue,
 		thumbsDir:  thumbsDir,
-		config:     cfg,
 		logger:     slog.Default().With("component", "indexer"),
 	}
 }
@@ -146,7 +144,7 @@ func (idx *Indexer) IndexFile(collection *collections.Collection, sourceFile str
 	// and moves it to the thumbs dir instead of re-encoding. Not implemented here;
 	// videos will always be enqueued for compression if the collection has compress_videos enabled.
 	if exifData.Mediatype == "video" && collection.CompressVideos != nil && *collection.CompressVideos == 1 {
-		encoder := idx.config.VideoEncoder
+		encoder := config.Rt.VideoEncoder
 		if encoder == "" {
 			encoder = media.EncoderVP9
 		}
@@ -236,7 +234,7 @@ func (idx *Indexer) IndexFile(collection *collections.Collection, sourceFile str
 	// Step 9: Enqueue face recognition and image encoding for images and videos.
 	// For videos, the first-frame buffer from step 5 is passed through.
 	// Passing nil (e.g. if thumbnail failed) causes the service to re-read the file.
-	if (exifData.Mediatype == "image" || exifData.Mediatype == "video") && idx.config.PerformFaceRecognition {
+	if (exifData.Mediatype == "image" || exifData.Mediatype == "video") && config.Rt.PerformFaceRecognition {
 		faceUUID := fileUUID
 		buf := mlBuf // capture for closure
 		idx.indexQueue.Enqueue(queue.Task{

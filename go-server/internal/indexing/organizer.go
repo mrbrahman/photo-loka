@@ -26,14 +26,12 @@ type PlaceResult struct {
 
 // Organizer handles file placement, moves, and trash operations.
 type Organizer struct {
-	config *config.RuntimeConfig
 	logger *slog.Logger
 }
 
 // NewOrganizer creates a new Organizer instance.
-func NewOrganizer(cfg *config.RuntimeConfig) *Organizer {
+func NewOrganizer() *Organizer {
 	return &Organizer{
-		config: cfg,
 		logger: slog.Default().With("component", "organizer"),
 	}
 }
@@ -422,7 +420,7 @@ func (o *Organizer) GetFilesMtime(dir string) (map[string]int64, error) {
 
 // logChange records a file operation in the audit table if auditing is enabled.
 func (o *Organizer) logChange(collectionID int64, action, path1 string, path2 *string) {
-	if !o.config.AuditFiles {
+	if !config.Rt.AuditFiles {
 		return
 	}
 
