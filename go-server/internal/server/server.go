@@ -26,10 +26,8 @@ import (
 	"photo-loka/internal/geo"
 	"photo-loka/internal/indexing"
 	"photo-loka/internal/items"
-	"photo-loka/internal/jobs"
 	"photo-loka/internal/media"
 	"photo-loka/internal/ml"
-	"photo-loka/internal/scheduler"
 	"photo-loka/internal/search"
 )
 
@@ -47,14 +45,13 @@ var (
 // collaborators through to those registration calls. Services that collapsed
 // to package-level singletons (auth, collections, geo, ml) are initialized in
 // main and are not threaded here.
+// Deps bundles the remaining startup-config values that route packages need.
+// Almost everything is now a package-level singleton (auth, collections, geo,
+// ml, indexing, frames, jobs, scheduler); only the media directories still flow
+// through here.
 type Deps struct {
-	FrameIPChecker auth.FrameIPChecker
-	FrameManager   *frames.Manager
-	Scheduler      *scheduler.Scheduler
-	FileWatcher    *jobs.FileWatcher
-	ScheduledIdx   *jobs.ScheduledIndexing
-	ThumbsDir      string
-	FacesDir       string
+	ThumbsDir string
+	FacesDir  string
 }
 
 // Setup builds the Gin engine, installs middleware, and mounts all routes.
@@ -90,7 +87,7 @@ func setupRoutes(deps Deps) {
 	authn.RegisterRoutes(authnGroup)
 
 	// Public frame routes (no auth required)
-	frames.RegisterPublicRoutes(&router.RouterGroup, deps.FrameManager)
+	frames.RegisterPublicRoutes(&router.RouterGroup)
 
 	// Public API routes (authenticated but non-admin)
 	publicAPI := router.Group("/api")
@@ -113,7 +110,7 @@ func setupRoutes(deps Deps) {
 
 	// Media routes (with frame IP bypass)
 	mediaGroup := router.Group("/api")
-	mediaGroup.Use(auth.MediaAuthMiddleware(deps.FrameIPChecker))
+	mediaGroup.Use(auth.MediaAuthMiddleware(frames.AllFrameIPs))
 	{
 		media.RegisterRoutes(mediaGroup, deps.ThumbsDir, deps.FacesDir)
 	}
@@ -126,10 +123,10 @@ func setupRoutes(deps Deps) {
 		collections.RegisterAdminRoutes(adminGroup)
 		dashboard.RegisterRoutes(adminGroup)
 		indexing.RegisterRoutes(adminGroup)
-		frames.RegisterAdminRoutes(adminGroup, deps.FrameManager)
+		frames.RegisterAdminRoutes(adminGroup)
 		admin.RegisterConfigRoutes(adminGroup)
 		admin.RegisterUsersRoutes(adminGroup)
-		admin.RegisterJobsRoutes(adminGroup, deps.Scheduler, deps.FileWatcher, deps.ScheduledIdx, deps.FrameManager)
+		admin.RegisterJobsRoutes(adminGroup)
 	}
 }
 

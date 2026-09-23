@@ -35,29 +35,19 @@ type FrameState struct {
 	ManualPause ManualPauseState
 }
 
-// Manager manages in-memory frame states, SSE clients, and cron scheduling.
-type Manager struct {
-	mu         sync.RWMutex
-	frames     map[string]*FrameState // ip -> state
-	scheduler  *scheduler.Scheduler
-	sseClients map[string]chan string // ip -> SSE channel
-	sseMu      sync.Mutex
-	logger     *slog.Logger
-}
-
-// NewManager creates a new frame Manager.
-func NewManager(sched *scheduler.Scheduler) *Manager {
-	return &Manager{
-		frames:     make(map[string]*FrameState),
-		scheduler:  sched,
-		sseClients: make(map[string]chan string),
-		logger:     slog.Default().With("component", "frame-manager"),
-	}
-}
+// Frame management is package-level (single instance): in-memory frame states,
+// SSE clients, and cron scheduling. The two maps have separate guards.
+var (
+	framesMu    sync.RWMutex
+	frameStates = make(map[string]*FrameState) // ip -> state
+	sseClients  = make(map[string]chan string) // ip -> SSE channel
+	sseMu       sync.Mutex
+	frLogger    = slog.Default().With("component", "frame-manager")
+)
 
 // LoadAllFrames loads all frames from DB and initializes in-memory state.
 // Cron jobs are scheduled separately via ScheduleAllFrameJobs.
-func (m *Manager) LoadAllFrames() error {
+func LoadAllFrames() error {
 	dbFrames, err := GetAll()
 	if err != nil {
 		return fmt.Errorf("loading frames from DB: %w", err)
@@ -67,16 +57,16 @@ func (m *Manager) LoadAllFrames() error {
 		frame := &dbFrames[i]
 
 		// Initialize in-memory state
-		m.mu.Lock()
-		m.frames[frame.FrameIPAddr] = &FrameState{
+		framesMu.Lock()
+		frameStates[frame.FrameIPAddr] = &FrameState{
 			Items:   make([]interface{}, 0),
 			CurrIdx: -1,
 		}
-		m.mu.Unlock()
+		framesMu.Unlock()
 
 		// Load items for this frame
-		if err := m.ReloadItemsForFrame(frame); err != nil {
-			m.logger.Warn("failed to load items for frame",
+		if err := ReloadItemsForFrame(frame); err != nil {
+			frLogger.Warn("failed to load items for frame",
 				"frame_id", frame.FrameID,
 				"ip", frame.FrameIPAddr,
 				"error", err,
@@ -89,28 +79,28 @@ func (m *Manager) LoadAllFrames() error {
 		// Check if currently in pause window
 		if frame.DailyPauseRange != nil && *frame.DailyPauseRange != "" {
 			if isInPauseWindow(*frame.DailyPauseRange) {
-				m.mu.Lock()
-				if state, ok := m.frames[frame.FrameIPAddr]; ok {
+				framesMu.Lock()
+				if state, ok := frameStates[frame.FrameIPAddr]; ok {
 					state.AutoPause.Paused = true
 				}
-				m.mu.Unlock()
+				framesMu.Unlock()
 			}
 		}
 	}
 
-	m.logger.Info("all frames loaded", "count", len(dbFrames))
+	frLogger.Info("all frames loaded", "count", len(dbFrames))
 	return nil
 }
 
 // GetAllFrames returns all DB frames merged with their in-memory state.
-func (m *Manager) GetAllFrames() ([]map[string]interface{}, error) {
+func GetAllFrames() ([]map[string]interface{}, error) {
 	dbFrames, err := GetAll()
 	if err != nil {
 		return nil, fmt.Errorf("getting frames: %w", err)
 	}
 
-	m.mu.RLock()
-	defer m.mu.RUnlock()
+	framesMu.RLock()
+	defer framesMu.RUnlock()
 
 	results := make([]map[string]interface{}, 0, len(dbFrames))
 	for _, frame := range dbFrames {
@@ -125,7 +115,7 @@ func (m *Manager) GetAllFrames() ([]map[string]interface{}, error) {
 			"reset_schedule":    frame.ResetSchedule,
 		}
 
-		if state, ok := m.frames[frame.FrameIPAddr]; ok {
+		if state, ok := frameStates[frame.FrameIPAddr]; ok {
 			item["numItems"] = len(state.Items)
 			item["currIdx"] = state.CurrIdx
 			item["autoPause"] = state.AutoPause
@@ -139,7 +129,7 @@ func (m *Manager) GetAllFrames() ([]map[string]interface{}, error) {
 }
 
 // CreateFrame inserts a frame into the DB, initializes in-memory state, and schedules jobs.
-func (m *Manager) CreateFrame(frame *Frame) (int64, error) {
+func CreateFrame(frame *Frame) (int64, error) {
 	id, err := Create(frame)
 	if err != nil {
 		return 0, err
@@ -147,29 +137,29 @@ func (m *Manager) CreateFrame(frame *Frame) (int64, error) {
 	frame.FrameID = id
 
 	// Initialize in-memory state
-	m.mu.Lock()
-	m.frames[frame.FrameIPAddr] = &FrameState{
+	framesMu.Lock()
+	frameStates[frame.FrameIPAddr] = &FrameState{
 		Items:   make([]interface{}, 0),
 		CurrIdx: -1,
 	}
-	m.mu.Unlock()
+	framesMu.Unlock()
 
 	// Load items
-	if err := m.ReloadItemsForFrame(frame); err != nil {
-		m.logger.Warn("failed to load items for new frame",
+	if err := ReloadItemsForFrame(frame); err != nil {
+		frLogger.Warn("failed to load items for new frame",
 			"frame_id", id,
 			"error", err,
 		)
 	}
 
 	// Schedule jobs
-	m.scheduleJobsForFrame(frame)
+	scheduleJobsForFrame(frame)
 
 	return id, nil
 }
 
 // UpdateFrame updates the DB record, refreshes in-memory state, and reschedules jobs.
-func (m *Manager) UpdateFrame(frameID int64, frame *Frame) error {
+func UpdateFrame(frameID int64, frame *Frame) error {
 	// Get old frame to know the old IP
 	oldFrame, err := GetByID(frameID)
 	if err != nil {
@@ -184,25 +174,25 @@ func (m *Manager) UpdateFrame(frameID int64, frame *Frame) error {
 	}
 
 	// Remove old state if IP changed
-	m.mu.Lock()
+	framesMu.Lock()
 	if oldFrame.FrameIPAddr != frame.FrameIPAddr {
-		delete(m.frames, oldFrame.FrameIPAddr)
+		delete(frameStates, oldFrame.FrameIPAddr)
 	}
-	m.frames[frame.FrameIPAddr] = &FrameState{
+	frameStates[frame.FrameIPAddr] = &FrameState{
 		Items:   make([]interface{}, 0),
 		CurrIdx: -1,
 	}
-	m.mu.Unlock()
+	framesMu.Unlock()
 
 	// Remove old jobs and schedule new ones
-	m.removeJobsForFrame(oldFrame.FrameID)
+	removeJobsForFrame(oldFrame.FrameID)
 
 	frame.FrameID = frameID
-	m.scheduleJobsForFrame(frame)
+	scheduleJobsForFrame(frame)
 
 	// Reload items
-	if err := m.ReloadItemsForFrame(frame); err != nil {
-		m.logger.Warn("failed to reload items after update",
+	if err := ReloadItemsForFrame(frame); err != nil {
+		frLogger.Warn("failed to reload items after update",
 			"frame_id", frameID,
 			"error", err,
 		)
@@ -212,7 +202,7 @@ func (m *Manager) UpdateFrame(frameID int64, frame *Frame) error {
 }
 
 // DeleteFrame removes the frame from DB, in-memory state, and cron jobs.
-func (m *Manager) DeleteFrame(frameID int64) error {
+func DeleteFrame(frameID int64) error {
 	frame, err := GetByID(frameID)
 	if err != nil {
 		return err
@@ -225,18 +215,18 @@ func (m *Manager) DeleteFrame(frameID int64) error {
 		return err
 	}
 
-	m.mu.Lock()
-	delete(m.frames, frame.FrameIPAddr)
-	m.mu.Unlock()
+	framesMu.Lock()
+	delete(frameStates, frame.FrameIPAddr)
+	framesMu.Unlock()
 
-	m.removeJobsForFrame(frameID)
+	removeJobsForFrame(frameID)
 
 	return nil
 }
 
 // PauseFrame manually pauses a frame. If resumeAtSchedule is set, it will
 // auto-resume at the next scheduled unpause time.
-func (m *Manager) PauseFrame(frameID int64, resumeAtSchedule *bool) error {
+func PauseFrame(frameID int64, resumeAtSchedule *bool) error {
 	frame, err := GetByID(frameID)
 	if err != nil {
 		return err
@@ -245,23 +235,23 @@ func (m *Manager) PauseFrame(frameID int64, resumeAtSchedule *bool) error {
 		return fmt.Errorf("frame %d not found", frameID)
 	}
 
-	m.mu.Lock()
-	state, ok := m.frames[frame.FrameIPAddr]
+	framesMu.Lock()
+	state, ok := frameStates[frame.FrameIPAddr]
 	if !ok {
-		m.mu.Unlock()
+		framesMu.Unlock()
 		return fmt.Errorf("frame state not found for IP %s", frame.FrameIPAddr)
 	}
 	state.ManualPause.Paused = true
 	state.ManualPause.ResumeAtSchedule = resumeAtSchedule
-	m.mu.Unlock()
+	framesMu.Unlock()
 
-	m.notifySSE(frame.FrameIPAddr, "pause")
-	m.logger.Info("frame paused manually", "frame_id", frameID, "ip", frame.FrameIPAddr, "resume_at_schedule", resumeAtSchedule)
+	notifySSE(frame.FrameIPAddr, "pause")
+	frLogger.Info("frame paused manually", "frame_id", frameID, "ip", frame.FrameIPAddr, "resume_at_schedule", resumeAtSchedule)
 	return nil
 }
 
 // ResumeFrame manually resumes a paused frame.
-func (m *Manager) ResumeFrame(frameID int64) error {
+func ResumeFrame(frameID int64) error {
 	frame, err := GetByID(frameID)
 	if err != nil {
 		return err
@@ -270,66 +260,66 @@ func (m *Manager) ResumeFrame(frameID int64) error {
 		return fmt.Errorf("frame %d not found", frameID)
 	}
 
-	m.mu.Lock()
-	state, ok := m.frames[frame.FrameIPAddr]
+	framesMu.Lock()
+	state, ok := frameStates[frame.FrameIPAddr]
 	if !ok {
-		m.mu.Unlock()
+		framesMu.Unlock()
 		return fmt.Errorf("frame state not found for IP %s", frame.FrameIPAddr)
 	}
 	state.ManualPause.Paused = false
 	state.ManualPause.ResumeAtSchedule = nil
-	m.mu.Unlock()
+	framesMu.Unlock()
 
-	m.notifySSE(frame.FrameIPAddr, "resume")
-	m.logger.Info("frame resumed", "frame_id", frameID, "ip", frame.FrameIPAddr)
+	notifySSE(frame.FrameIPAddr, "resume")
+	frLogger.Info("frame resumed", "frame_id", frameID, "ip", frame.FrameIPAddr)
 	return nil
 }
 
 // GetNextItem returns the next item for the frame at the given IP, advancing the index.
-func (m *Manager) GetNextItem(ip string) (interface{}, error) {
-	m.mu.Lock()
-	state, ok := m.frames[ip]
+func GetNextItem(ip string) (interface{}, error) {
+	framesMu.Lock()
+	state, ok := frameStates[ip]
 	if !ok {
-		m.mu.Unlock()
+		framesMu.Unlock()
 		return nil, fmt.Errorf("no frame registered for IP %s", ip)
 	}
 
 	// Check if paused (either auto or manual)
 	if state.AutoPause.Paused || state.ManualPause.Paused {
-		m.mu.Unlock()
+		framesMu.Unlock()
 		return nil, ErrFramePaused
 	}
 
 	if len(state.Items) == 0 {
-		m.mu.Unlock()
+		framesMu.Unlock()
 		return nil, nil
 	}
 
 	// Advance index (wrap around)
 	state.CurrIdx = (state.CurrIdx + 1) % len(state.Items)
 	item := state.Items[state.CurrIdx]
-	m.mu.Unlock()
+	framesMu.Unlock()
 
 	return item, nil
 }
 
 // GetPrevItem returns the previous item for the frame at the given IP, decrementing the index.
-func (m *Manager) GetPrevItem(ip string) (interface{}, error) {
-	m.mu.Lock()
-	state, ok := m.frames[ip]
+func GetPrevItem(ip string) (interface{}, error) {
+	framesMu.Lock()
+	state, ok := frameStates[ip]
 	if !ok {
-		m.mu.Unlock()
+		framesMu.Unlock()
 		return nil, fmt.Errorf("no frame registered for IP %s", ip)
 	}
 
 	// Check if paused
 	if state.AutoPause.Paused || state.ManualPause.Paused {
-		m.mu.Unlock()
+		framesMu.Unlock()
 		return nil, ErrFramePaused
 	}
 
 	if len(state.Items) == 0 {
-		m.mu.Unlock()
+		framesMu.Unlock()
 		return nil, nil
 	}
 
@@ -339,13 +329,13 @@ func (m *Manager) GetPrevItem(ip string) (interface{}, error) {
 		state.CurrIdx = len(state.Items) - 1
 	}
 	item := state.Items[state.CurrIdx]
-	m.mu.Unlock()
+	framesMu.Unlock()
 
 	return item, nil
 }
 
 // SetAutoPause sets the automatic pause state for a frame.
-func (m *Manager) SetAutoPause(frameID int64, paused bool) error {
+func SetAutoPause(frameID int64, paused bool) error {
 	frame, err := GetByID(frameID)
 	if err != nil {
 		return err
@@ -354,10 +344,10 @@ func (m *Manager) SetAutoPause(frameID int64, paused bool) error {
 		return fmt.Errorf("frame %d not found", frameID)
 	}
 
-	m.mu.Lock()
-	state, ok := m.frames[frame.FrameIPAddr]
+	framesMu.Lock()
+	state, ok := frameStates[frame.FrameIPAddr]
 	if !ok {
-		m.mu.Unlock()
+		framesMu.Unlock()
 		return fmt.Errorf("frame state not found for IP %s", frame.FrameIPAddr)
 	}
 	state.AutoPause.Paused = paused
@@ -371,20 +361,20 @@ func (m *Manager) SetAutoPause(frameID int64, paused bool) error {
 	}
 	// Determine if frame is still paused after state changes
 	stillPaused := state.AutoPause.Paused || state.ManualPause.Paused
-	m.mu.Unlock()
+	framesMu.Unlock()
 
 	if paused {
-		m.notifySSE(frame.FrameIPAddr, "pause")
+		notifySSE(frame.FrameIPAddr, "pause")
 	} else if !stillPaused {
 		// Only send resume if the frame is truly unpaused (not still manually paused)
-		m.notifySSE(frame.FrameIPAddr, "resume")
+		notifySSE(frame.FrameIPAddr, "resume")
 	}
 
 	return nil
 }
 
 // ReloadItemsForFrame runs the frame's search query and updates the in-memory items list.
-func (m *Manager) ReloadItemsForFrame(frame *Frame) error {
+func ReloadItemsForFrame(frame *Frame) error {
 	if frame.SearchStr == "" {
 		return nil
 	}
@@ -412,97 +402,97 @@ func (m *Manager) ReloadItemsForFrame(frame *Frame) error {
 		items = make([]interface{}, 0)
 	}
 
-	m.mu.Lock()
-	if state, ok := m.frames[frame.FrameIPAddr]; ok {
+	framesMu.Lock()
+	if state, ok := frameStates[frame.FrameIPAddr]; ok {
 		state.Items = items
 		state.CurrIdx = -1
 	}
-	m.mu.Unlock()
+	framesMu.Unlock()
 
-	m.logger.Info("items loaded for frame",
+	frLogger.Info("items loaded for frame",
 		"frame_id", frame.FrameID,
 		"ip", frame.FrameIPAddr,
 		"count", len(items),
 	)
 
-	m.notifySSE(frame.FrameIPAddr, "reload")
+	notifySSE(frame.FrameIPAddr, "reload")
 	return nil
 }
 
 // RegisterSSEClient creates and returns an SSE channel for the given IP.
-func (m *Manager) RegisterSSEClient(ip string) chan string {
-	m.sseMu.Lock()
-	defer m.sseMu.Unlock()
+func RegisterSSEClient(ip string) chan string {
+	sseMu.Lock()
+	defer sseMu.Unlock()
 
 	ch := make(chan string, 10)
-	m.sseClients[ip] = ch
-	m.logger.Info("SSE client connected", "ip", ip)
+	sseClients[ip] = ch
+	frLogger.Info("SSE client connected", "ip", ip)
 	return ch
 }
 
 // UnregisterSSEClient removes the SSE channel for the given IP.
-func (m *Manager) UnregisterSSEClient(ip string) {
-	m.sseMu.Lock()
-	defer m.sseMu.Unlock()
+func UnregisterSSEClient(ip string) {
+	sseMu.Lock()
+	defer sseMu.Unlock()
 
-	if ch, ok := m.sseClients[ip]; ok {
+	if ch, ok := sseClients[ip]; ok {
 		close(ch)
-		delete(m.sseClients, ip)
+		delete(sseClients, ip)
 	}
-	m.logger.Info("SSE client disconnected", "ip", ip)
+	frLogger.Info("SSE client disconnected", "ip", ip)
 }
 
 // AllFrameIPs returns the set of all registered frame IPs (for auth bypass).
-func (m *Manager) AllFrameIPs() map[string]struct{} {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
+func AllFrameIPs() map[string]struct{} {
+	framesMu.RLock()
+	defer framesMu.RUnlock()
 
-	ips := make(map[string]struct{}, len(m.frames))
-	for ip := range m.frames {
+	ips := make(map[string]struct{}, len(frameStates))
+	for ip := range frameStates {
 		ips[ip] = struct{}{}
 	}
 	return ips
 }
 
 // notifySSE sends an event to the SSE channel for the given IP, if connected.
-func (m *Manager) notifySSE(ip, eventType string) {
-	m.sseMu.Lock()
-	defer m.sseMu.Unlock()
+func notifySSE(ip, eventType string) {
+	sseMu.Lock()
+	defer sseMu.Unlock()
 
-	if ch, ok := m.sseClients[ip]; ok {
+	if ch, ok := sseClients[ip]; ok {
 		select {
 		case ch <- eventType:
-			m.logger.Info("sent SSE event to frame", "ip", ip, "event", eventType)
+			frLogger.Info("sent SSE event to frame", "ip", ip, "event", eventType)
 		default:
 			// Channel full, skip notification
 		}
 	} else {
-		m.logger.Warn("no SSE client found for frame", "ip", ip, "event", eventType)
+		frLogger.Warn("no SSE client found for frame", "ip", ip, "event", eventType)
 	}
 }
 
 // scheduleJobsForFrame schedules reset and pause/resume cron jobs for a frame.
-func (m *Manager) scheduleJobsForFrame(frame *Frame) {
+func scheduleJobsForFrame(frame *Frame) {
 	// Schedule playlist reset job
 	if frame.ResetSchedule != nil && *frame.ResetSchedule != "" {
 		jobName := fmt.Sprintf("frame_%d_reset", frame.FrameID)
 		f := frame
-		err := m.scheduler.AddJob(jobName, *frame.ResetSchedule, func() {
-			if err := m.ReloadItemsForFrame(f); err != nil {
-				m.logger.Error("frame playlist reset failed",
+		err := scheduler.AddJob(jobName, *frame.ResetSchedule, func() {
+			if err := ReloadItemsForFrame(f); err != nil {
+				frLogger.Error("frame playlist reset failed",
 					"frame_id", f.FrameID,
 					"error", err,
 				)
 			}
 		})
 		if err != nil {
-			m.logger.Error("failed to schedule frame reset job",
+			frLogger.Error("failed to schedule frame reset job",
 				"frame_id", frame.FrameID,
 				"pattern", *frame.ResetSchedule,
 				"error", err,
 			)
 		} else {
-			m.logger.Info("scheduled frame reset job", "frame_id", frame.FrameID, "schedule", *frame.ResetSchedule)
+			frLogger.Info("scheduled frame reset job", "frame_id", frame.FrameID, "schedule", *frame.ResetSchedule)
 		}
 	}
 
@@ -521,35 +511,35 @@ func (m *Manager) scheduleJobsForFrame(frame *Frame) {
 				pauseJobName := fmt.Sprintf("frame_%d_pause", frame.FrameID)
 				pausePattern := fmt.Sprintf("%s %s * * *", startParts[1], startParts[0])
 				frameID := frame.FrameID
-				err := m.scheduler.AddJob(pauseJobName, pausePattern, func() {
-					if err := m.SetAutoPause(frameID, true); err != nil {
-						m.logger.Error("auto-pause failed", "frame_id", frameID, "error", err)
+				err := scheduler.AddJob(pauseJobName, pausePattern, func() {
+					if err := SetAutoPause(frameID, true); err != nil {
+						frLogger.Error("auto-pause failed", "frame_id", frameID, "error", err)
 					}
 				})
 				if err != nil {
-					m.logger.Error("failed to schedule frame pause job",
+					frLogger.Error("failed to schedule frame pause job",
 						"frame_id", frame.FrameID,
 						"error", err,
 					)
 				} else {
-					m.logger.Info("scheduled frame pause job", "frame_id", frame.FrameID, "schedule", pausePattern)
+					frLogger.Info("scheduled frame pause job", "frame_id", frame.FrameID, "schedule", pausePattern)
 				}
 
 				// Schedule resume job: at end time every day
 				resumeJobName := fmt.Sprintf("frame_%d_resume", frame.FrameID)
 				resumePattern := fmt.Sprintf("%s %s * * *", endParts[1], endParts[0])
-				err = m.scheduler.AddJob(resumeJobName, resumePattern, func() {
-					if err := m.SetAutoPause(frameID, false); err != nil {
-						m.logger.Error("auto-resume failed", "frame_id", frameID, "error", err)
+				err = scheduler.AddJob(resumeJobName, resumePattern, func() {
+					if err := SetAutoPause(frameID, false); err != nil {
+						frLogger.Error("auto-resume failed", "frame_id", frameID, "error", err)
 					}
 				})
 				if err != nil {
-					m.logger.Error("failed to schedule frame resume job",
+					frLogger.Error("failed to schedule frame resume job",
 						"frame_id", frame.FrameID,
 						"error", err,
 					)
 				} else {
-					m.logger.Info("scheduled frame resume job", "frame_id", frame.FrameID, "schedule", resumePattern)
+					frLogger.Info("scheduled frame resume job", "frame_id", frame.FrameID, "schedule", resumePattern)
 				}
 			}
 		}
@@ -557,10 +547,10 @@ func (m *Manager) scheduleJobsForFrame(frame *Frame) {
 }
 
 // removeJobsForFrame removes all cron jobs associated with a frame.
-func (m *Manager) removeJobsForFrame(frameID int64) {
-	m.scheduler.DeleteJob(fmt.Sprintf("frame_%d_reset", frameID))
-	m.scheduler.DeleteJob(fmt.Sprintf("frame_%d_pause", frameID))
-	m.scheduler.DeleteJob(fmt.Sprintf("frame_%d_resume", frameID))
+func removeJobsForFrame(frameID int64) {
+	scheduler.DeleteJob(fmt.Sprintf("frame_%d_reset", frameID))
+	scheduler.DeleteJob(fmt.Sprintf("frame_%d_pause", frameID))
+	scheduler.DeleteJob(fmt.Sprintf("frame_%d_resume", frameID))
 }
 
 // isInPauseWindow checks if the current time falls within the HH:mm-HH:mm pause range.
@@ -609,18 +599,18 @@ func parseTimeComponent(s string) int {
 }
 
 // ScheduleAllFrameJobs schedules cron jobs (reset, pause/resume) for all loaded frames.
-func (m *Manager) ScheduleAllFrameJobs() {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
+func ScheduleAllFrameJobs() {
+	framesMu.RLock()
+	defer framesMu.RUnlock()
 
 	frames, err := GetAll()
 	if err != nil {
-		m.logger.Error("failed to get frames for job scheduling", "error", err)
+		frLogger.Error("failed to get frames for job scheduling", "error", err)
 		return
 	}
 
 	for i := range frames {
-		m.scheduleJobsForFrame(&frames[i])
+		scheduleJobsForFrame(&frames[i])
 	}
-	m.logger.Info("frame jobs scheduled", "count", len(frames))
+	frLogger.Info("frame jobs scheduled", "count", len(frames))
 }

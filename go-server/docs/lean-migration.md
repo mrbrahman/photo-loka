@@ -124,7 +124,12 @@ Core migration COMPLETE. All phases green.
 Follow-ups:
 - [x] Phase 6 (ml.Client internalized)
 - [x] Phase 7 (fold Organizer, Finalizer)
-- [ ] Phase 8 (fold Indexer, RateLimiter, Scheduler, Manager, jobs)
+- [x] Phase 8 (fold Indexer, RateLimiter, Scheduler, Manager, jobs)
+
+ALL FOLDS COMPLETE. The only remaining struct+New constructor is `queue.New`
+(3 live instances: indexQueue, videoQueue, geoQueue), matching the original
+criterion. `server.Deps` is now just {ThumbsDir, FacesDir}; `lifecycle.Deps` is
+just the 3 queues. Everything else is a package-level singleton.
 
 ## Follow-up resume notes
 
@@ -163,6 +168,38 @@ Follow-ups:
   NOTE 8c/8d/8e are interdependent (frames needs scheduler; jobs need indexer+
   scheduler); do scheduler first, then frames, then jobs. Reassess server.Deps
   after each -- it should shrink toward near-empty.
+- Phase 8a-e DONE (each build/vet/gofmt/build.sh green). Final sweep confirms
+  the ONLY remaining `func New*` is `queue.New` (3 instances).
+  - 8a indexing.Indexer -> indexing.Init(idxQueue, vidQueue, thumbs) + package
+    funcs; IndexQueue() returns the package var. jobs call indexing.IndexFile/
+    IndexQueue()/StartIntakeFileIndexing. Deleted dead internal/indexing/
+    metadata.go (2-arg UpdateDescription/UpdateRating collided with db.go's
+    3-arg versions and had zero callers -- items handler inlines the db call +
+    ScheduleExif itself).
+  - 8b geo.RateLimiter -> package vars (rl*) + initRateLimiter/rateCheck/
+    rateIncrement/SaveRateLimiter. geo.Init(q, stateFile, user) builds it. Status()
+    dropped (unused). lifecycle calls geo.SaveRateLimiter().
+  - 8c scheduler.Scheduler -> scheduler.Init() + package funcs (cronRunner/jobs/
+    patterns/mu vars). This front-loaded dropping the scheduler field from
+    frames.Manager and jobs.ScheduledIndexing constructors.
+  - 8d frames.Manager -> package vars (framesMu/frameStates/sseClients/sseMu/
+    frLogger) + package funcs. REMOVED auth.FrameIPChecker interface -->
+    MediaAuthMiddleware(allFrameIPs func() map[string]struct{}); server passes
+    frames.AllFrameIPs. admin/lifecycle call frames.* directly.
+  - 8e jobs.FileWatcher + ScheduledIndexing -> package vars + funcs. COLLISION:
+    both had StopForCollection + StopAll; renamed the scheduled side to
+    StopScheduledForCollection / StopAllScheduled. WatcherInfo type kept (return
+    type of ListAll). admin/lifecycle/main call jobs.* directly.
+  - RESULT: server.Deps = {ThumbsDir, FacesDir}; lifecycle.Deps = {IndexQueue,
+    VideoQueue, GeoQueue}. main.go boot is now almost entirely a sequence of
+    package Init calls + queue.New x3.
+  - RECURRING LESSON across 7-8: (1) use `func ` (not empty) when sed-stripping
+    receivers or you lose the keyword; (2) after folding, same-named methods on
+    two different structs in ONE package collide -> rename the raw/less-public
+    side unexported or domain-specific; (3) a struct field named like the
+    package (frames.frames, scheduler.jobs, jobs.jobs) must be renamed when it
+    becomes a package var; (4) grep `\b<recv>\.[a-zA-Z]` per file after sed to
+    catch internal method calls.
 
 ## Resume notes
 

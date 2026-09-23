@@ -14,21 +14,8 @@ import (
 	"photo-loka/internal/scheduler"
 )
 
-// Package-level collaborators for the admin job handlers, set via
-// RegisterJobsRoutes. These are genuine stateful objects created in main.
-var (
-	jobsScheduler    *scheduler.Scheduler
-	jobsFileWatcher  *jobs.FileWatcher
-	jobsScheduledIdx *jobs.ScheduledIndexing
-	jobsFrameManager *frames.Manager
-)
-
 // RegisterJobsRoutes registers job management routes on the given router group.
-func RegisterJobsRoutes(rg *gin.RouterGroup, sched *scheduler.Scheduler, fw *jobs.FileWatcher, si *jobs.ScheduledIndexing, fm *frames.Manager) {
-	jobsScheduler = sched
-	jobsFileWatcher = fw
-	jobsScheduledIdx = si
-	jobsFrameManager = fm
+func RegisterJobsRoutes(rg *gin.RouterGroup) {
 	rg.GET("/jobs", getJobs)
 	rg.POST("/startAllWatchers", startAllWatchers)
 	rg.POST("/stopAllWatchers", stopAllWatchers)
@@ -98,7 +85,7 @@ func getJobs(c *gin.Context) {
 	}
 
 	// Build a map of active watchers for quick lookup
-	activeWatchers := jobsFileWatcher.ListAll()
+	activeWatchers := jobs.ListAll()
 	activeWatcherPaths := make(map[string]bool)
 	for _, w := range activeWatchers {
 		key := fmt.Sprintf("%d:%s", w.CollectionID, w.IntakePath)
@@ -106,7 +93,7 @@ func getJobs(c *gin.Context) {
 	}
 
 	// Build a set of active scheduled jobs from the scheduler
-	allSchedulerJobs := jobsScheduler.ListAllJobs()
+	allSchedulerJobs := scheduler.ListAllJobs()
 	activeScheduledNames := make(map[string]string) // name -> pattern
 	for _, j := range allSchedulerJobs {
 		activeScheduledNames[j.Name] = j.Pattern
@@ -184,9 +171,9 @@ func getJobs(c *gin.Context) {
 			if len(parts) == 3 {
 				frameJob["frame_id"] = parts[1]
 				frameJob["type"] = parts[2]
-				// Look up frame name from DB via manager
-				if frames, err := jobsFrameManager.GetAllFrames(); err == nil {
-					for _, f := range frames {
+				// Look up frame name from DB
+				if frameList, err := frames.GetAllFrames(); err == nil {
+					for _, f := range frameList {
 						if fmt.Sprintf("%v", f["frame_id"]) == parts[1] {
 							frameJob["frame_name"] = f["frame_name"]
 							break
@@ -228,7 +215,7 @@ func getJobs(c *gin.Context) {
 // startAllWatchers starts file watchers for all collections.
 // POST /api/admin/startAllWatchers
 func startAllWatchers(c *gin.Context) {
-	if err := jobsFileWatcher.StartForAllCollections(); err != nil {
+	if err := jobs.StartForAllCollections(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{
 				"message": err.Error(),
@@ -244,13 +231,13 @@ func startAllWatchers(c *gin.Context) {
 // stopAllWatchers stops all active file watchers.
 // POST /api/admin/stopAllWatchers
 func stopAllWatchers(c *gin.Context) {
-	jobsFileWatcher.StopAll()
+	jobs.StopAll()
 	c.Status(http.StatusOK)
 }
 
 // startScheduledIndexing schedules all cron jobs for scheduled intake paths.
 func startScheduledIndexing(c *gin.Context) {
-	if err := jobsScheduledIdx.ScheduleAll(); err != nil {
+	if err := jobs.ScheduleAll(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{"message": err.Error(), "code": "INTERNAL_ERROR"},
 		})
@@ -261,6 +248,6 @@ func startScheduledIndexing(c *gin.Context) {
 
 // stopScheduledIndexing stops all scheduled indexing cron jobs.
 func stopScheduledIndexing(c *gin.Context) {
-	jobsScheduledIdx.StopAll()
+	jobs.StopAllScheduled()
 	c.Status(http.StatusOK)
 }

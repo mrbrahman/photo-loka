@@ -20,7 +20,6 @@ import (
 	"photo-loka/internal/collections"
 	"photo-loka/internal/config"
 	"photo-loka/internal/database"
-	"photo-loka/internal/frames"
 	"photo-loka/internal/geo"
 	"photo-loka/internal/indexing"
 	"photo-loka/internal/jobs"
@@ -206,15 +205,8 @@ func runServe() {
 	// Initialize ML package (HTTP client + face/thumbnail dirs).
 	ml.Init(cfg.MLServiceURL, cfg.FacesDir, cfg.ThumbsDir)
 
-	// Scheduler
-	sched := scheduler.New()
-
-	// Frames
-	frameManager := frames.NewManager(sched)
-
-	// Jobs
-	fileWatcher := jobs.NewFileWatcher()
-	scheduledIndexing := jobs.NewScheduledIndexing(sched)
+	// Scheduler (package-level cron runner)
+	scheduler.Init()
 
 	// Wire collection change callback to restart watchers/cron
 	collections.OnCollectionChanged = func(collectionID int64) {
@@ -222,10 +214,10 @@ func runServe() {
 		if err != nil || col == nil {
 			return
 		}
-		fileWatcher.StopForCollection(collectionID)
-		scheduledIndexing.StopForCollection(collectionID)
-		fileWatcher.StartForCollection(col)
-		scheduledIndexing.ScheduleForCollection(col)
+		jobs.StopForCollection(collectionID)
+		jobs.StopScheduledForCollection(collectionID)
+		jobs.StartForCollection(col)
+		jobs.ScheduleForCollection(col)
 	}
 
 	// Determine web assets filesystem: use ../web on disk if present, else embedded
@@ -243,28 +235,19 @@ func runServe() {
 	}
 
 	// Configure the HTTP server. Handlers are package-level; the server threads
-	// the collaborators below into each package's RegisterRoutes.
+	// the remaining startup-config paths into the route packages that need them.
 	server.Setup(cfg, server.Deps{
-		FrameIPChecker: frameManager,
-		FrameManager:   frameManager,
-		Scheduler:      sched,
-		FileWatcher:    fileWatcher,
-		ScheduledIdx:   scheduledIndexing,
-		ThumbsDir:      cfg.ThumbsDir,
-		FacesDir:       cfg.FacesDir,
+		ThumbsDir: cfg.ThumbsDir,
+		FacesDir:  cfg.FacesDir,
 	}, webFS)
 
 	slog.Info("starting Photo-Loka", "port", cfg.Port, "data_dir", cfg.DataDir)
 
 	// Startup orchestration (watchers, scheduled indexing, frames, cron jobs).
 	lifecycleDeps := lifecycle.Deps{
-		Scheduler:         sched,
-		FileWatcher:       fileWatcher,
-		ScheduledIndexing: scheduledIndexing,
-		FrameManager:      frameManager,
-		IndexQueue:        indexQueue,
-		VideoQueue:        videoQueue,
-		GeoQueue:          geoQueue,
+		IndexQueue: indexQueue,
+		VideoQueue: videoQueue,
+		GeoQueue:   geoQueue,
 	}
 	lifecycle.StartupActions(lifecycleDeps, auth.CleanupExpiredTokens)
 

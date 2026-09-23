@@ -16,16 +16,14 @@ import (
 	"photo-loka/internal/scheduler"
 )
 
-// Deps bundles the stateful collaborators that startup/shutdown act on. They
-// are created in main and handed here for orchestration.
+// Deps bundles the remaining stateful collaborators that startup/shutdown act
+// on. After the singleton folds only the three work queues still flow through
+// here (watchers, scheduled indexing, scheduler, rate limiter, and frames are
+// package-level and called directly).
 type Deps struct {
-	Scheduler         *scheduler.Scheduler
-	FileWatcher       *jobs.FileWatcher
-	ScheduledIndexing *jobs.ScheduledIndexing
-	FrameManager      *frames.Manager
-	IndexQueue        *queue.Queue
-	VideoQueue        *queue.Queue
-	GeoQueue          *queue.Queue
+	IndexQueue *queue.Queue
+	VideoQueue *queue.Queue
+	GeoQueue   *queue.Queue
 }
 
 // StartupActions runs the once-at-boot orchestration: start (or mark stopped)
@@ -33,7 +31,7 @@ type Deps struct {
 // schedule their cron jobs, and register the daily token-cleanup job.
 func StartupActions(d Deps, cleanupTokens func()) {
 	if config.Rt.StartFileWatcherAtStartup {
-		if err := d.FileWatcher.StartForAllCollections(); err != nil {
+		if err := jobs.StartForAllCollections(); err != nil {
 			slog.Error("failed to start file watchers", "error", err)
 		}
 	} else {
@@ -43,7 +41,7 @@ func StartupActions(d Deps, cleanupTokens func()) {
 	}
 
 	if config.Rt.StartScheduledIndexingAtStartup {
-		if err := d.ScheduledIndexing.ScheduleAll(); err != nil {
+		if err := jobs.ScheduleAll(); err != nil {
 			slog.Error("failed to schedule intake indexing", "error", err)
 		}
 	} else {
@@ -52,24 +50,24 @@ func StartupActions(d Deps, cleanupTokens func()) {
 		slog.Info("scheduled indexing at startup disabled - marked scheduled intakes as stopped")
 	}
 
-	if err := d.FrameManager.LoadAllFrames(); err != nil {
+	if err := frames.LoadAllFrames(); err != nil {
 		slog.Error("failed to load frames", "error", err)
 	}
 
 	// Schedule frame cron jobs (reset, pause/resume)
-	d.FrameManager.ScheduleAllFrameJobs()
+	frames.ScheduleAllFrameJobs()
 
 	// Schedule token cleanup (daily at 3am)
-	d.Scheduler.AddJob("token-cleanup", "0 3 * * *", cleanupTokens)
+	scheduler.AddJob("token-cleanup", "0 3 * * *", cleanupTokens)
 }
 
 // ShutdownCleanup stops background workers and persists state after the HTTP
 // server has stopped serving.
 func ShutdownCleanup(d Deps) {
-	d.Scheduler.Stop()
-	d.FileWatcher.StopAll()
-	d.ScheduledIndexing.StopAll()
-	geo.SaveRateLimiter() // persist rate limit counters for next startup
+	scheduler.Stop()
+	jobs.StopAll()          // stop file watchers
+	jobs.StopAllScheduled() // stop scheduled intake cron jobs
+	geo.SaveRateLimiter()   // persist rate limit counters for next startup
 	d.IndexQueue.Stop()
 	d.VideoQueue.Stop()
 	d.GeoQueue.Stop()
