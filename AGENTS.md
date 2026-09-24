@@ -26,6 +26,43 @@ Do not conflate "here's how I'd do it" with "let me do it now". The user wants t
 - **Keep replies short** - Long answers are hard to read. Prefer the minimum needed to convey the point. If the reply gets long anyway, summarize your reply at the end with a TLDR section so user doesn't have to go through the whole thing.
 - **Pause for input** - When you need a decision or clarification from the user, stop there and ask. Do not assume an answer and proceed
 
+## Go architecture: no boilerplate classes
+
+The Go backend (`go-server/`) deliberately avoids the "class for everything"
+pattern (a struct + `New*` constructor + method receivers) where there is no
+genuine object. This is a single-process, single-developer app with no unit
+tests, so the indirection that struct-based dependency injection buys is not
+worth the boilerplate.
+
+Rules going forward:
+
+- **Structs + `New*` only for genuine classes** - i.e. a type that has real,
+  mutable, per-instance state AND is (or realistically could be) instantiated
+  more than once. The canonical example is `queue.Queue` (three live instances:
+  index, video, geo). If there is exactly one instance for the life of the
+  process, it is a singleton, not a class.
+- **Single-instance state -> package-level.** Fold it into package-level vars
+  plus package-level functions. If it needs collaborators or a state file, give
+  the package an `Init(...)` that sets the package vars once at startup (mirrors
+  `scheduler.Init`, `geo.Init`, `ml.Init`, `indexing.Init`). Otherwise expose
+  plain package functions.
+- **App-wide resources are globals.** `database.DB` (the `*sql.DB`),
+  `config.Startup` (immutable env config), and `config.Runtime` (mutable,
+  DB-persisted settings) are package-level singletons read directly as
+  `pkg.Name`. Do not thread them through constructors or handler structs.
+- **Handlers are package-level.** HTTP handlers register via a package-level
+  `RegisterRoutes(rg *gin.RouterGroup, ...)` that wires any collaborators into
+  package vars and mounts unexported handler funcs. No `Handler` struct.
+- **The DB layer is package functions.** Query/exec helpers are package-level
+  functions on the global `database.DB`, not methods on a `*SomethingDB`
+  wrapper. When a business-layer function and a raw DB function would collide on
+  a name in the same package, keep the DB-layer one unexported (e.g.
+  `insertUser`) and let the exported name be the business entry point.
+- **Do not reintroduce boilerplate classes.** When adding a feature, default to
+  package-level functions + (if needed) an `Init`. Reach for a struct only when
+  the "genuine class" bar above is met. If unsure whether something qualifies,
+  ask.
+
 ## Code style rules
 
 - **No non-ASCII characters in code** - Use only ASCII in source files (comments, strings, identifiers). Use plain dashes (`-`) instead of em-dashes, straight quotes instead of curly quotes, etc.
