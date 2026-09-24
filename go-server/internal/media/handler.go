@@ -11,19 +11,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"photo-loka/internal/config"
 	"photo-loka/internal/database"
 )
 
-// Package-level media directories, set via RegisterRoutes.
-var (
-	thumbsDir string
-	facesDir  string
-)
-
-// RegisterRoutes registers media routes on the given router group.
-func RegisterRoutes(rg *gin.RouterGroup, thumbs, faces string) {
-	thumbsDir = thumbs
-	facesDir = faces
+// RegisterRoutes registers media routes on the given router group. The thumbnail
+// and faces directories are read from config.Startup at use time.
+func RegisterRoutes(rg *gin.RouterGroup) {
 	rg.GET("/getThumbnail", getThumbnail)
 	rg.GET("/getImage", getImage)
 	rg.GET("/getVideo", getVideo)
@@ -31,7 +25,7 @@ func RegisterRoutes(rg *gin.RouterGroup, thumbs, faces string) {
 }
 
 // getThumbnail serves a thumbnail image for the given uuid and height.
-// Thumbnails are stored at: thumbsDir/u[0]/u[1]/u[2]/uuid_hN.webp
+// Thumbnails are stored at: config.Startup.ThumbsDir/u[0]/u[1]/u[2]/uuid_hN.webp
 func getThumbnail(c *gin.Context) {
 	uuid := c.Query("uuid")
 	if uuid == "" {
@@ -51,7 +45,7 @@ func getThumbnail(c *gin.Context) {
 	heightBucket := bucketHeight(height)
 
 	// Build thumbnail path: first 3 chars of uuid as subdirectories
-	// e.g. uuid "abc123..." -> thumbsDir/a/b/c/abc123..._h250.webp
+	// e.g. uuid "abc123..." -> config.Startup.ThumbsDir/a/b/c/abc123..._h250.webp
 	if len(uuid) < 3 {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": gin.H{"message": "Invalid uuid", "code": "VALIDATION_ERROR"},
@@ -60,7 +54,7 @@ func getThumbnail(c *gin.Context) {
 	}
 
 	thumbPath := filepath.Join(
-		thumbsDir,
+		config.Startup.ThumbsDir,
 		string(uuid[0]),
 		string(uuid[1]),
 		string(uuid[2]),
@@ -140,7 +134,7 @@ func getVideo(c *gin.Context) {
 
 	if quality == "compressed" && len(uuid) >= 3 {
 		// Check for compressed versions in priority order (matching Node.js resolveVideoPath)
-		thumbDir := filepath.Join(thumbsDir, string(uuid[0]), string(uuid[1]), string(uuid[2]))
+		thumbDir := filepath.Join(config.Startup.ThumbsDir, string(uuid[0]), string(uuid[1]), string(uuid[2]))
 		candidates := []string{
 			filepath.Join(thumbDir, uuid+"_2pass_vp9_compressed_video.webm"),
 			filepath.Join(thumbDir, uuid+"_2pass_vp8_compressed_video.webm"),
@@ -194,7 +188,7 @@ func getVideo(c *gin.Context) {
 }
 
 // getFaceThumbnail serves a face thumbnail image.
-// Path: facesDir/cluster_id/uuid.jpg
+// Path: config.Startup.FacesDir/cluster_id/uuid.jpg
 func getFaceThumbnail(c *gin.Context) {
 	uuid := c.Query("uuid")
 	if uuid == "" {
@@ -212,7 +206,7 @@ func getFaceThumbnail(c *gin.Context) {
 		return
 	}
 
-	facePath := filepath.Join(facesDir, clusterID, uuid+".jpg")
+	facePath := filepath.Join(config.Startup.FacesDir, clusterID, uuid+".jpg")
 
 	if _, err := os.Stat(facePath); os.IsNotExist(err) {
 		c.Status(http.StatusNotFound)

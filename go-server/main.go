@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -131,19 +130,18 @@ func runServe() {
 	// Preflight: validate config and dependencies together
 	preflightCheck()
 
-	// Load startup config
-	cfg, err := config.LoadStartupConfig()
-	if err != nil {
+	// Load startup config (publishes the package-level config.Startup singleton).
+	if _, err := config.LoadStartupConfig(); err != nil {
 		slog.Error("failed to load startup config", "error", err)
 		os.Exit(1)
 	}
 
 	if os.Getenv("ML_SERVICE_URL") == "" {
-		slog.Info("ML_SERVICE_URL not set, using default", "url", cfg.MLServiceURL)
+		slog.Info("ML_SERVICE_URL not set, using default", "url", config.Startup.MLServiceURL)
 	}
 
 	// Check if ML service is reachable
-	checkMLService(cfg.MLServiceURL)
+	checkMLService(config.Startup.MLServiceURL)
 
 	// Initialize libvips for image processing
 	if err := media.InitVips(); err != nil {
@@ -162,7 +160,7 @@ func runServe() {
 	defer media.CloseExiftool()
 
 	// Open database (publishes the package-level database.DB)
-	if err := database.Open(cfg.DBFile); err != nil {
+	if err := database.Open(config.Startup.DBFile); err != nil {
 		slog.Error("failed to open database", "error", err)
 		os.Exit(1)
 	}
@@ -177,8 +175,8 @@ func runServe() {
 	}
 	slog.Info("runtime config loaded from database")
 
-	// Initialize auth (JWT secret) -- stateless package-level singleton.
-	auth.Init(cfg.JWTSecret)
+	// Initialize package-level singletons that read config.Startup.
+	auth.Init()
 
 	// Create indexing queues
 	numCPU := runtime.NumCPU()
@@ -194,16 +192,15 @@ func runServe() {
 		indexQueue.SetConcurrency(config.Rt.MaxConcurrency)
 	}
 
-	// Initialize the indexing package (work queues + thumbnails dir).
-	indexing.Init(indexQueue, videoQueue, cfg.ThumbsDir)
+	// Initialize the indexing package (work queues).
+	indexing.Init(indexQueue, videoQueue)
 
 	// Initialize geo package (dedicated single-threaded queue + rate limiter).
 	geoQueue := queue.New(1) // geo runs single-threaded due to rate limits
-	rateLimitStateFile := filepath.Join(cfg.DataDir, "rate_limit_state.json")
-	geo.Init(geoQueue, rateLimitStateFile, cfg.GeonamesUsername)
+	geo.Init(geoQueue)
 
-	// Initialize ML package (HTTP client + face/thumbnail dirs).
-	ml.Init(cfg.MLServiceURL, cfg.FacesDir, cfg.ThumbsDir)
+	// Initialize ML package (HTTP client).
+	ml.Init()
 
 	// Scheduler (package-level cron runner)
 	scheduler.Init()
@@ -234,14 +231,12 @@ func runServe() {
 		os.Exit(1)
 	}
 
-	// Configure the HTTP server. Handlers are package-level; the server threads
-	// the remaining startup-config paths into the route packages that need them.
-	server.Setup(cfg, server.Deps{
-		ThumbsDir: cfg.ThumbsDir,
-		FacesDir:  cfg.FacesDir,
-	}, webFS)
+	// Configure the HTTP server. Every route package is a package-level
+	// singleton reading config.Startup / config.Rt directly, so Setup only
+	// needs the web asset filesystem.
+	server.Setup(webFS)
 
-	slog.Info("starting Photo-Loka", "port", cfg.Port, "data_dir", cfg.DataDir)
+	slog.Info("starting Photo-Loka", "port", config.Startup.Port, "data_dir", config.Startup.DataDir)
 
 	// Startup orchestration (watchers, scheduled indexing, frames, cron jobs).
 	lifecycleDeps := lifecycle.Deps{
@@ -352,18 +347,17 @@ func runGenerateToken() {
 // initAuthCLI loads config, opens the DB, and initializes the auth package for
 // CLI commands. Caller is responsible for calling closeDB.
 func initAuthCLI() {
-	cfg, err := config.LoadStartupConfig()
-	if err != nil {
+	if _, err := config.LoadStartupConfig(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
 		os.Exit(1)
 	}
 
-	if err := database.Open(cfg.DBFile); err != nil {
+	if err := database.Open(config.Startup.DBFile); err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening database: %v\n", err)
 		os.Exit(1)
 	}
 
-	auth.Init(cfg.JWTSecret)
+	auth.Init()
 }
 
 func closeDB() {

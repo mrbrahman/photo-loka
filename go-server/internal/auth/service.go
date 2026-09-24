@@ -10,6 +10,8 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
+
+	"photo-loka/internal/config"
 )
 
 const (
@@ -27,9 +29,11 @@ var (
 	logger    = slog.Default()
 )
 
-// Init sets the JWT signing secret. Called once at startup (server and CLI).
-func Init(secret string) {
-	jwtSecret = []byte(secret)
+// Init caches the JWT signing secret (as bytes) from config.Startup. Called
+// once at startup, after LoadStartupConfig. Caching avoids a string->[]byte
+// conversion on every sign/verify.
+func Init() {
+	jwtSecret = []byte(config.Startup.JWTSecret)
 }
 
 // TokenPair holds an access token, refresh token, and user info.

@@ -19,20 +19,18 @@ import (
 )
 
 // The indexing pipeline is package-level (single instance in this process).
-// Init wires the two work queues and the thumbnails dir; idxLogger is the
-// pipeline logger.
+// Init wires the two work queues; the thumbnails dir is read from
+// config.Startup at use time. idxLogger is the pipeline logger.
 var (
 	indexQueue *queue.Queue
 	videoQueue *queue.Queue
-	thumbsDir  string
 	idxLogger  = slog.Default().With("component", "indexer")
 )
 
-// Init wires the indexing queues and thumbnails directory. Called once at startup.
-func Init(idxQueue, vidQueue *queue.Queue, thumbs string) {
+// Init wires the indexing queues. Called once at startup.
+func Init(idxQueue, vidQueue *queue.Queue) {
 	indexQueue = idxQueue
 	videoQueue = vidQueue
-	thumbsDir = thumbs
 }
 
 // IndexQueue returns the indexing queue for external enqueue operations.
@@ -118,19 +116,19 @@ func IndexFile(collection *collections.Collection, sourceFile string, existingUU
 
 	if exifData.Mediatype == "video" {
 		// Extract a frame from the video first, then generate thumbnails from that frame.
-		framePath, err := media.GenerateVideoThumbnail(fileUUID, finalFile, thumbsDir)
+		framePath, err := media.GenerateVideoThumbnail(fileUUID, finalFile, config.Startup.ThumbsDir)
 		if err != nil {
 			idxLogger.Warn("video thumbnail extraction failed", "file", finalFile, "error", err)
 		} else {
 			var thumbErr error
-			mlBuf, thumbErr = media.CreateImageThumbnails(fileUUID, framePath, thumbsDir)
+			mlBuf, thumbErr = media.CreateImageThumbnails(fileUUID, framePath, config.Startup.ThumbsDir)
 			if thumbErr != nil {
 				idxLogger.Warn("thumbnail creation from video frame failed", "file", finalFile, "error", thumbErr)
 			}
 		}
 	} else if exifData.Mediatype == "image" {
 		var err error
-		mlBuf, err = media.CreateImageThumbnails(fileUUID, finalFile, thumbsDir)
+		mlBuf, err = media.CreateImageThumbnails(fileUUID, finalFile, config.Startup.ThumbsDir)
 		if err != nil {
 			idxLogger.Warn("thumbnail creation failed", "file", finalFile, "error", err)
 		}
@@ -152,7 +150,7 @@ func IndexFile(collection *collections.Collection, sourceFile string, existingUU
 			Priority:    queue.Low,
 			Description: vidFile,
 			Fn: func() error {
-				return media.CompressVideo(vidUUID, vidFile, thumbsDir, encoder)
+				return media.CompressVideo(vidUUID, vidFile, config.Startup.ThumbsDir, encoder)
 			},
 		})
 	}

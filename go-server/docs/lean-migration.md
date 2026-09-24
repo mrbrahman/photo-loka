@@ -125,11 +125,26 @@ Follow-ups:
 - [x] Phase 6 (ml.Client internalized)
 - [x] Phase 7 (fold Organizer, Finalizer)
 - [x] Phase 8 (fold Indexer, RateLimiter, Scheduler, Manager, jobs)
+- [x] Phase 9 (config.Startup global; drop server.Deps + Init config params)
 
 ALL FOLDS COMPLETE. The only remaining struct+New constructor is `queue.New`
 (3 live instances: indexQueue, videoQueue, geoQueue), matching the original
-criterion. `server.Deps` is now just {ThumbsDir, FacesDir}; `lifecycle.Deps` is
-just the 3 queues. Everything else is a package-level singleton.
+criterion. Everything else is a package-level singleton.
+
+Phase 9: `config.Startup *StartupConfig` is now a package-level singleton set by
+`LoadStartupConfig` (immutable, no setters -- mirrors config.Rt / database.DB).
+Packages read `config.Startup.*` directly instead of threading startup values:
+- `server`: dropped the `Deps` struct entirely -> `server.Setup(webFS)`;
+  Run reads `config.Startup.Port`.
+- `auth.Init()`, `ml.Init()`, `scheduler.Init()` take no args; `geo.Init(q)`
+  and `indexing.Init(idxQueue, vidQueue)` take only the genuine *queue.Queue
+  objects. (auth caches JWTSecret as []byte in Init since it's hot-path;
+  ml builds its client from config.Startup.MLServiceURL; geo builds the rate-
+  limiter state path from config.Startup.DataDir.)
+- config.Startup readers: auth, geo (finalizer/service), indexing, items,
+  media, ml, server. main/CLI call LoadStartupConfig for its side effect and
+  read config.Startup (return value discarded, like LoadRuntimeConfig).
+  RESULT: server takes no deps; main is package Init calls + queue.New x3.
 
 ## Follow-up resume notes
 

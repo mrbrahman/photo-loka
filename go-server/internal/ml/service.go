@@ -6,24 +6,22 @@ import (
 	"fmt"
 	"log/slog"
 
+	"photo-loka/internal/config"
 	"photo-loka/internal/media"
 )
 
 // ML operations (face recognition, image encoding) are package-level functions.
-// The package holds its collaborators as package vars, set once via Init.
+// client is the ML HTTP client, built once via Init; face/thumbnail dirs are
+// read from config.Startup at use time.
 var (
-	client    *apiClient
-	facesDir  string
-	thumbsDir string
-	logger    = slog.Default().With("component", "ml-service")
+	client *apiClient
+	logger = slog.Default().With("component", "ml-service")
 )
 
-// Init builds the ML service HTTP client and stores the face/thumbnail
-// directories. Called once at startup with the ML service base URL.
-func Init(mlServiceURL, faces, thumbs string) {
-	client = newAPIClient(mlServiceURL)
-	facesDir = faces
-	thumbsDir = thumbs
+// Init builds the ML service HTTP client from config.Startup. Called once at
+// startup, after LoadStartupConfig.
+func Init() {
+	client = newAPIClient(config.Startup.MLServiceURL)
 }
 
 // ProcessFaceRecognition runs face recognition for a media item.
@@ -52,7 +50,7 @@ func ProcessFaceRecognition(uuid string, mlBuf *media.MLBuffer) (map[string]inte
 	// so the scaled-up bbox (in this file's pixel space) matches the crop source.
 	feedFile := item.Filename
 	if item.Mediatype == "video" {
-		feedFile = media.VideoFramePath(uuid, thumbsDir)
+		feedFile = media.VideoFramePath(uuid, config.Startup.ThumbsDir)
 	}
 
 	// If no buffer was supplied by the caller, produce one now.
@@ -105,7 +103,7 @@ func ProcessFaceRecognition(uuid string, mlBuf *media.MLBuffer) (map[string]inte
 	// images, the extracted frame for videos. bbox is in feedFile pixel space
 	// after the scale-up above, so the crop source must match feedFile.
 	if len(faces) > 0 {
-		if err := media.ExtractFaceThumbnails(uuid, feedFile, faces, facesDir); err != nil {
+		if err := media.ExtractFaceThumbnails(uuid, feedFile, faces, config.Startup.FacesDir); err != nil {
 			logger.Warn("face thumbnail extraction failed", "uuid", uuid, "error", err)
 		}
 	}
@@ -152,7 +150,7 @@ func ProcessImageEncoding(uuid string, mlBuf *media.MLBuffer) error {
 		}
 		feedFile := item.Filename
 		if item.Mediatype == "video" {
-			feedFile = media.VideoFramePath(uuid, thumbsDir)
+			feedFile = media.VideoFramePath(uuid, config.Startup.ThumbsDir)
 		}
 		mlBuf, _ = media.ExportMLBuffer(uuid, feedFile)
 	}

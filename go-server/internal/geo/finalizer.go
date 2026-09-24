@@ -8,15 +8,13 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"photo-loka/internal/config"
 )
 
-// Geo resolution is package-level (single instance). geonamesUser is set by
-// Init; geoLogger is the finalizer's logger. Rate limiting lives in
-// ratelimiter.go (also package-level).
-var (
-	geonamesUser string
-	geoLogger    = slog.Default().With("component", "geo-finalizer")
-)
+// Geo resolution is package-level (single instance). geoLogger is the
+// finalizer's logger; the geonames username is read from config.Startup.
+var geoLogger = slog.Default().With("component", "geo-finalizer")
 
 // FinalizeGeo is the main entry point for geo resolution.
 // It derives missing fields from DB if needed, then routes to US vs non-US processing.
@@ -173,7 +171,7 @@ func lookupGeonames(uuid string, lat, lng float64) error {
 
 	apiURL := fmt.Sprintf(
 		"http://api.geonames.org/findNearestAddressJSON?lat=%f&lng=%f&username=%s",
-		lat, lng, url.QueryEscape(geonamesUser),
+		lat, lng, url.QueryEscape(config.Startup.GeonamesUsername),
 	)
 
 	resp, err := http.Get(apiURL)
@@ -321,7 +319,7 @@ func resolveCity(uuid, postalcode, country string) (string, error) {
 
 	apiURL := fmt.Sprintf(
 		"http://api.geonames.org/postalCodeLookupJSON?postalcode=%s&country=%s&username=%s",
-		url.QueryEscape(postalcode), url.QueryEscape(country), url.QueryEscape(geonamesUser),
+		url.QueryEscape(postalcode), url.QueryEscape(country), url.QueryEscape(config.Startup.GeonamesUsername),
 	)
 
 	resp, err := http.Get(apiURL)

@@ -24,6 +24,11 @@ type StartupConfig struct {
 	Port             int
 }
 
+// Startup is the process-wide startup configuration singleton, set by
+// LoadStartupConfig at startup. It is immutable (env-derived constants) and
+// read directly by packages that need it.
+var Startup *StartupConfig
+
 // LoadStartupConfig loads configuration from environment variables (after loading .env).
 func LoadStartupConfig() (*StartupConfig, error) {
 	// Load .env file; ignore error if file not found
@@ -91,6 +96,10 @@ func LoadStartupConfig() (*StartupConfig, error) {
 		Port:             port,
 	}
 
+	// Publish as the process-wide singleton. StartupConfig is immutable after
+	// load (env-derived constants), so it is read directly by packages that
+	// need it, no setters.
+	Startup = cfg
 	return cfg, nil
 }
 

@@ -2,23 +2,24 @@ package geo
 
 import (
 	"log/slog"
+	"path/filepath"
 
+	"photo-loka/internal/config"
 	"photo-loka/internal/queue"
 )
 
 // Geo encoding operations are package-level functions backed by a dedicated
-// queue and the finalizer state (rate limiter + geonames user), set via Init.
+// queue. The geonames username and data dir come from config.Startup.
 var (
 	geoQueue *queue.Queue
 	logger   = slog.Default().With("component", "geo-service")
 )
 
-// Init wires the geo queue, initializes the rate limiter from its state file,
-// and sets the geonames username. Called once at startup.
-func Init(q *queue.Queue, rateLimitStateFile, user string) {
+// Init wires the geo queue and initializes the rate limiter from its state file
+// (under config.Startup.DataDir). Called once at startup.
+func Init(q *queue.Queue) {
 	geoQueue = q
-	geonamesUser = user
-	initRateLimiter(rateLimitStateFile)
+	initRateLimiter(filepath.Join(config.Startup.DataDir, "rate_limit_state.json"))
 }
 
 // Enqueue adds a single geo resolution task to the queue.

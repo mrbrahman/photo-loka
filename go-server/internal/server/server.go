@@ -31,33 +31,15 @@ import (
 	"photo-loka/internal/search"
 )
 
-// Package-level engine and startup config, set by Setup. The HTTP layer is a
-// process-wide singleton, so there is no Server struct: Setup builds the engine
-// and mounts routes; Run serves it.
-var (
-	router *gin.Engine
-	cfg    *config.StartupConfig
-)
-
-// Deps bundles the application collaborators that the route packages need.
-// Handlers are now package-level (their routes are registered via each
-// package's RegisterRoutes function), so the server just threads these
-// collaborators through to those registration calls. Services that collapsed
-// to package-level singletons (auth, collections, geo, ml) are initialized in
-// main and are not threaded here.
-// Deps bundles the remaining startup-config values that route packages need.
-// Almost everything is now a package-level singleton (auth, collections, geo,
-// ml, indexing, frames, jobs, scheduler); only the media directories still flow
-// through here.
-type Deps struct {
-	ThumbsDir string
-	FacesDir  string
-}
+// Package-level Gin engine, set by Setup. The HTTP layer is a process-wide
+// singleton, so there is no Server struct: Setup builds the engine and mounts
+// routes; Run serves it. Startup config is read from config.Startup.
+var router *gin.Engine
 
 // Setup builds the Gin engine, installs middleware, and mounts all routes.
-func Setup(startupCfg *config.StartupConfig, deps Deps, webFS http.FileSystem) {
-	cfg = startupCfg
-
+// Every route package is a package-level singleton reading config.Startup /
+// config.Rt directly, so Setup only needs the web asset filesystem.
+func Setup(webFS http.FileSystem) {
 	gin.SetMode(gin.ReleaseMode)
 
 	router = gin.New()
@@ -69,11 +51,11 @@ func Setup(startupCfg *config.StartupConfig, deps Deps, webFS http.FileSystem) {
 	// Serve static files with Cache-Control: no-cache
 	router.Use(staticFileHandler(webFS))
 
-	setupRoutes(deps)
+	setupRoutes()
 }
 
 // setupRoutes mounts all route groups.
-func setupRoutes(deps Deps) {
+func setupRoutes() {
 	// Health and ping
 	router.GET("/ping", func(c *gin.Context) {
 		c.Status(http.StatusNoContent)
@@ -103,7 +85,7 @@ func setupRoutes(deps Deps) {
 	{
 		search.RegisterRoutes(apiGroup)
 		albums.RegisterRoutes(apiGroup)
-		items.RegisterRoutes(apiGroup, deps.ThumbsDir)
+		items.RegisterRoutes(apiGroup)
 		geo.RegisterRoutes(apiGroup)
 		ml.RegisterRoutes(apiGroup)
 	}
@@ -112,7 +94,7 @@ func setupRoutes(deps Deps) {
 	mediaGroup := router.Group("/api")
 	mediaGroup.Use(auth.MediaAuthMiddleware(frames.AllFrameIPs))
 	{
-		media.RegisterRoutes(mediaGroup, deps.ThumbsDir, deps.FacesDir)
+		media.RegisterRoutes(mediaGroup)
 	}
 
 	// Admin routes
@@ -132,7 +114,7 @@ func setupRoutes(deps Deps) {
 
 // Run starts the HTTP server with graceful shutdown.
 func Run() error {
-	addr := fmt.Sprintf(":%d", cfg.Port)
+	addr := fmt.Sprintf(":%d", config.Startup.Port)
 
 	srv := &http.Server{
 		Addr:    addr,
@@ -146,7 +128,7 @@ func Run() error {
 	// Start server in goroutine
 	errCh := make(chan error, 1)
 	go func() {
-		slog.Info("server started", "port", cfg.Port)
+		slog.Info("server started", "port", config.Startup.Port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			errCh <- err
 		}

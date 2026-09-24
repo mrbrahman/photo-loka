@@ -18,16 +18,12 @@ import (
 	"photo-loka/internal/ml"
 )
 
-// Package-level collaborators for the item route handlers, set via
-// RegisterRoutes. Runtime config uses the config.Rt singleton directly.
-var (
-	thumbsDir string
-	logger    = slog.Default().With("component", "items-handler")
-)
+// logger for the item route handlers. Startup and runtime config are read from
+// the config.Startup / config.Rt singletons directly.
+var logger = slog.Default().With("component", "items-handler")
 
 // RegisterRoutes registers all item-related routes on the given router group.
-func RegisterRoutes(rg *gin.RouterGroup, thumbs string) {
-	thumbsDir = thumbs
+func RegisterRoutes(rg *gin.RouterGroup) {
 	rg.PUT("/updateRating", updateRating)
 	rg.PUT("/updateDescription", updateDescription)
 	rg.PUT("/renameFile", renameFile)
@@ -196,17 +192,17 @@ func refreshThumbs(c *gin.Context) {
 	go func() {
 		if isVideo {
 			// Extract a frame from the video first
-			framePath, err := media.GenerateVideoThumbnail(uuid, filename, thumbsDir)
+			framePath, err := media.GenerateVideoThumbnail(uuid, filename, config.Startup.ThumbsDir)
 			if err != nil {
 				logger.Error("video thumbnail extraction failed", "uuid", uuid, "error", err)
 				return
 			}
 			// Generate standard thumbnails from the extracted frame
-			if _, err := media.CreateImageThumbnails(uuid, framePath, thumbsDir); err != nil {
+			if _, err := media.CreateImageThumbnails(uuid, framePath, config.Startup.ThumbsDir); err != nil {
 				logger.Error("thumbnail creation from video frame failed", "uuid", uuid, "error", err)
 			}
 		} else {
-			if _, err := media.CreateImageThumbnails(uuid, filename, thumbsDir); err != nil {
+			if _, err := media.CreateImageThumbnails(uuid, filename, config.Startup.ThumbsDir); err != nil {
 				logger.Error("thumbnail creation failed", "uuid", uuid, "error", err)
 			}
 		}
@@ -238,7 +234,7 @@ func compressVideo(c *gin.Context) {
 	}
 
 	encoder := config.Rt.VideoEncoder
-	if err := media.CompressVideo(uuid, filename, thumbsDir, encoder); err != nil {
+	if err := media.CompressVideo(uuid, filename, config.Startup.ThumbsDir, encoder); err != nil {
 		logger.Error("video compression failed", "uuid", uuid, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": "video compression failed: " + err.Error(),
@@ -395,10 +391,10 @@ func permanentlyDeleteItems(uuids []string) []string {
 		}
 
 		// 2. Delete thumbnails
-		media.DeleteThumbnails(uuid, thumbsDir)
+		media.DeleteThumbnails(uuid, config.Startup.ThumbsDir)
 
 		// 3. Delete compressed video files
-		media.DeleteCompressedVideo(uuid, thumbsDir)
+		media.DeleteCompressedVideo(uuid, config.Startup.ThumbsDir)
 
 		// 4. Cleanup face/ML data (DB + external ML service)
 		ml.CleanupMLData(uuid)
