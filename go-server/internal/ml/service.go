@@ -15,8 +15,10 @@ import (
 // read from config.Startup at use time.
 var (
 	client *apiClient
-	logger = slog.Default().With("component", "ml-service")
 )
+
+// log resolves the current default handler at call time (see frames.frLogger).
+func log() *slog.Logger { return slog.Default().With("component", "ml-service") }
 
 // Init builds the ML service HTTP client from config.Startup. Called once at
 // startup, after LoadStartupConfig.
@@ -104,11 +106,11 @@ func ProcessFaceRecognition(uuid string, mlBuf *media.MLBuffer) (map[string]inte
 	// after the scale-up above, so the crop source must match feedFile.
 	if len(faces) > 0 {
 		if err := media.ExtractFaceThumbnails(uuid, feedFile, faces, config.Startup.FacesDir); err != nil {
-			logger.Warn("face thumbnail extraction failed", "uuid", uuid, "error", err)
+			log().Warn("face thumbnail extraction failed", "uuid", uuid, "error", err)
 		}
 	}
 
-	logger.Info("face recognition complete", "uuid", uuid, "faces", len(faces), "unmatched", len(unmatched))
+	log().Info("face recognition complete", "uuid", uuid, "faces", len(faces), "unmatched", len(unmatched))
 	return result, nil
 }
 
@@ -165,7 +167,7 @@ func ProcessImageEncoding(uuid string, mlBuf *media.MLBuffer) error {
 		return fmt.Errorf("image encoding failed for %s: %w", uuid, err)
 	}
 
-	logger.Info("image encoding complete", "uuid", uuid)
+	log().Info("image encoding complete", "uuid", uuid)
 	return nil
 }
 
@@ -192,7 +194,7 @@ func NameFaceCluster(clusterID, name string) (int64, error) {
 		return 0, fmt.Errorf("failed to name cluster in DB: %w", err)
 	}
 
-	logger.Info("named face cluster", "cluster_id", clusterID, "name", name, "rows_affected", rowsAffected)
+	log().Info("named face cluster", "cluster_id", clusterID, "name", name, "rows_affected", rowsAffected)
 	return rowsAffected, nil
 }
 
@@ -209,7 +211,7 @@ func UpdatePersonName(oldName, newName string) (int64, error) {
 		return 0, fmt.Errorf("failed to update person name in DB: %w", err)
 	}
 
-	logger.Info("updated person name", "old_name", oldName, "new_name", newName, "rows_affected", rowsAffected)
+	log().Info("updated person name", "old_name", oldName, "new_name", newName, "rows_affected", rowsAffected)
 	return rowsAffected, nil
 }
 
@@ -240,7 +242,7 @@ func DismissCluster(clusterID string) error {
 	if err := dismissClusterDB(clusterID); err != nil {
 		return err
 	}
-	logger.Info("dismissed cluster", "cluster_id", clusterID)
+	log().Info("dismissed cluster", "cluster_id", clusterID)
 	return nil
 }
 
@@ -249,7 +251,7 @@ func UndismissCluster(clusterID string) error {
 	if err := undismissClusterDB(clusterID); err != nil {
 		return err
 	}
-	logger.Info("undismissed cluster", "cluster_id", clusterID)
+	log().Info("undismissed cluster", "cluster_id", clusterID)
 	return nil
 }
 
@@ -258,9 +260,9 @@ func CleanupMLData(uuid string) {
 	// Delete from local DB
 	clusterIDs, err := deleteFaceData(uuid)
 	if err != nil {
-		logger.Error("failed to delete face data from DB", "uuid", uuid, "error", err)
+		log().Error("failed to delete face data from DB", "uuid", uuid, "error", err)
 	} else if len(clusterIDs) > 0 {
-		logger.Info("deleted face data", "uuid", uuid, "cluster_ids", clusterIDs)
+		log().Info("deleted face data", "uuid", uuid, "cluster_ids", clusterIDs)
 	}
 
 	// Call ML service cleanup (logs errors internally)

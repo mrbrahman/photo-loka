@@ -28,6 +28,14 @@ func newAPIClient(baseURL string) *apiClient {
 		client: &http.Client{
 			Timeout: 60 * time.Second,
 		},
+		// This snapshot is safe because newAPIClient is called from Init (after
+		// main's initLogging), so it captures the tint handler, not the stdlib
+		// default. If this client is ever folded into a package-level singleton
+		// (var built at init time, before main), do NOT snapshot the logger into
+		// a package var -- that captures the wrong handler and doubles the log
+		// level token. Use a lazy helper instead, e.g.
+		// `func log() *slog.Logger { return slog.Default().With("component", "ml-client") }`.
+		// See docs/logger-init-order-bug.md and frames.frLogger for the pattern.
 		logger: slog.Default().With("component", "ml-client"),
 	}
 }

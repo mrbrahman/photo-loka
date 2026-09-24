@@ -26,8 +26,10 @@ type WatcherInfo struct {
 var (
 	watchersMu sync.Mutex
 	watchers   []WatcherInfo
-	fwLogger   = slog.Default().With("component", "file-watcher")
 )
+
+// fwLogger resolves the current default handler at call time (see frames.frLogger).
+func fwLogger() *slog.Logger { return slog.Default().With("component", "file-watcher") }
 
 // StartForAllCollections starts file watchers for all collections with immediate intake paths.
 func StartForAllCollections() error {
@@ -51,7 +53,7 @@ func StartForCollection(col *collections.Collection) {
 
 	var intakeConfigs []intakeConfig
 	if err := json.Unmarshal(col.IntakeConfigs, &intakeConfigs); err != nil {
-		fwLogger.Error("failed to parse intake_configs",
+		fwLogger().Error("failed to parse intake_configs",
 			"collection_id", col.CollectionID,
 			"error", err,
 		)
@@ -68,7 +70,7 @@ func StartForCollection(col *collections.Collection) {
 
 		watcher, err := fsnotify.NewWatcher()
 		if err != nil {
-			fwLogger.Error("failed to create watcher",
+			fwLogger().Error("failed to create watcher",
 				"collection_id", col.CollectionID,
 				"path", cfg.Path,
 				"error", err,
@@ -77,7 +79,7 @@ func StartForCollection(col *collections.Collection) {
 		}
 
 		if err := watcher.Add(cfg.Path); err != nil {
-			fwLogger.Error("failed to watch path",
+			fwLogger().Error("failed to watch path",
 				"collection_id", col.CollectionID,
 				"path", cfg.Path,
 				"error", err,
@@ -99,7 +101,7 @@ func StartForCollection(col *collections.Collection) {
 		// Start event handler goroutine
 		go handleEvents(watcher, col.CollectionID, cfg.Path)
 
-		fwLogger.Info("watching intake path",
+		fwLogger().Info("watching intake path",
 			"collection_id", col.CollectionID,
 			"path", cfg.Path,
 		)
@@ -115,7 +117,7 @@ func StopForCollection(collectionID int64) {
 	for _, w := range watchers {
 		if w.CollectionID == collectionID {
 			w.watcher.Close()
-			fwLogger.Info("stopped watching",
+			fwLogger().Info("stopped watching",
 				"collection_id", collectionID,
 				"path", w.IntakePath,
 			)
@@ -135,7 +137,7 @@ func StopAll() {
 		w.watcher.Close()
 	}
 	watchers = nil
-	fwLogger.Info("all file watchers stopped")
+	fwLogger().Info("all file watchers stopped")
 }
 
 // ListAll returns information about all active watchers.
@@ -180,7 +182,7 @@ func handleEvents(watcher *fsnotify.Watcher, collectionID int64, intakePath stri
 			if !ok {
 				return
 			}
-			fwLogger.Error("watcher error",
+			fwLogger().Error("watcher error",
 				"collection_id", collectionID,
 				"path", intakePath,
 				"error", err,
@@ -203,7 +205,7 @@ func handleEvents(watcher *fsnotify.Watcher, collectionID int64, intakePath stri
 func enqueueFile(collectionID int64, filePath string) {
 	collection, err := collections.Get(collectionID)
 	if err != nil || collection == nil {
-		fwLogger.Error("failed to get collection for enqueue",
+		fwLogger().Error("failed to get collection for enqueue",
 			"collection_id", collectionID,
 			"file", filePath,
 			"error", err,
@@ -221,7 +223,7 @@ func enqueueFile(collectionID int64, filePath string) {
 		},
 	})
 
-	fwLogger.Info("watcher: file added",
+	fwLogger().Info("watcher: file added",
 		"collection_id", collectionID,
 		"file", filePath,
 	)

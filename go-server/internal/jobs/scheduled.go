@@ -16,8 +16,10 @@ import (
 var (
 	scheduledJobs = make(map[string]int64) // jobName -> collection_id
 	scheduledMu   sync.Mutex
-	siLogger      = slog.Default().With("component", "scheduled-indexing")
 )
+
+// siLogger resolves the current default handler at call time (see frames.frLogger).
+func siLogger() *slog.Logger { return slog.Default().With("component", "scheduled-indexing") }
 
 // ScheduleAll schedules intake indexing for all collections with scheduled intake paths.
 func ScheduleAll() error {
@@ -41,7 +43,7 @@ func ScheduleForCollection(col *collections.Collection) {
 
 	var intakeConfigs []scheduledIntakeConfig
 	if err := json.Unmarshal(col.IntakeConfigs, &intakeConfigs); err != nil {
-		siLogger.Error("failed to parse intake_configs",
+		siLogger().Error("failed to parse intake_configs",
 			"collection_id", col.CollectionID,
 			"error", err,
 		)
@@ -58,7 +60,7 @@ func ScheduleForCollection(col *collections.Collection) {
 
 		schedule := cfg.Config.Schedule
 		if schedule == "" {
-			siLogger.Warn("scheduled intake has no schedule",
+			siLogger().Warn("scheduled intake has no schedule",
 				"collection_id", col.CollectionID,
 				"path", cfg.Path,
 			)
@@ -76,7 +78,7 @@ func ScheduleForCollection(col *collections.Collection) {
 			// Check if indexer is idle before starting intake indexing
 			status := indexing.IndexQueue().GetStatus()
 			if status.Pending+status.Active > 0 {
-				siLogger.Debug("skipping scheduled intake - indexer busy",
+				siLogger().Debug("skipping scheduled intake - indexer busy",
 					"collection_id", collectionID,
 					"path", intakePath,
 					"pending", status.Pending,
@@ -86,7 +88,7 @@ func ScheduleForCollection(col *collections.Collection) {
 			}
 
 			if err := indexing.StartIntakeFileIndexing(collectionID, intakePath, days); err != nil {
-				siLogger.Error("scheduled intake indexing failed",
+				siLogger().Error("scheduled intake indexing failed",
 					"collection_id", collectionID,
 					"path", intakePath,
 					"error", err,
@@ -95,7 +97,7 @@ func ScheduleForCollection(col *collections.Collection) {
 		})
 
 		if err != nil {
-			siLogger.Error("failed to schedule intake job",
+			siLogger().Error("failed to schedule intake job",
 				"collection_id", col.CollectionID,
 				"path", cfg.Path,
 				"schedule", schedule,
@@ -108,7 +110,7 @@ func ScheduleForCollection(col *collections.Collection) {
 		scheduledJobs[jobName] = col.CollectionID
 		scheduledMu.Unlock()
 
-		siLogger.Info("scheduled intake indexing",
+		siLogger().Info("scheduled intake indexing",
 			"collection_id", col.CollectionID,
 			"path", cfg.Path,
 			"schedule", schedule,
@@ -126,7 +128,7 @@ func StopScheduledForCollection(collectionID int64) {
 		if colID == collectionID {
 			scheduler.DeleteJob(jobName)
 			delete(scheduledJobs, jobName)
-			siLogger.Info("removed scheduled job", "job", jobName, "collection_id", collectionID)
+			siLogger().Info("removed scheduled job", "job", jobName, "collection_id", collectionID)
 		}
 	}
 }
@@ -140,7 +142,7 @@ func StopAllScheduled() {
 		scheduler.DeleteJob(jobName)
 	}
 	scheduledJobs = make(map[string]int64)
-	siLogger.Info("all scheduled intake jobs stopped")
+	siLogger().Info("all scheduled intake jobs stopped")
 }
 
 // ListJobs returns a map of job names to their collection IDs.

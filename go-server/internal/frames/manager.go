@@ -42,8 +42,12 @@ var (
 	frameStates = make(map[string]*FrameState) // ip -> state
 	sseClients  = make(map[string]chan string) // ip -> SSE channel
 	sseMu       sync.Mutex
-	frLogger    = slog.Default().With("component", "frame-manager")
 )
+
+// frLogger resolves the current default handler at call time. Do not snapshot
+// it into a package var: package-var init runs before main installs the tint
+// handler, so a snapshot would capture the wrong (stdlib) handler.
+func frLogger() *slog.Logger { return slog.Default().With("component", "frame-manager") }
 
 // LoadAllFrames loads all frames from DB and initializes in-memory state.
 // Cron jobs are scheduled separately via ScheduleAllFrameJobs.
@@ -66,7 +70,7 @@ func LoadAllFrames() error {
 
 		// Load items for this frame
 		if err := ReloadItemsForFrame(frame); err != nil {
-			frLogger.Warn("failed to load items for frame",
+			frLogger().Warn("failed to load items for frame",
 				"frame_id", frame.FrameID,
 				"ip", frame.FrameIPAddr,
 				"error", err,
@@ -88,7 +92,7 @@ func LoadAllFrames() error {
 		}
 	}
 
-	frLogger.Info("all frames loaded", "count", len(dbFrames))
+	frLogger().Info("all frames loaded", "count", len(dbFrames))
 	return nil
 }
 
@@ -146,7 +150,7 @@ func CreateFrame(frame *Frame) (int64, error) {
 
 	// Load items
 	if err := ReloadItemsForFrame(frame); err != nil {
-		frLogger.Warn("failed to load items for new frame",
+		frLogger().Warn("failed to load items for new frame",
 			"frame_id", id,
 			"error", err,
 		)
@@ -192,7 +196,7 @@ func UpdateFrame(frameID int64, frame *Frame) error {
 
 	// Reload items
 	if err := ReloadItemsForFrame(frame); err != nil {
-		frLogger.Warn("failed to reload items after update",
+		frLogger().Warn("failed to reload items after update",
 			"frame_id", frameID,
 			"error", err,
 		)
@@ -246,7 +250,7 @@ func PauseFrame(frameID int64, resumeAtSchedule *bool) error {
 	framesMu.Unlock()
 
 	notifySSE(frame.FrameIPAddr, "pause")
-	frLogger.Info("frame paused manually", "frame_id", frameID, "ip", frame.FrameIPAddr, "resume_at_schedule", resumeAtSchedule)
+	frLogger().Info("frame paused manually", "frame_id", frameID, "ip", frame.FrameIPAddr, "resume_at_schedule", resumeAtSchedule)
 	return nil
 }
 
@@ -271,7 +275,7 @@ func ResumeFrame(frameID int64) error {
 	framesMu.Unlock()
 
 	notifySSE(frame.FrameIPAddr, "resume")
-	frLogger.Info("frame resumed", "frame_id", frameID, "ip", frame.FrameIPAddr)
+	frLogger().Info("frame resumed", "frame_id", frameID, "ip", frame.FrameIPAddr)
 	return nil
 }
 
@@ -409,7 +413,7 @@ func ReloadItemsForFrame(frame *Frame) error {
 	}
 	framesMu.Unlock()
 
-	frLogger.Info("items loaded for frame",
+	frLogger().Info("items loaded for frame",
 		"frame_id", frame.FrameID,
 		"ip", frame.FrameIPAddr,
 		"count", len(items),
@@ -426,7 +430,7 @@ func RegisterSSEClient(ip string) chan string {
 
 	ch := make(chan string, 10)
 	sseClients[ip] = ch
-	frLogger.Info("SSE client connected", "ip", ip)
+	frLogger().Info("SSE client connected", "ip", ip)
 	return ch
 }
 
@@ -439,7 +443,7 @@ func UnregisterSSEClient(ip string) {
 		close(ch)
 		delete(sseClients, ip)
 	}
-	frLogger.Info("SSE client disconnected", "ip", ip)
+	frLogger().Info("SSE client disconnected", "ip", ip)
 }
 
 // AllFrameIPs returns the set of all registered frame IPs (for auth bypass).
@@ -462,12 +466,12 @@ func notifySSE(ip, eventType string) {
 	if ch, ok := sseClients[ip]; ok {
 		select {
 		case ch <- eventType:
-			frLogger.Info("sent SSE event to frame", "ip", ip, "event", eventType)
+			frLogger().Info("sent SSE event to frame", "ip", ip, "event", eventType)
 		default:
 			// Channel full, skip notification
 		}
 	} else {
-		frLogger.Warn("no SSE client found for frame", "ip", ip, "event", eventType)
+		frLogger().Warn("no SSE client found for frame", "ip", ip, "event", eventType)
 	}
 }
 
@@ -479,20 +483,20 @@ func scheduleJobsForFrame(frame *Frame) {
 		f := frame
 		err := scheduler.AddJob(jobName, *frame.ResetSchedule, func() {
 			if err := ReloadItemsForFrame(f); err != nil {
-				frLogger.Error("frame playlist reset failed",
+				frLogger().Error("frame playlist reset failed",
 					"frame_id", f.FrameID,
 					"error", err,
 				)
 			}
 		})
 		if err != nil {
-			frLogger.Error("failed to schedule frame reset job",
+			frLogger().Error("failed to schedule frame reset job",
 				"frame_id", frame.FrameID,
 				"pattern", *frame.ResetSchedule,
 				"error", err,
 			)
 		} else {
-			frLogger.Info("scheduled frame reset job", "frame_id", frame.FrameID, "schedule", *frame.ResetSchedule)
+			frLogger().Info("scheduled frame reset job", "frame_id", frame.FrameID, "schedule", *frame.ResetSchedule)
 		}
 	}
 
@@ -513,16 +517,16 @@ func scheduleJobsForFrame(frame *Frame) {
 				frameID := frame.FrameID
 				err := scheduler.AddJob(pauseJobName, pausePattern, func() {
 					if err := SetAutoPause(frameID, true); err != nil {
-						frLogger.Error("auto-pause failed", "frame_id", frameID, "error", err)
+						frLogger().Error("auto-pause failed", "frame_id", frameID, "error", err)
 					}
 				})
 				if err != nil {
-					frLogger.Error("failed to schedule frame pause job",
+					frLogger().Error("failed to schedule frame pause job",
 						"frame_id", frame.FrameID,
 						"error", err,
 					)
 				} else {
-					frLogger.Info("scheduled frame pause job", "frame_id", frame.FrameID, "schedule", pausePattern)
+					frLogger().Info("scheduled frame pause job", "frame_id", frame.FrameID, "schedule", pausePattern)
 				}
 
 				// Schedule resume job: at end time every day
@@ -530,16 +534,16 @@ func scheduleJobsForFrame(frame *Frame) {
 				resumePattern := fmt.Sprintf("%s %s * * *", endParts[1], endParts[0])
 				err = scheduler.AddJob(resumeJobName, resumePattern, func() {
 					if err := SetAutoPause(frameID, false); err != nil {
-						frLogger.Error("auto-resume failed", "frame_id", frameID, "error", err)
+						frLogger().Error("auto-resume failed", "frame_id", frameID, "error", err)
 					}
 				})
 				if err != nil {
-					frLogger.Error("failed to schedule frame resume job",
+					frLogger().Error("failed to schedule frame resume job",
 						"frame_id", frame.FrameID,
 						"error", err,
 					)
 				} else {
-					frLogger.Info("scheduled frame resume job", "frame_id", frame.FrameID, "schedule", resumePattern)
+					frLogger().Info("scheduled frame resume job", "frame_id", frame.FrameID, "schedule", resumePattern)
 				}
 			}
 		}
@@ -605,12 +609,12 @@ func ScheduleAllFrameJobs() {
 
 	frames, err := GetAll()
 	if err != nil {
-		frLogger.Error("failed to get frames for job scheduling", "error", err)
+		frLogger().Error("failed to get frames for job scheduling", "error", err)
 		return
 	}
 
 	for i := range frames {
 		scheduleJobsForFrame(&frames[i])
 	}
-	frLogger.Info("frame jobs scheduled", "count", len(frames))
+	frLogger().Info("frame jobs scheduled", "count", len(frames))
 }

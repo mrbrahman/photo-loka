@@ -18,9 +18,10 @@ import (
 	"photo-loka/internal/ml"
 )
 
-// logger for the item route handlers. Startup and runtime config are read from
-// the config.Startup / config.Runtime singletons directly.
-var logger = slog.Default().With("component", "items-handler")
+// log resolves the current default handler at call time (see frames.frLogger).
+// Startup and runtime config are read from the config.Startup / config.Runtime
+// singletons directly.
+func log() *slog.Logger { return slog.Default().With("component", "items-handler") }
 
 // RegisterRoutes registers all item-related routes on the given router group.
 func RegisterRoutes(rg *gin.RouterGroup) {
@@ -68,7 +69,7 @@ func updateRating(c *gin.Context) {
 	exifUpdate := map[string]interface{}{"Rating": body.NewRating, "FileModifyDate": fileModifyDate}
 	exifJSON, _ := json.Marshal(exifUpdate)
 	if err := indexing.ScheduleExif(body.UUIDs, string(exifJSON)); err != nil {
-		logger.Error("failed to schedule exif write for rating", "error", err)
+		log().Error("failed to schedule exif write for rating", "error", err)
 	}
 
 	c.Status(http.StatusOK)
@@ -104,7 +105,7 @@ func updateDescription(c *gin.Context) {
 	exifUpdate := map[string]interface{}{"ImageDescription": body.Description, "FileModifyDate": fileModifyDate}
 	exifJSON, _ := json.Marshal(exifUpdate)
 	if err := indexing.ScheduleExif([]string{body.UUID}, string(exifJSON)); err != nil {
-		logger.Error("failed to schedule exif write for description", "error", err)
+		log().Error("failed to schedule exif write for description", "error", err)
 	}
 
 	c.Status(http.StatusOK)
@@ -194,19 +195,19 @@ func refreshThumbs(c *gin.Context) {
 			// Extract a frame from the video first
 			framePath, err := media.GenerateVideoThumbnail(uuid, filename, config.Startup.ThumbsDir)
 			if err != nil {
-				logger.Error("video thumbnail extraction failed", "uuid", uuid, "error", err)
+				log().Error("video thumbnail extraction failed", "uuid", uuid, "error", err)
 				return
 			}
 			// Generate standard thumbnails from the extracted frame
 			if _, err := media.CreateImageThumbnails(uuid, framePath, config.Startup.ThumbsDir); err != nil {
-				logger.Error("thumbnail creation from video frame failed", "uuid", uuid, "error", err)
+				log().Error("thumbnail creation from video frame failed", "uuid", uuid, "error", err)
 			}
 		} else {
 			if _, err := media.CreateImageThumbnails(uuid, filename, config.Startup.ThumbsDir); err != nil {
-				logger.Error("thumbnail creation failed", "uuid", uuid, "error", err)
+				log().Error("thumbnail creation failed", "uuid", uuid, "error", err)
 			}
 		}
-		logger.Info("thumbnails refreshed", "uuid", uuid)
+		log().Info("thumbnails refreshed", "uuid", uuid)
 	}()
 
 	c.JSON(http.StatusAccepted, gin.H{"message": "thumbnail refresh started", "uuid": uuid})
@@ -235,7 +236,7 @@ func compressVideo(c *gin.Context) {
 
 	encoder := config.Runtime.VideoEncoder
 	if err := media.CompressVideo(uuid, filename, config.Startup.ThumbsDir, encoder); err != nil {
-		logger.Error("video compression failed", "uuid", uuid, "error", err)
+		log().Error("video compression failed", "uuid", uuid, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": "video compression failed: " + err.Error(),
 			"code":    "COMPRESS_ERROR",
@@ -243,7 +244,7 @@ func compressVideo(c *gin.Context) {
 		return
 	}
 
-	logger.Info("video compression complete", "uuid", uuid)
+	log().Info("video compression complete", "uuid", uuid)
 	c.Status(http.StatusOK)
 }
 
@@ -384,7 +385,7 @@ func permanentlyDeleteItems(uuids []string) []string {
 		// 1. Delete the physical file (if it exists)
 		if ok && filename != "" {
 			if err := os.Remove(filename); err != nil && !os.IsNotExist(err) {
-				logger.Error("failed to delete file", "uuid", uuid, "file", filename, "error", err)
+				log().Error("failed to delete file", "uuid", uuid, "file", filename, "error", err)
 				errs = append(errs, fmt.Sprintf("%s: failed to delete file: %v", uuid, err))
 				continue
 			}
@@ -401,12 +402,12 @@ func permanentlyDeleteItems(uuids []string) []string {
 
 		// 5. Delete metadata row from DB
 		if err := indexing.DeleteMetadata(uuid); err != nil {
-			logger.Error("failed to delete metadata", "uuid", uuid, "error", err)
+			log().Error("failed to delete metadata", "uuid", uuid, "error", err)
 			errs = append(errs, fmt.Sprintf("%s: failed to delete metadata: %v", uuid, err))
 			continue
 		}
 
-		logger.Debug("permanently deleted item", "uuid", uuid)
+		log().Debug("permanently deleted item", "uuid", uuid)
 	}
 
 	return errs
@@ -511,7 +512,7 @@ func moveItems(c *gin.Context) {
 		moveEntries[i] = indexing.MoveEntry{UUID: entry.uuid, Dest: entry.dest}
 	}
 	if err := indexing.UpdateAlbumForItems(moveEntries, req.TargetAlbumDate, req.TargetAlbumName); err != nil {
-		logger.Error("failed to update DB after moves", "error", err)
+		log().Error("failed to update DB after moves", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{"message": "Files moved but DB update failed: " + err.Error(), "code": "DB_ERROR"},
 		})

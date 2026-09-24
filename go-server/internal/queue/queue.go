@@ -76,7 +76,11 @@ func New(maxConcurrency int) *Queue {
 		maxConcurrency: maxConcurrency,
 		notify:         make(chan struct{}, 1),
 		done:           make(chan struct{}),
-		logger:         slog.Default().With("component", "queue"),
+		// Safe snapshot: New runs after main's initLogging, so this captures the
+		// tint handler. Queue is a genuine class (multiple live instances), so it
+		// stays a struct field. Only becomes unsafe if New were ever called at
+		// package-var init time (before main) -- see docs/logger-init-order-bug.md.
+		logger: slog.Default().With("component", "queue"),
 	}
 	go q.dispatch()
 	return q

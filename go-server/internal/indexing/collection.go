@@ -47,7 +47,7 @@ func InitialIndexing(collectionID int64) error {
 		indexQueue.EnqueueMany(tasks)
 	}
 
-	idxLogger.Info("initial indexing started",
+	idxLogger().Info("initial indexing started",
 		"collection_id", collectionID,
 		"files_enqueued", len(tasks),
 	)
@@ -144,7 +144,7 @@ func ScanForChanges(collectionID int64) error {
 		indexQueue.EnqueueMany(tasks)
 	}
 
-	idxLogger.Info("scan for changes complete",
+	idxLogger().Info("scan for changes complete",
 		"collection_id", collectionID,
 		"added", addedCount,
 		"changed", changedCount,
@@ -152,7 +152,7 @@ func ScanForChanges(collectionID int64) error {
 	)
 
 	if deletedCount > 0 {
-		idxLogger.Warn("scan for changes: files missing from disk (deleted?); skipped - admin must review and trash/remove manually",
+		idxLogger().Warn("scan for changes: files missing from disk (deleted?); skipped - admin must review and trash/remove manually",
 			"collection_id", collectionID,
 			"deleted_count", deletedCount,
 		)
@@ -184,7 +184,7 @@ func RefreshMetadataForCollection(collectionID int64) error {
 		indexQueue.EnqueueMany(tasks)
 	}
 
-	idxLogger.Info("metadata refresh started",
+	idxLogger().Info("metadata refresh started",
 		"collection_id", collectionID,
 		"files_enqueued", len(tasks),
 	)

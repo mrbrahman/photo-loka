@@ -14,7 +14,7 @@ import (
 
 // Geo resolution is package-level (single instance). geoLogger is the
 // finalizer's logger; the geonames username is read from config.Startup.
-var geoLogger = slog.Default().With("component", "geo-finalizer")
+func geoLogger() *slog.Logger { return slog.Default().With("component", "geo-finalizer") }
 
 // FinalizeGeo is the main entry point for geo resolution.
 // It derives missing fields from DB if needed, then routes to US vs non-US processing.
@@ -38,7 +38,7 @@ func FinalizeGeo(uuid string, gpsLat, gpsLng *float64, countryCode *string) erro
 
 	// No GPS coordinates - nothing we can do
 	if gpsLat == nil || gpsLng == nil {
-		geoLogger.Debug("no GPS coordinates, skipping", "uuid", uuid)
+		geoLogger().Debug("no GPS coordinates, skipping", "uuid", uuid)
 		return UpdateGeoStatus(uuid, "NO_GPS")
 	}
 
@@ -57,7 +57,7 @@ func FinalizeGeo(uuid string, gpsLat, gpsLng *float64, countryCode *string) erro
 		return err
 	}
 
-	geoLogger.Info("geo finalized", "uuid", uuid, "method", resolveMethod)
+	geoLogger().Info("geo finalized", "uuid", uuid, "method", resolveMethod)
 	return nil
 }
 
@@ -197,7 +197,7 @@ func lookupGeonames(uuid string, lat, lng float64) error {
 
 	// Store the lookup result
 	if err := InsertGeoLookup(uuid, "geonames", "findNearestAddress", &requestParams, &responseStr); err != nil {
-		geoLogger.Error("failed to insert geo lookup", "uuid", uuid, "error", err)
+		geoLogger().Error("failed to insert geo lookup", "uuid", uuid, "error", err)
 	}
 
 	// Parse the response
@@ -345,7 +345,7 @@ func resolveCity(uuid, postalcode, country string) (string, error) {
 
 	// Store the lookup
 	if err := InsertGeoLookup(uuid, "geonames", "postalCodeLookup", &requestParams, &responseStr); err != nil {
-		geoLogger.Error("failed to insert postal code lookup", "uuid", uuid, "error", err)
+		geoLogger().Error("failed to insert postal code lookup", "uuid", uuid, "error", err)
 	}
 
 	return extractCityFromPostalResponse(responseStr)

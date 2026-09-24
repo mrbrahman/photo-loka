@@ -22,12 +22,12 @@ const (
 )
 
 // jwtSecret is the process-wide HMAC signing key, set once via Init at startup.
-// logger is the package logger. Auth is a stateless singleton: it holds only
+// log is the package logger. Auth is a stateless singleton: it holds only
 // this config, so its API is package-level functions rather than a struct.
-var (
-	jwtSecret []byte
-	logger    = slog.Default()
-)
+var jwtSecret []byte
+
+// log resolves the current default handler at call time (see frames.frLogger).
+func log() *slog.Logger { return slog.Default() }
 
 // Init caches the JWT signing secret (as bytes) from config.Startup. Called
 // once at startup, after LoadStartupConfig. Caching avoids a string->[]byte
@@ -68,7 +68,7 @@ func CreateUser(username, password, role string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	logger.Info("user created", "username", username, "role", role)
+	log().Info("user created", "username", username, "role", role)
 	return id, nil
 }
 
@@ -96,7 +96,7 @@ func Login(username, password string) (*TokenPair, error) {
 		// Lock if threshold exceeded
 		if user.FailedLoginAttempts >= MaxFailedAttempts {
 			_ = lockUser(user.UserID)
-			logger.Warn("account locked due to failed attempts", "username", username)
+			log().Warn("account locked due to failed attempts", "username", username)
 			return nil, ErrAccountLocked
 		}
 
@@ -122,7 +122,7 @@ func Login(username, password string) (*TokenPair, error) {
 		return nil, fmt.Errorf("saving refresh token: %w", err)
 	}
 
-	logger.Info("user logged in", "username", username)
+	log().Info("user logged in", "username", username)
 
 	return &TokenPair{
 		AccessToken:  accessToken,
@@ -213,7 +213,7 @@ func UnlockUser(username string) error {
 	if err := clearUserLock(username); err != nil {
 		return err
 	}
-	logger.Info("user unlocked", "username", username)
+	log().Info("user unlocked", "username", username)
 	return nil
 }
 
@@ -242,7 +242,7 @@ func GenerateAPIToken(username string, expiresInDays int) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	logger.Info("API token generated", "username", username, "expires_in_days", expiresInDays)
+	log().Info("API token generated", "username", username, "expires_in_days", expiresInDays)
 	return signed, nil
 }
 
@@ -260,11 +260,11 @@ func UpdateUserRole(userID int64, role string) error {
 func CleanupExpiredTokens() {
 	count, err := deleteExpiredTokens()
 	if err != nil {
-		logger.Error("failed to cleanup expired tokens", "error", err)
+		log().Error("failed to cleanup expired tokens", "error", err)
 		return
 	}
 	if count > 0 {
-		logger.Info("cleaned up expired refresh tokens", "count", count)
+		log().Info("cleaned up expired refresh tokens", "count", count)
 	}
 }
 

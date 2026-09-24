@@ -15,8 +15,10 @@ var (
 	jobs       = make(map[string]cron.EntryID) // name -> entry ID
 	patterns   = make(map[string]string)       // name -> cron pattern
 	mu         sync.Mutex
-	logger     = slog.Default().With("component", "scheduler")
 )
+
+// log resolves the current default handler at call time (see frames.frLogger).
+func log() *slog.Logger { return slog.Default().With("component", "scheduler") }
 
 // JobInfo describes a registered cron job.
 type JobInfo struct {
@@ -54,7 +56,7 @@ func AddJob(name, pattern string, handler func()) error {
 	jobs[name] = entryID
 	patterns[name] = pattern
 
-	logger.Debug("cron job added", "name", name, "pattern", pattern)
+	log().Debug("cron job added", "name", name, "pattern", pattern)
 	return nil
 }
 
@@ -67,7 +69,7 @@ func DeleteJob(name string) {
 		cronRunner.Remove(entryID)
 		delete(jobs, name)
 		delete(patterns, name)
-		logger.Debug("cron job deleted", "name", name)
+		log().Debug("cron job deleted", "name", name)
 	}
 }
 
@@ -78,7 +80,7 @@ func DeleteAllJobs() {
 
 	for name, entryID := range jobs {
 		cronRunner.Remove(entryID)
-		logger.Debug("cron job deleted", "name", name)
+		log().Debug("cron job deleted", "name", name)
 	}
 
 	jobs = make(map[string]cron.EntryID)
@@ -105,5 +107,5 @@ func ListAllJobs() []JobInfo {
 func Stop() {
 	ctx := cronRunner.Stop()
 	<-ctx.Done()
-	logger.Info("scheduler stopped")
+	log().Info("scheduler stopped")
 }

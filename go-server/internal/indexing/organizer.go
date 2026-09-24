@@ -26,7 +26,7 @@ type PlaceResult struct {
 
 // File placement, moves, and trash operations are package-level functions
 // (single instance in this process). orgLogger is the package logger.
-var orgLogger = slog.Default().With("component", "organizer")
+func orgLogger() *slog.Logger { return slog.Default().With("component", "organizer") }
 
 // PlaceFileInCollection determines the target album folder for a file.
 // In-place mode: parses the existing folder path with the collection pattern.
@@ -131,7 +131,7 @@ func placeIntake(collection *collections.Collection, filename string, captureDat
 
 	logChange(collection.CollectionID, "move", filename, &targetPath)
 
-	orgLogger.Info("file placed in collection",
+	orgLogger().Info("file placed in collection",
 		"source", filename,
 		"target", targetPath,
 		"album_date", albumDate,
@@ -165,7 +165,7 @@ func RenameAlbumFolder(collection *collections.Collection, currAlbumDate, currAl
 
 	logChange(collection.CollectionID, "RENAME_FOLDER", currPath, &newPath)
 
-	orgLogger.Info("album folder renamed",
+	orgLogger().Info("album folder renamed",
 		"from", currPath,
 		"to", newPath,
 	)
@@ -228,7 +228,7 @@ func MoveFileToTrash(collectionID int64, uuids []string) error {
 	for _, uuid := range uuids {
 		filename, ok := filenames[uuid]
 		if !ok {
-			orgLogger.Warn("uuid not found for trash", "uuid", uuid)
+			orgLogger().Warn("uuid not found for trash", "uuid", uuid)
 			continue
 		}
 
@@ -261,7 +261,7 @@ func RestoreFromTrash(collectionID int64, uuids []string) error {
 	for _, uuid := range uuids {
 		trashPath, ok := filenames[uuid]
 		if !ok {
-			orgLogger.Warn("uuid not found for restore", "uuid", uuid)
+			orgLogger().Warn("uuid not found for restore", "uuid", uuid)
 			continue
 		}
 
@@ -295,7 +295,7 @@ func MarkFilePrivate(collectionID int64, uuids []string) error {
 	for _, uuid := range uuids {
 		filename, ok := filenames[uuid]
 		if !ok {
-			orgLogger.Warn("uuid not found for mark private", "uuid", uuid)
+			orgLogger().Warn("uuid not found for mark private", "uuid", uuid)
 			continue
 		}
 
@@ -328,7 +328,7 @@ func UnmarkFilePrivate(collectionID int64, uuids []string) error {
 	for _, uuid := range uuids {
 		filename, ok := filenames[uuid]
 		if !ok {
-			orgLogger.Warn("uuid not found for unmark private", "uuid", uuid)
+			orgLogger().Warn("uuid not found for unmark private", "uuid", uuid)
 			continue
 		}
 
@@ -423,7 +423,7 @@ func logChange(collectionID int64, action, path1 string, path2 *string) {
 		p1 = &path1
 	}
 	if err := FileAudit(collectionID, action, p1, path2); err != nil {
-		orgLogger.Error("failed to log file audit",
+		orgLogger().Error("failed to log file audit",
 			"action", action,
 			"path1", path1,
 			"error", err,

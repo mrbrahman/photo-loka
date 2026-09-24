@@ -75,7 +75,7 @@ func StartIntakeForCollection(collectionID int64, staleDays int) error {
 		}
 
 		if err := enqueueIntakeFiles(collection, path, days); err != nil {
-			idxLogger.Error("intake indexing failed for path", "path", path, "error", err)
+			idxLogger().Error("intake indexing failed for path", "path", path, "error", err)
 		}
 	}
 
@@ -136,7 +136,7 @@ func enqueueIntakeFiles(collection *collections.Collection, dir string, staleDay
 		indexQueue.EnqueueMany(tasks)
 	}
 
-	idxLogger.Info("intake indexing started",
+	idxLogger().Info("intake indexing started",
 		"collection_id", collection.CollectionID,
 		"dir", dir,
 		"stale_days", staleDays,

@@ -39,7 +39,7 @@ func startIndexingFirstTime(c *gin.Context) {
 
 	go func() {
 		if err := InitialIndexing(collectionID); err != nil {
-			idxLogger.Error("initial indexing failed",
+			idxLogger().Error("initial indexing failed",
 				"collection_id", collectionID,
 				"error", err,
 			)
@@ -64,7 +64,7 @@ func scanForChanges(c *gin.Context) {
 
 	go func() {
 		if err := ScanForChanges(collectionID); err != nil {
-			idxLogger.Error("scan for changes failed",
+			idxLogger().Error("scan for changes failed",
 				"collection_id", collectionID,
 				"error", err,
 			)
@@ -112,7 +112,7 @@ func startIntakeFileIndexing(c *gin.Context) {
 			err = StartIntakeForCollection(*body.CollectionID, body.StaleDays)
 		}
 		if err != nil {
-			idxLogger.Error("intake file indexing failed", "error", err)
+			idxLogger().Error("intake file indexing failed", "error", err)
 		}
 	}()
 
@@ -209,7 +209,7 @@ func refreshMetadataForCollection(c *gin.Context) {
 
 	go func() {
 		if err := RefreshMetadataForCollection(collectionID); err != nil {
-			idxLogger.Error("refresh metadata for collection failed",
+			idxLogger().Error("refresh metadata for collection failed",
 				"collection_id", collectionID,
 				"error", err,
 			)
@@ -242,7 +242,7 @@ func refreshMetadataForItem(c *gin.Context) {
 
 	go func() {
 		if err := RefreshMetadata(itemUUID, filename); err != nil {
-			idxLogger.Error("refresh metadata for item failed",
+			idxLogger().Error("refresh metadata for item failed",
 				"uuid", itemUUID,
 				"error", err,
 			)

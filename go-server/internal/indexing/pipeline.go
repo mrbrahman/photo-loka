@@ -24,8 +24,10 @@ import (
 var (
 	indexQueue *queue.Queue
 	videoQueue *queue.Queue
-	idxLogger  = slog.Default().With("component", "indexer")
 )
+
+// idxLogger resolves the current default handler at call time (see frames.frLogger).
+func idxLogger() *slog.Logger { return slog.Default().With("component", "indexer") }
 
 // Init wires the indexing queues. Called once at startup.
 func Init(idxQueue, vidQueue *queue.Queue) {
@@ -73,7 +75,7 @@ func IndexFile(collection *collections.Collection, sourceFile string, existingUU
 					TzOffsetMinutes: dt.TzOffsetMinutes,
 				}
 			}
-			idxLogger.Info("audio file without EXIF date, using file_modified_at for placement", "file", sourceFile)
+			idxLogger().Info("audio file without EXIF date, using file_modified_at for placement", "file", sourceFile)
 		}
 	}
 
@@ -118,19 +120,19 @@ func IndexFile(collection *collections.Collection, sourceFile string, existingUU
 		// Extract a frame from the video first, then generate thumbnails from that frame.
 		framePath, err := media.GenerateVideoThumbnail(fileUUID, finalFile, config.Startup.ThumbsDir)
 		if err != nil {
-			idxLogger.Warn("video thumbnail extraction failed", "file", finalFile, "error", err)
+			idxLogger().Warn("video thumbnail extraction failed", "file", finalFile, "error", err)
 		} else {
 			var thumbErr error
 			mlBuf, thumbErr = media.CreateImageThumbnails(fileUUID, framePath, config.Startup.ThumbsDir)
 			if thumbErr != nil {
-				idxLogger.Warn("thumbnail creation from video frame failed", "file", finalFile, "error", thumbErr)
+				idxLogger().Warn("thumbnail creation from video frame failed", "file", finalFile, "error", thumbErr)
 			}
 		}
 	} else if exifData.Mediatype == "image" {
 		var err error
 		mlBuf, err = media.CreateImageThumbnails(fileUUID, finalFile, config.Startup.ThumbsDir)
 		if err != nil {
-			idxLogger.Warn("thumbnail creation failed", "file", finalFile, "error", err)
+			idxLogger().Warn("thumbnail creation failed", "file", finalFile, "error", err)
 		}
 	}
 
@@ -206,7 +208,7 @@ func IndexFile(collection *collections.Collection, sourceFile string, existingUU
 			if hasData {
 				geoJSON, _ := json.Marshal(exifData.ExiftoolGeoJSON)
 				if err := InsertGeoLookup(fileUUID, "exiftool", "geolocation", string(geoJSON)); err != nil {
-					idxLogger.Warn("failed to store exiftool geo data", "uuid", fileUUID, "error", err)
+					idxLogger().Warn("failed to store exiftool geo data", "uuid", fileUUID, "error", err)
 				}
 			}
 		}
@@ -254,7 +256,7 @@ func IndexFile(collection *collections.Collection, sourceFile string, existingUU
 
 	// Step 10: Log completion
 	duration := time.Since(start)
-	idxLogger.Info("file indexed",
+	idxLogger().Info("file indexed",
 		"uuid", fileUUID,
 		"file", finalFile,
 		"mediatype", exifData.Mediatype,
@@ -373,7 +375,7 @@ func RefreshMetadata(uuid string, filename string) error {
 		return fmt.Errorf("updating metadata for %s: %w", uuid, err)
 	}
 
-	idxLogger.Debug("metadata refreshed", "uuid", uuid)
+	idxLogger().Debug("metadata refreshed", "uuid", uuid)
 	return nil
 }
 

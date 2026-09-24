@@ -12,8 +12,10 @@ import (
 // queue. The geonames username and data dir come from config.Startup.
 var (
 	geoQueue *queue.Queue
-	logger   = slog.Default().With("component", "geo-service")
 )
+
+// log resolves the current default handler at call time (see frames.frLogger).
+func log() *slog.Logger { return slog.Default().With("component", "geo-service") }
 
 // Init wires the geo queue and initializes the rate limiter from its state file
 // (under config.Startup.DataDir). Called once at startup.
@@ -89,7 +91,7 @@ func EnqueueMany(entries []map[string]interface{}) {
 
 	if len(tasks) > 0 {
 		geoQueue.EnqueueMany(tasks)
-		logger.Info("enqueued geo tasks", "count", len(tasks))
+		log().Info("enqueued geo tasks", "count", len(tasks))
 	}
 }
 
