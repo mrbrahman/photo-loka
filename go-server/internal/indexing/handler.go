@@ -7,44 +7,26 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"photo-loka/internal/config"
-	"photo-loka/internal/queue"
 )
 
-// Handler provides HTTP route handlers for indexing operations.
-type Handler struct {
-	indexer    *Indexer
-	indexQueue *queue.Queue
-	videoQueue *queue.Queue
-	rtConfig   *config.RuntimeConfig
-}
-
-// NewHandler creates a new indexing Handler.
-func NewHandler(indexer *Indexer, indexQueue, videoQueue *queue.Queue, rtConfig *config.RuntimeConfig) *Handler {
-	return &Handler{
-		indexer:    indexer,
-		indexQueue: indexQueue,
-		videoQueue: videoQueue,
-		rtConfig:   rtConfig,
-	}
-}
-
-// RegisterRoutes registers all indexer-related admin routes.
-func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
-	rg.POST("/startIndexingFirstTime", h.startIndexingFirstTime)
-	rg.POST("/scanForChanges/:collection_id", h.scanForChanges)
-	rg.POST("/startIntakeFileIndexing", h.startIntakeFileIndexing)
-	rg.GET("/getIndexerStatus", h.getIndexerStatus)
-	rg.PUT("/pauseIndexer", h.pauseIndexer)
-	rg.PUT("/resumeIndexer", h.resumeIndexer)
-	rg.GET("/getIndexerErrors", h.getIndexerErrors)
-	rg.PUT("/updateIndexerConcurrency/:concurrency", h.updateIndexerConcurrency)
-	rg.POST("/refreshMetadataForCollection/:collection_id", h.refreshMetadataForCollection)
-	rg.POST("/refreshMetadataForItem/:uuid", h.refreshMetadataForItem)
+// RegisterRoutes registers all indexer-related admin routes. The indexing
+// queues and thumbnails dir are wired via Init at startup.
+func RegisterRoutes(rg *gin.RouterGroup) {
+	rg.POST("/startIndexingFirstTime", startIndexingFirstTime)
+	rg.POST("/scanForChanges/:collection_id", scanForChanges)
+	rg.POST("/startIntakeFileIndexing", startIntakeFileIndexing)
+	rg.GET("/getIndexerStatus", getIndexerStatus)
+	rg.PUT("/pauseIndexer", pauseIndexer)
+	rg.PUT("/resumeIndexer", resumeIndexer)
+	rg.GET("/getIndexerErrors", getIndexerErrors)
+	rg.PUT("/updateIndexerConcurrency/:concurrency", updateIndexerConcurrency)
+	rg.POST("/refreshMetadataForCollection/:collection_id", refreshMetadataForCollection)
+	rg.POST("/refreshMetadataForItem/:uuid", refreshMetadataForItem)
 }
 
 // startIndexingFirstTime begins initial indexing for a collection.
 // POST /startIndexingFirstTime?collection_id=N
-func (h *Handler) startIndexingFirstTime(c *gin.Context) {
+func startIndexingFirstTime(c *gin.Context) {
 	collectionIDStr := c.Query("collection_id")
 	collectionID, err := strconv.ParseInt(collectionIDStr, 10, 64)
 	if err != nil {
@@ -56,8 +38,8 @@ func (h *Handler) startIndexingFirstTime(c *gin.Context) {
 	}
 
 	go func() {
-		if err := h.indexer.InitialIndexing(collectionID); err != nil {
-			h.indexer.logger.Error("initial indexing failed",
+		if err := InitialIndexing(collectionID); err != nil {
+			idxLogger.Error("initial indexing failed",
 				"collection_id", collectionID,
 				"error", err,
 			)
@@ -69,7 +51,7 @@ func (h *Handler) startIndexingFirstTime(c *gin.Context) {
 
 // scanForChanges scans for file changes and enqueues new/modified files.
 // POST /scanForChanges/:collection_id
-func (h *Handler) scanForChanges(c *gin.Context) {
+func scanForChanges(c *gin.Context) {
 	collectionIDStr := c.Param("collection_id")
 	collectionID, err := strconv.ParseInt(collectionIDStr, 10, 64)
 	if err != nil {
@@ -81,8 +63,8 @@ func (h *Handler) scanForChanges(c *gin.Context) {
 	}
 
 	go func() {
-		if err := h.indexer.ScanForChanges(collectionID); err != nil {
-			h.indexer.logger.Error("scan for changes failed",
+		if err := ScanForChanges(collectionID); err != nil {
+			idxLogger.Error("scan for changes failed",
 				"collection_id", collectionID,
 				"error", err,
 			)
@@ -94,7 +76,7 @@ func (h *Handler) scanForChanges(c *gin.Context) {
 
 // startIntakeFileIndexing begins intake indexing for a directory.
 // POST /startIntakeFileIndexing (body: {collection_id, dir, stale_days})
-func (h *Handler) startIntakeFileIndexing(c *gin.Context) {
+func startIntakeFileIndexing(c *gin.Context) {
 	var body struct {
 		CollectionID *int64  `json:"collection_id"`
 		Dir          *string `json:"dir"`
@@ -121,16 +103,16 @@ func (h *Handler) startIntakeFileIndexing(c *gin.Context) {
 		var err error
 		if body.CollectionID != nil && body.Dir != nil {
 			// Mode 1: specific dir in specific collection
-			err = h.indexer.StartIntakeFileIndexing(*body.CollectionID, *body.Dir, body.StaleDays)
+			err = StartIntakeFileIndexing(*body.CollectionID, *body.Dir, body.StaleDays)
 		} else if body.Dir != nil {
 			// Mode 2: auto-find collection by intake path
-			err = h.indexer.StartIntakeByDir(*body.Dir, body.StaleDays)
+			err = StartIntakeByDir(*body.Dir, body.StaleDays)
 		} else {
 			// Mode 3: all scheduled intake paths for collection
-			err = h.indexer.StartIntakeForCollection(*body.CollectionID, body.StaleDays)
+			err = StartIntakeForCollection(*body.CollectionID, body.StaleDays)
 		}
 		if err != nil {
-			h.indexer.logger.Error("intake file indexing failed", "error", err)
+			idxLogger.Error("intake file indexing failed", "error", err)
 		}
 	}()
 
@@ -139,19 +121,19 @@ func (h *Handler) startIntakeFileIndexing(c *gin.Context) {
 
 // getIndexerStatus returns the current status of both queues.
 // GET /getIndexerStatus
-func (h *Handler) getIndexerStatus(c *gin.Context) {
-	status := h.indexQueue.GetStatus()
-	high, normal, low := h.indexQueue.QueueSizes()
+func getIndexerStatus(c *gin.Context) {
+	status := indexQueue.GetStatus()
+	high, normal, low := indexQueue.QueueSizes()
 
 	c.JSON(http.StatusOK, gin.H{
-		"processingCnt":              status.Active,
-		"pendingCnt":                 status.Pending,
-		"completedCnt":               status.Completed,
-		"failedCnt":                  status.Failed,
-		"paused":                     status.IsPaused,
-		"isDynamic":                  false,
-		"maxConcurrency":             status.MaxConcurrency,
-		"dynamicTargetConcurrency":   nil,
+		"processingCnt":            status.Active,
+		"pendingCnt":               status.Pending,
+		"completedCnt":             status.Completed,
+		"failedCnt":                status.Failed,
+		"paused":                   status.IsPaused,
+		"isDynamic":                false,
+		"maxConcurrency":           status.MaxConcurrency,
+		"dynamicTargetConcurrency": nil,
 		"queueSizes": gin.H{
 			"high":   high,
 			"normal": normal,
@@ -163,23 +145,23 @@ func (h *Handler) getIndexerStatus(c *gin.Context) {
 
 // pauseIndexer pauses the index queue.
 // PUT /pauseIndexer
-func (h *Handler) pauseIndexer(c *gin.Context) {
-	h.indexQueue.Pause()
+func pauseIndexer(c *gin.Context) {
+	indexQueue.Pause()
 	c.Status(http.StatusOK)
 }
 
 // resumeIndexer resumes the index queue.
 // PUT /resumeIndexer
-func (h *Handler) resumeIndexer(c *gin.Context) {
-	h.indexQueue.Resume()
+func resumeIndexer(c *gin.Context) {
+	indexQueue.Resume()
 	c.Status(http.StatusOK)
 }
 
 // getIndexerErrors returns recent errors from both queues.
 // GET /getIndexerErrors
-func (h *Handler) getIndexerErrors(c *gin.Context) {
-	indexErrors := h.indexQueue.GetErrors()
-	videoErrors := h.videoQueue.GetErrors()
+func getIndexerErrors(c *gin.Context) {
+	indexErrors := indexQueue.GetErrors()
+	videoErrors := videoQueue.GetErrors()
 
 	allErrors := append(indexErrors, videoErrors...)
 	c.JSON(http.StatusOK, allErrors)
@@ -187,7 +169,7 @@ func (h *Handler) getIndexerErrors(c *gin.Context) {
 
 // updateIndexerConcurrency changes the max concurrency of the index queue.
 // PUT /updateIndexerConcurrency/:concurrency
-func (h *Handler) updateIndexerConcurrency(c *gin.Context) {
+func updateIndexerConcurrency(c *gin.Context) {
 	concurrencyStr := c.Param("concurrency")
 	concurrency, err := strconv.Atoi(concurrencyStr)
 	if err != nil || concurrency < 1 {
@@ -198,10 +180,10 @@ func (h *Handler) updateIndexerConcurrency(c *gin.Context) {
 		return
 	}
 
-	h.indexQueue.SetConcurrency(concurrency)
+	indexQueue.SetConcurrency(concurrency)
 
 	// Persist to runtime config so it survives restart
-	if err := h.rtConfig.SetMaxConcurrency(concurrency); err != nil {
+	if err := config.Runtime.SetMaxConcurrency(concurrency); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": "concurrency updated but failed to persist: " + err.Error(),
 			"code":    "PERSIST_ERROR",
@@ -214,7 +196,7 @@ func (h *Handler) updateIndexerConcurrency(c *gin.Context) {
 
 // refreshMetadataForCollection re-extracts metadata for all files in a collection.
 // POST /refreshMetadataForCollection/:collection_id
-func (h *Handler) refreshMetadataForCollection(c *gin.Context) {
+func refreshMetadataForCollection(c *gin.Context) {
 	collectionIDStr := c.Param("collection_id")
 	collectionID, err := strconv.ParseInt(collectionIDStr, 10, 64)
 	if err != nil {
@@ -226,8 +208,8 @@ func (h *Handler) refreshMetadataForCollection(c *gin.Context) {
 	}
 
 	go func() {
-		if err := h.indexer.RefreshMetadataForCollection(collectionID); err != nil {
-			h.indexer.logger.Error("refresh metadata for collection failed",
+		if err := RefreshMetadataForCollection(collectionID); err != nil {
+			idxLogger.Error("refresh metadata for collection failed",
 				"collection_id", collectionID,
 				"error", err,
 			)
@@ -239,7 +221,7 @@ func (h *Handler) refreshMetadataForCollection(c *gin.Context) {
 
 // refreshMetadataForItem re-extracts metadata for a single item.
 // POST /refreshMetadataForItem/:uuid
-func (h *Handler) refreshMetadataForItem(c *gin.Context) {
+func refreshMetadataForItem(c *gin.Context) {
 	itemUUID := c.Param("uuid")
 	if itemUUID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
@@ -249,7 +231,7 @@ func (h *Handler) refreshMetadataForItem(c *gin.Context) {
 		return
 	}
 
-	filename, err := h.indexer.db.GetFileName(itemUUID)
+	filename, err := GetFileName(itemUUID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": gin.H{
 			"message": "item not found: " + err.Error(),
@@ -259,8 +241,8 @@ func (h *Handler) refreshMetadataForItem(c *gin.Context) {
 	}
 
 	go func() {
-		if err := h.indexer.RefreshMetadata(itemUUID, filename); err != nil {
-			h.indexer.logger.Error("refresh metadata for item failed",
+		if err := RefreshMetadata(itemUUID, filename); err != nil {
+			idxLogger.Error("refresh metadata for item failed",
 				"uuid", itemUUID,
 				"error", err,
 			)

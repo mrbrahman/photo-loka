@@ -10,20 +10,30 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
+
+	"photo-loka/internal/config"
 )
 
 const (
 	AccessTokenExpiry      = 15 * time.Minute
 	RefreshTokenExpiryDays = 30
 	MaxFailedAttempts      = 5
-	BcryptCost            = 10
+	BcryptCost             = 10
 )
 
-// Service provides authentication business logic.
-type Service struct {
-	db        *AuthDB
+// jwtSecret is the process-wide HMAC signing key, set once via Init at startup.
+// logger is the package logger. Auth is a stateless singleton: it holds only
+// this config, so its API is package-level functions rather than a struct.
+var (
 	jwtSecret []byte
-	logger    *slog.Logger
+	logger    = slog.Default()
+)
+
+// Init caches the JWT signing secret (as bytes) from config.Startup. Called
+// once at startup, after LoadStartupConfig. Caching avoids a string->[]byte
+// conversion on every sign/verify.
+func Init() {
+	jwtSecret = []byte(config.Startup.JWTSecret)
 }
 
 // TokenPair holds an access token, refresh token, and user info.
@@ -48,32 +58,23 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
-// NewService creates a new auth Service.
-func NewService(db *AuthDB, jwtSecret string) *Service {
-	return &Service{
-		db:        db,
-		jwtSecret: []byte(jwtSecret),
-		logger:    slog.Default(),
-	}
-}
-
 // CreateUser hashes the password and creates a new user.
-func (s *Service) CreateUser(username, password, role string) (int64, error) {
+func CreateUser(username, password, role string) (int64, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), BcryptCost)
 	if err != nil {
 		return 0, fmt.Errorf("hashing password: %w", err)
 	}
-	id, err := s.db.CreateUser(username, string(hash), role)
+	id, err := insertUser(username, string(hash), role)
 	if err != nil {
 		return 0, err
 	}
-	s.logger.Info("user created", "username", username, "role", role)
+	logger.Info("user created", "username", username, "role", role)
 	return id, nil
 }
 
 // Login authenticates a user and returns a token pair.
-func (s *Service) Login(username, password string) (*TokenPair, error) {
-	user, err := s.db.GetUserByUsername(username)
+func Login(username, password string) (*TokenPair, error) {
+	user, err := getUserByUsername(username)
 	if err != nil {
 		return nil, fmt.Errorf("looking up user: %w", err)
 	}
@@ -89,13 +90,13 @@ func (s *Service) Login(username, password string) (*TokenPair, error) {
 	// Verify password
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
 		// Increment failed attempts
-		_ = s.db.IncrementFailedAttempts(user.UserID)
+		_ = incrementFailedAttempts(user.UserID)
 		user.FailedLoginAttempts++
 
 		// Lock if threshold exceeded
 		if user.FailedLoginAttempts >= MaxFailedAttempts {
-			_ = s.db.LockUser(user.UserID)
-			s.logger.Warn("account locked due to failed attempts", "username", username)
+			_ = lockUser(user.UserID)
+			logger.Warn("account locked due to failed attempts", "username", username)
 			return nil, ErrAccountLocked
 		}
 
@@ -104,24 +105,24 @@ func (s *Service) Login(username, password string) (*TokenPair, error) {
 
 	// Successful login - reset failed attempts
 	if user.FailedLoginAttempts > 0 {
-		_ = s.db.ResetFailedAttempts(user.UserID)
+		_ = resetFailedAttempts(user.UserID)
 	}
 
 	// Generate tokens
-	accessToken, err := s.generateAccessToken(user)
+	accessToken, err := generateAccessToken(user)
 	if err != nil {
 		return nil, fmt.Errorf("generating access token: %w", err)
 	}
 
-	refreshToken := s.generateRefreshToken()
+	refreshToken := generateRefreshToken()
 	tokenHash := hashToken(refreshToken)
 	expiresAt := time.Now().Add(time.Duration(RefreshTokenExpiryDays) * 24 * time.Hour).Format("2006-01-02 15:04:05")
 
-	if err := s.db.SaveRefreshToken(user.UserID, tokenHash, expiresAt); err != nil {
+	if err := saveRefreshToken(user.UserID, tokenHash, expiresAt); err != nil {
 		return nil, fmt.Errorf("saving refresh token: %w", err)
 	}
 
-	s.logger.Info("user logged in", "username", username)
+	logger.Info("user logged in", "username", username)
 
 	return &TokenPair{
 		AccessToken:  accessToken,
@@ -135,10 +136,10 @@ func (s *Service) Login(username, password string) (*TokenPair, error) {
 }
 
 // RefreshAccessToken validates a refresh token, deletes it, and issues a new token pair (sliding expiration).
-func (s *Service) RefreshAccessToken(refreshToken string) (*TokenPair, error) {
+func RefreshAccessToken(refreshToken string) (*TokenPair, error) {
 	tokenHash := hashToken(refreshToken)
 
-	rec, err := s.db.GetRefreshToken(tokenHash)
+	rec, err := getRefreshToken(tokenHash)
 	if err != nil {
 		return nil, fmt.Errorf("looking up refresh token: %w", err)
 	}
@@ -147,7 +148,7 @@ func (s *Service) RefreshAccessToken(refreshToken string) (*TokenPair, error) {
 	}
 
 	// Delete old refresh token
-	_ = s.db.DeleteRefreshToken(tokenHash)
+	_ = deleteRefreshToken(tokenHash)
 
 	// Build a User struct for token generation
 	user := &User{
@@ -157,16 +158,16 @@ func (s *Service) RefreshAccessToken(refreshToken string) (*TokenPair, error) {
 	}
 
 	// Generate new token pair
-	accessToken, err := s.generateAccessToken(user)
+	accessToken, err := generateAccessToken(user)
 	if err != nil {
 		return nil, fmt.Errorf("generating access token: %w", err)
 	}
 
-	newRefreshToken := s.generateRefreshToken()
+	newRefreshToken := generateRefreshToken()
 	newTokenHash := hashToken(newRefreshToken)
 	expiresAt := time.Now().Add(time.Duration(RefreshTokenExpiryDays) * 24 * time.Hour).Format("2006-01-02 15:04:05")
 
-	if err := s.db.SaveRefreshToken(rec.UserID, newTokenHash, expiresAt); err != nil {
+	if err := saveRefreshToken(rec.UserID, newTokenHash, expiresAt); err != nil {
 		return nil, fmt.Errorf("saving new refresh token: %w", err)
 	}
 
@@ -182,18 +183,18 @@ func (s *Service) RefreshAccessToken(refreshToken string) (*TokenPair, error) {
 }
 
 // Logout deletes the refresh token from the database.
-func (s *Service) Logout(refreshToken string) {
+func Logout(refreshToken string) {
 	tokenHash := hashToken(refreshToken)
-	_ = s.db.DeleteRefreshToken(tokenHash)
+	_ = deleteRefreshToken(tokenHash)
 }
 
 // VerifyAccessToken parses and validates a JWT access token.
-func (s *Service) VerifyAccessToken(tokenStr string) (*Claims, error) {
+func VerifyAccessToken(tokenStr string) (*Claims, error) {
 	token, err := jwt.ParseWithClaims(tokenStr, &Claims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
-		return s.jwtSecret, nil
+		return jwtSecret, nil
 	})
 	if err != nil {
 		return nil, ErrInvalidToken
@@ -208,17 +209,17 @@ func (s *Service) VerifyAccessToken(tokenStr string) (*Claims, error) {
 }
 
 // UnlockUser unlocks a user account by username.
-func (s *Service) UnlockUser(username string) error {
-	if err := s.db.UnlockUser(username); err != nil {
+func UnlockUser(username string) error {
+	if err := clearUserLock(username); err != nil {
 		return err
 	}
-	s.logger.Info("user unlocked", "username", username)
+	logger.Info("user unlocked", "username", username)
 	return nil
 }
 
 // GenerateAPIToken creates a long-lived JWT for API access.
-func (s *Service) GenerateAPIToken(username string, expiresInDays int) (string, error) {
-	user, err := s.db.GetUserByUsername(username)
+func GenerateAPIToken(username string, expiresInDays int) (string, error) {
+	user, err := getUserByUsername(username)
 	if err != nil {
 		return "", fmt.Errorf("looking up user: %w", err)
 	}
@@ -237,38 +238,38 @@ func (s *Service) GenerateAPIToken(username string, expiresInDays int) (string, 
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signed, err := token.SignedString(s.jwtSecret)
+	signed, err := token.SignedString(jwtSecret)
 	if err != nil {
 		return "", err
 	}
-	s.logger.Info("API token generated", "username", username, "expires_in_days", expiresInDays)
+	logger.Info("API token generated", "username", username, "expires_in_days", expiresInDays)
 	return signed, nil
 }
 
 // GetAllUsers returns all users.
-func (s *Service) GetAllUsers() ([]User, error) {
-	return s.db.GetAllUsers()
+func GetAllUsers() ([]User, error) {
+	return getAllUsers()
 }
 
 // UpdateUserRole changes the role of a user.
-func (s *Service) UpdateUserRole(userID int64, role string) error {
-	return s.db.UpdateUserRole(userID, role)
+func UpdateUserRole(userID int64, role string) error {
+	return updateUserRole(userID, role)
 }
 
 // CleanupExpiredTokens removes expired refresh tokens from the database.
-func (s *Service) CleanupExpiredTokens() {
-	count, err := s.db.CleanupExpiredTokens()
+func CleanupExpiredTokens() {
+	count, err := deleteExpiredTokens()
 	if err != nil {
-		s.logger.Error("failed to cleanup expired tokens", "error", err)
+		logger.Error("failed to cleanup expired tokens", "error", err)
 		return
 	}
 	if count > 0 {
-		s.logger.Info("cleaned up expired refresh tokens", "count", count)
+		logger.Info("cleaned up expired refresh tokens", "count", count)
 	}
 }
 
 // generateAccessToken creates a signed JWT access token.
-func (s *Service) generateAccessToken(user *User) (string, error) {
+func generateAccessToken(user *User) (string, error) {
 	claims := &Claims{
 		UserID:   user.UserID,
 		Username: user.Username,
@@ -280,11 +281,11 @@ func (s *Service) generateAccessToken(user *User) (string, error) {
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(s.jwtSecret)
+	return token.SignedString(jwtSecret)
 }
 
 // generateRefreshToken creates a cryptographically random 64-byte hex token.
-func (s *Service) generateRefreshToken() string {
+func generateRefreshToken() string {
 	b := make([]byte, 64)
 	if _, err := rand.Read(b); err != nil {
 		// This should never happen; if it does, panic is appropriate

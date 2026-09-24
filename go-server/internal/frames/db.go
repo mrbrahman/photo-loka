@@ -3,12 +3,9 @@ package frames
 import (
 	"database/sql"
 	"fmt"
-)
 
-// FramesDB provides database operations for frame records.
-type FramesDB struct {
-	db *sql.DB
-}
+	"photo-loka/internal/database"
+)
 
 // Frame represents a digital photo frame configuration stored in the database.
 type Frame struct {
@@ -22,20 +19,15 @@ type Frame struct {
 	ResetSchedule   *string `json:"reset_schedule"`
 }
 
-// NewFramesDB creates a new FramesDB instance.
-func NewFramesDB(conn *sql.DB) *FramesDB {
-	return &FramesDB{db: conn}
-}
-
 // Create inserts a new frame and returns the new frame_id.
-func (f *FramesDB) Create(frame *Frame) (int64, error) {
+func Create(frame *Frame) (int64, error) {
 	query := `
 		INSERT INTO frames (
 			frame_ip_addr, frame_name, collection_id, search_str,
 			display_order, daily_pause_range, reset_schedule
 		) VALUES (?, ?, ?, ?, ?, ?, ?)`
 
-	result, err := f.db.Exec(query,
+	result, err := database.DB.Exec(query,
 		frame.FrameIPAddr,
 		frame.FrameName,
 		frame.CollectionID,
@@ -57,13 +49,13 @@ func (f *FramesDB) Create(frame *Frame) (int64, error) {
 }
 
 // GetAll returns all frame records.
-func (f *FramesDB) GetAll() ([]Frame, error) {
+func GetAll() ([]Frame, error) {
 	query := `
 		SELECT frame_id, frame_ip_addr, frame_name, collection_id,
 			   search_str, display_order, daily_pause_range, reset_schedule
 		FROM frames`
 
-	rows, err := f.db.Query(query)
+	rows, err := database.DB.Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("querying frames: %w", err)
 	}
@@ -98,7 +90,7 @@ func (f *FramesDB) GetAll() ([]Frame, error) {
 }
 
 // GetByID returns a single frame by ID.
-func (f *FramesDB) GetByID(frameID int64) (*Frame, error) {
+func GetByID(frameID int64) (*Frame, error) {
 	query := `
 		SELECT frame_id, frame_ip_addr, frame_name, collection_id,
 			   search_str, display_order, daily_pause_range, reset_schedule
@@ -106,7 +98,7 @@ func (f *FramesDB) GetByID(frameID int64) (*Frame, error) {
 		WHERE frame_id = ?`
 
 	frame := &Frame{}
-	err := f.db.QueryRow(query, frameID).Scan(
+	err := database.DB.QueryRow(query, frameID).Scan(
 		&frame.FrameID,
 		&frame.FrameIPAddr,
 		&frame.FrameName,
@@ -127,7 +119,7 @@ func (f *FramesDB) GetByID(frameID int64) (*Frame, error) {
 }
 
 // Update updates an existing frame by ID.
-func (f *FramesDB) Update(frameID int64, frame *Frame) error {
+func Update(frameID int64, frame *Frame) error {
 	query := `
 		UPDATE frames SET
 			frame_ip_addr = ?,
@@ -139,7 +131,7 @@ func (f *FramesDB) Update(frameID int64, frame *Frame) error {
 			reset_schedule = ?
 		WHERE frame_id = ?`
 
-	result, err := f.db.Exec(query,
+	result, err := database.DB.Exec(query,
 		frame.FrameIPAddr,
 		frame.FrameName,
 		frame.CollectionID,
@@ -165,8 +157,8 @@ func (f *FramesDB) Update(frameID int64, frame *Frame) error {
 }
 
 // Delete removes a frame by ID.
-func (f *FramesDB) Delete(frameID int64) error {
-	result, err := f.db.Exec("DELETE FROM frames WHERE frame_id = ?", frameID)
+func Delete(frameID int64) error {
+	result, err := database.DB.Exec("DELETE FROM frames WHERE frame_id = ?", frameID)
 	if err != nil {
 		return fmt.Errorf("deleting frame %d: %w", frameID, err)
 	}

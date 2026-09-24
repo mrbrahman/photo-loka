@@ -6,27 +6,17 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Handler provides HTTP route handlers for geo encoding operations.
-type Handler struct {
-	service *Service
-}
-
-// NewHandler creates a new geo Handler.
-func NewHandler(service *Service) *Handler {
-	return &Handler{service: service}
-}
-
 // RegisterRoutes registers geo-related routes on the given router group.
-func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
-	rg.GET("/getReverseGeoEncodingStatus", h.getStatus)
-	rg.POST("/enqueueReverseGeoEncoding", h.enqueueOne)
-	rg.POST("/enqueueManyReverseGeoEncoding", h.enqueueMany)
+func RegisterRoutes(rg *gin.RouterGroup) {
+	rg.GET("/getReverseGeoEncodingStatus", getStatus)
+	rg.POST("/enqueueReverseGeoEncoding", enqueueOne)
+	rg.POST("/enqueueManyReverseGeoEncoding", enqueueMany)
 }
 
 // getStatus returns the current geo queue status.
-func (h *Handler) getStatus(c *gin.Context) {
-	status := h.service.Status()
-	high, normal, low := h.service.QueueSizes()
+func getStatus(c *gin.Context) {
+	status := Status()
+	high, normal, low := QueueSizes()
 
 	c.JSON(http.StatusOK, gin.H{
 		"processingCnt":  status.Active,
@@ -44,7 +34,7 @@ func (h *Handler) getStatus(c *gin.Context) {
 }
 
 // enqueueOne enqueues a single geo resolution task.
-func (h *Handler) enqueueOne(c *gin.Context) {
+func enqueueOne(c *gin.Context) {
 	var body struct {
 		UUID string `json:"uuid" binding:"required"`
 	}
@@ -54,12 +44,12 @@ func (h *Handler) enqueueOne(c *gin.Context) {
 		return
 	}
 
-	h.service.Enqueue(body.UUID, nil)
+	Enqueue(body.UUID, nil)
 	c.Status(http.StatusAccepted)
 }
 
 // enqueueMany enqueues multiple geo resolution tasks.
-func (h *Handler) enqueueMany(c *gin.Context) {
+func enqueueMany(c *gin.Context) {
 	var entries []map[string]interface{}
 
 	if err := c.ShouldBindJSON(&entries); err != nil {
@@ -67,6 +57,6 @@ func (h *Handler) enqueueMany(c *gin.Context) {
 		return
 	}
 
-	h.service.EnqueueMany(entries)
+	EnqueueMany(entries)
 	c.Status(http.StatusAccepted)
 }

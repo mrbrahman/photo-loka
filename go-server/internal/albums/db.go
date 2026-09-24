@@ -1,15 +1,11 @@
 package albums
 
 import (
-	"database/sql"
 	"fmt"
 	"strings"
-)
 
-// AlbumsDB provides database operations for albums.
-type AlbumsDB struct {
-	db *sql.DB
-}
+	"photo-loka/internal/database"
+)
 
 // AlbumSearchResult represents a matching album name and its item count.
 type AlbumSearchResult struct {
@@ -17,14 +13,9 @@ type AlbumSearchResult struct {
 	Count   int    `json:"cnt"`
 }
 
-// NewAlbumsDB creates a new AlbumsDB instance.
-func NewAlbumsDB(conn *sql.DB) *AlbumsDB {
-	return &AlbumsDB{db: conn}
-}
-
 // SearchForExisting searches the FTS porter index for album names matching the search string.
 // It excludes albums matching the placeholder text and limits results to 10.
-func (a *AlbumsDB) SearchForExisting(searchStr string, collectionID *int64, placeholder *string) ([]AlbumSearchResult, error) {
+func SearchForExisting(searchStr string, collectionID *int64, placeholder *string) ([]AlbumSearchResult, error) {
 	// Build the FTS match expression
 	// Prefix match with asterisk
 	matchExpr := `{album_name}: "` + strings.ReplaceAll(searchStr, `"`, `""`) + `"*`
@@ -53,7 +44,7 @@ func (a *AlbumsDB) SearchForExisting(searchStr string, collectionID *int64, plac
 		ORDER BY cnt DESC
 		LIMIT 10`
 
-	rows, err := a.db.Query(query, args...)
+	rows, err := database.DB.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("searching albums: %w", err)
 	}
@@ -79,7 +70,7 @@ func (a *AlbumsDB) SearchForExisting(searchStr string, collectionID *int64, plac
 // the given collection, album_date, and current album name.
 // It updates both the album_name field and the filename path (replacing the folder component).
 // Also handles nested albums (sub-folders within the album folder).
-func (a *AlbumsDB) UpdateAlbumName(collectionID int64, albumDate, fromName, toName string) error {
+func UpdateAlbumName(collectionID int64, albumDate, fromName, toName string) error {
 	// The filename replacement uses a leading space + album name to match the
 	// folder segment within the path (e.g. "2021-01-01 Trip" -> "2021-01-01 Beach")
 	fromBase := " " + fromName
@@ -94,7 +85,7 @@ func (a *AlbumsDB) UpdateAlbumName(collectionID int64, albumDate, fromName, toNa
 		  AND album_date = ?
 		  AND album_name = ?`
 
-	_, err := a.db.Exec(directQuery, toName, fromBase, toBase, collectionID, albumDate, fromName)
+	_, err := database.DB.Exec(directQuery, toName, fromBase, toBase, collectionID, albumDate, fromName)
 	if err != nil {
 		return fmt.Errorf("updating album name from %q to %q: %w", fromName, toName, err)
 	}
@@ -108,7 +99,7 @@ func (a *AlbumsDB) UpdateAlbumName(collectionID int64, albumDate, fromName, toNa
 		  AND album_date = ?
 		  AND album_name LIKE ? || '/%'`
 
-	_, err = a.db.Exec(nestedQuery, toName, fromName, fromBase, toBase, collectionID, albumDate, fromName)
+	_, err = database.DB.Exec(nestedQuery, toName, fromName, fromBase, toBase, collectionID, albumDate, fromName)
 	if err != nil {
 		return fmt.Errorf("updating nested albums from %q to %q: %w", fromName, toName, err)
 	}

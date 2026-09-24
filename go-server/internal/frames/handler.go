@@ -11,43 +11,33 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Handler provides HTTP route handlers for frame operations.
-type Handler struct {
-	manager *Manager
-}
-
-// NewHandler creates a new frames Handler.
-func NewHandler(manager *Manager) *Handler {
-	return &Handler{manager: manager}
-}
-
 // RegisterPublicRoutes registers public (unauthenticated) frame routes.
-func (h *Handler) RegisterPublicRoutes(rg *gin.RouterGroup) {
+func RegisterPublicRoutes(rg *gin.RouterGroup) {
 	frame := rg.Group("/frame")
 	{
-		frame.GET("/getNext", h.getNext)
-		frame.GET("/getPrev", h.getPrev)
-		frame.GET("/events", h.events)
+		frame.GET("/getNext", getNext)
+		frame.GET("/getPrev", getPrev)
+		frame.GET("/events", events)
 	}
 }
 
 // RegisterAdminRoutes registers admin-only frame management routes.
-func (h *Handler) RegisterAdminRoutes(rg *gin.RouterGroup) {
-	rg.POST("/createNewFrame", h.createNewFrame)
-	rg.POST("/loadAllFrames", h.loadAllFrames)
-	rg.GET("/getAllFrames", h.getAllFrames)
-	rg.PUT("/updateFrame/:frame_id", h.updateFrame)
-	rg.DELETE("/deleteFrame/:frame_id", h.deleteFrame)
-	rg.POST("/pauseFrame/:frame_id", h.pauseFrame)
-	rg.POST("/resumeFrame/:frame_id", h.resumeFrame)
+func RegisterAdminRoutes(rg *gin.RouterGroup) {
+	rg.POST("/createNewFrame", createNewFrame)
+	rg.POST("/loadAllFrames", loadAllFrames)
+	rg.GET("/getAllFrames", getAllFrames)
+	rg.PUT("/updateFrame/:frame_id", updateFrame)
+	rg.DELETE("/deleteFrame/:frame_id", deleteFrame)
+	rg.POST("/pauseFrame/:frame_id", pauseFrame)
+	rg.POST("/resumeFrame/:frame_id", resumeFrame)
 }
 
 // getNext returns the next item for the requesting frame.
 // GET /frame/getNext
-func (h *Handler) getNext(c *gin.Context) {
+func getNext(c *gin.Context) {
 	ip := extractClientIP(c)
 
-	item, err := h.manager.GetNextItem(ip)
+	item, err := GetNextItem(ip)
 	if err != nil {
 		if errors.Is(err, ErrFramePaused) {
 			c.JSON(http.StatusLocked, gin.H{"error": gin.H{
@@ -73,10 +63,10 @@ func (h *Handler) getNext(c *gin.Context) {
 
 // getPrev returns the previous item for the requesting frame.
 // GET /frame/getPrev
-func (h *Handler) getPrev(c *gin.Context) {
+func getPrev(c *gin.Context) {
 	ip := extractClientIP(c)
 
-	item, err := h.manager.GetPrevItem(ip)
+	item, err := GetPrevItem(ip)
 	if err != nil {
 		if errors.Is(err, ErrFramePaused) {
 			c.JSON(http.StatusLocked, gin.H{"error": gin.H{
@@ -102,7 +92,7 @@ func (h *Handler) getPrev(c *gin.Context) {
 
 // events is the SSE endpoint for frame push notifications.
 // GET /frame/events
-func (h *Handler) events(c *gin.Context) {
+func events(c *gin.Context) {
 	ip := extractClientIP(c)
 
 	// Set SSE headers
@@ -112,8 +102,8 @@ func (h *Handler) events(c *gin.Context) {
 	c.Header("X-Accel-Buffering", "no")
 
 	// Register SSE client
-	ch := h.manager.RegisterSSEClient(ip)
-	defer h.manager.UnregisterSSEClient(ip)
+	ch := RegisterSSEClient(ip)
+	defer UnregisterSSEClient(ip)
 
 	// Flush headers
 	c.Writer.Flush()
@@ -144,7 +134,7 @@ func (h *Handler) events(c *gin.Context) {
 
 // createNewFrame creates a new frame.
 // POST /createNewFrame
-func (h *Handler) createNewFrame(c *gin.Context) {
+func createNewFrame(c *gin.Context) {
 	var frame Frame
 	if err := c.ShouldBindJSON(&frame); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
@@ -154,7 +144,7 @@ func (h *Handler) createNewFrame(c *gin.Context) {
 		return
 	}
 
-	id, err := h.manager.CreateFrame(&frame)
+	id, err := CreateFrame(&frame)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": err.Error(),
@@ -168,8 +158,8 @@ func (h *Handler) createNewFrame(c *gin.Context) {
 
 // loadAllFrames reloads all frames from DB and reinitializes state.
 // POST /loadAllFrames
-func (h *Handler) loadAllFrames(c *gin.Context) {
-	if err := h.manager.LoadAllFrames(); err != nil {
+func loadAllFrames(c *gin.Context) {
+	if err := LoadAllFrames(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": err.Error(),
 			"code":    "LOAD_FAILED",
@@ -178,15 +168,15 @@ func (h *Handler) loadAllFrames(c *gin.Context) {
 	}
 
 	// Re-schedule cron jobs to match the reloaded frame set.
-	h.manager.ScheduleAllFrameJobs()
+	ScheduleAllFrameJobs()
 
 	c.Status(http.StatusOK)
 }
 
 // getAllFrames returns all frames with their in-memory state.
 // GET /getAllFrames
-func (h *Handler) getAllFrames(c *gin.Context) {
-	frames, err := h.manager.GetAllFrames()
+func getAllFrames(c *gin.Context) {
+	frames, err := GetAllFrames()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": err.Error(),
@@ -200,7 +190,7 @@ func (h *Handler) getAllFrames(c *gin.Context) {
 
 // updateFrame updates an existing frame.
 // PUT /updateFrame/:frame_id
-func (h *Handler) updateFrame(c *gin.Context) {
+func updateFrame(c *gin.Context) {
 	frameID, err := strconv.ParseInt(c.Param("frame_id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
@@ -219,7 +209,7 @@ func (h *Handler) updateFrame(c *gin.Context) {
 		return
 	}
 
-	if err := h.manager.UpdateFrame(frameID, &frame); err != nil {
+	if err := UpdateFrame(frameID, &frame); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": err.Error(),
 			"code":    "UPDATE_FAILED",
@@ -232,7 +222,7 @@ func (h *Handler) updateFrame(c *gin.Context) {
 
 // deleteFrame removes a frame.
 // DELETE /deleteFrame/:frame_id
-func (h *Handler) deleteFrame(c *gin.Context) {
+func deleteFrame(c *gin.Context) {
 	frameID, err := strconv.ParseInt(c.Param("frame_id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
@@ -242,7 +232,7 @@ func (h *Handler) deleteFrame(c *gin.Context) {
 		return
 	}
 
-	if err := h.manager.DeleteFrame(frameID); err != nil {
+	if err := DeleteFrame(frameID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": err.Error(),
 			"code":    "DELETE_FAILED",
@@ -255,7 +245,7 @@ func (h *Handler) deleteFrame(c *gin.Context) {
 
 // pauseFrame manually pauses a frame.
 // POST /pauseFrame/:frame_id
-func (h *Handler) pauseFrame(c *gin.Context) {
+func pauseFrame(c *gin.Context) {
 	frameID, err := strconv.ParseInt(c.Param("frame_id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
@@ -271,7 +261,7 @@ func (h *Handler) pauseFrame(c *gin.Context) {
 	// Body is optional
 	_ = c.ShouldBindJSON(&body)
 
-	if err := h.manager.PauseFrame(frameID, body.ResumeAtSchedule); err != nil {
+	if err := PauseFrame(frameID, body.ResumeAtSchedule); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": err.Error(),
 			"code":    "PAUSE_FAILED",
@@ -284,7 +274,7 @@ func (h *Handler) pauseFrame(c *gin.Context) {
 
 // resumeFrame manually resumes a frame.
 // POST /resumeFrame/:frame_id
-func (h *Handler) resumeFrame(c *gin.Context) {
+func resumeFrame(c *gin.Context) {
 	frameID, err := strconv.ParseInt(c.Param("frame_id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
@@ -294,7 +284,7 @@ func (h *Handler) resumeFrame(c *gin.Context) {
 		return
 	}
 
-	if err := h.manager.ResumeFrame(frameID); err != nil {
+	if err := ResumeFrame(frameID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": err.Error(),
 			"code":    "RESUME_FAILED",

@@ -17,11 +17,11 @@ import (
 // "floating" local time, e.g. a bare EXIF:DateTimeOriginal). HasSubsec
 // distinguishes "no fractional seconds" from ".000".
 type ExifDateTime struct {
-	Year, Month, Day int
+	Year, Month, Day     int
 	Hour, Minute, Second int
-	Nanosecond      int
-	HasSubsec       bool
-	TzOffsetMinutes *int
+	Nanosecond           int
+	HasSubsec            bool
+	TzOffsetMinutes      *int
 }
 
 // ParseExifDate parses the date/time formats emitted by exiftool (and the

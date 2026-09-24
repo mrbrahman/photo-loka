@@ -10,7 +10,7 @@ import (
 // AuthMiddleware returns a Gin middleware that validates JWT access tokens.
 // It checks the Authorization header first, then falls back to the refreshToken
 // cookie (for image/media requests that cannot send headers).
-func AuthMiddleware(authService *Service) gin.HandlerFunc {
+func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var tokenStr string
 
@@ -29,7 +29,7 @@ func AuthMiddleware(authService *Service) gin.HandlerFunc {
 			if err == nil && cookie != "" {
 				// Validate refresh token via hash lookup
 				tokenHash := hashToken(cookie)
-				rec, err := authService.db.GetRefreshToken(tokenHash)
+				rec, err := getRefreshToken(tokenHash)
 				if err == nil && rec != nil {
 					c.Set("userId", rec.UserID)
 					c.Set("username", rec.Username)
@@ -51,7 +51,7 @@ func AuthMiddleware(authService *Service) gin.HandlerFunc {
 		}
 
 		// Verify JWT
-		claims, err := authService.VerifyAccessToken(tokenStr)
+		claims, err := VerifyAccessToken(tokenStr)
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 				"error": gin.H{
@@ -69,14 +69,11 @@ func AuthMiddleware(authService *Service) gin.HandlerFunc {
 	}
 }
 
-// FrameIPChecker is an interface for checking if an IP is a registered frame.
-type FrameIPChecker interface {
-	AllFrameIPs() map[string]struct{}
-}
-
 // MediaAuthMiddleware returns a Gin middleware that allows frame IPs to bypass
-// authentication for media routes. Non-frame requests fall through to standard auth.
-func MediaAuthMiddleware(authService *Service, frameChecker FrameIPChecker) gin.HandlerFunc {
+// authentication for media routes. Non-frame requests fall through to standard
+// auth. allFrameIPs returns the current set of registered frame IPs (passed as
+// a func so auth does not import frames).
+func MediaAuthMiddleware(allFrameIPs func() map[string]struct{}) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Extract client IP, stripping IPv6 prefix if present
 		ip := c.ClientIP()
@@ -85,14 +82,14 @@ func MediaAuthMiddleware(authService *Service, frameChecker FrameIPChecker) gin.
 		}
 
 		// If the IP is a registered frame, bypass auth
-		frameIPs := frameChecker.AllFrameIPs()
+		frameIPs := allFrameIPs()
 		if _, isFrame := frameIPs[ip]; isFrame {
 			c.Next()
 			return
 		}
 
 		// Otherwise, use standard auth
-		AuthMiddleware(authService)(c)
+		AuthMiddleware()(c)
 	}
 }
 

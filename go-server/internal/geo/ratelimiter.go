@@ -9,16 +9,18 @@ import (
 	"photo-loka/internal/config"
 )
 
-// RateLimiter enforces hourly and daily limits for geonames API calls.
-type RateLimiter struct {
-	mu          sync.Mutex
-	hourlyCount int
-	dailyCount  int
-	currentHour int
-	currentDay  int
-	rtConfig    *config.RuntimeConfig
-	stateFile   string
-}
+// Rate limiting for geonames API calls is package-level (single instance).
+// Limits are read from the config.Runtime singleton at check time; the counters and
+// their state file are package vars, initialized by initRateLimiter (called
+// from Init).
+var (
+	rlMu          sync.Mutex
+	rlHourlyCount int
+	rlDailyCount  int
+	rlCurrentHour int
+	rlCurrentDay  int
+	rlStateFile   string
+)
 
 // rateLimiterState is the serialized state written to disk.
 type rateLimiterState struct {
@@ -28,83 +30,77 @@ type rateLimiterState struct {
 	CurrentDay  int `json:"current_day"`
 }
 
-// NewRateLimiter creates a new RateLimiter with the given limits.
-// If a state file exists and the saved hour/day match the current time,
-// the counters are restored from disk.
-func NewRateLimiter(rtConfig *config.RuntimeConfig, stateFile string) *RateLimiter {
+// initRateLimiter sets the state file and restores counters from disk if the
+// saved hour/day still match the current time.
+func initRateLimiter(stateFile string) {
 	now := time.Now()
-	rl := &RateLimiter{
-		rtConfig:    rtConfig,
-		stateFile:   stateFile,
-		currentHour: now.Hour(),
-		currentDay:  now.YearDay(),
-	}
+	rlStateFile = stateFile
+	rlCurrentHour = now.Hour()
+	rlCurrentDay = now.YearDay()
 
-	// Attempt to load saved state
-	if stateFile != "" {
-		data, err := os.ReadFile(stateFile)
-		if err == nil {
-			var state rateLimiterState
-			if json.Unmarshal(data, &state) == nil {
-				// Only restore if same hour/day
-				if state.CurrentHour == now.Hour() && state.CurrentDay == now.YearDay() {
-					rl.hourlyCount = state.HourlyCount
-					rl.dailyCount = state.DailyCount
-				} else if state.CurrentDay == now.YearDay() {
-					// Same day but different hour - keep daily count only
-					rl.dailyCount = state.DailyCount
-				}
-			}
-		}
+	if stateFile == "" {
+		return
 	}
-
-	return rl
+	data, err := os.ReadFile(stateFile)
+	if err != nil {
+		return
+	}
+	var state rateLimiterState
+	if json.Unmarshal(data, &state) != nil {
+		return
+	}
+	// Only restore if same hour/day
+	if state.CurrentHour == now.Hour() && state.CurrentDay == now.YearDay() {
+		rlHourlyCount = state.HourlyCount
+		rlDailyCount = state.DailyCount
+	} else if state.CurrentDay == now.YearDay() {
+		// Same day but different hour - keep daily count only
+		rlDailyCount = state.DailyCount
+	}
 }
 
-// Check returns true if the rate limiter allows another request.
-// It resets counters when the hour or day changes.
-func (r *RateLimiter) Check() bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+// rateCheck returns true if another geonames request is allowed. It resets the
+// counters when the hour or day changes.
+func rateCheck() bool {
+	rlMu.Lock()
+	defer rlMu.Unlock()
 
 	now := time.Now()
 
-	// Reset hourly counter on hour change
-	if now.Hour() != r.currentHour {
-		r.hourlyCount = 0
-		r.currentHour = now.Hour()
+	if now.Hour() != rlCurrentHour {
+		rlHourlyCount = 0
+		rlCurrentHour = now.Hour()
+	}
+	if now.YearDay() != rlCurrentDay {
+		rlDailyCount = 0
+		rlCurrentDay = now.YearDay()
 	}
 
-	// Reset daily counter on day change
-	if now.YearDay() != r.currentDay {
-		r.dailyCount = 0
-		r.currentDay = now.YearDay()
-	}
-
-	return r.hourlyCount < r.rtConfig.GeonamesHourlyLimit && r.dailyCount < r.rtConfig.GeonamesDailyLimit
+	return rlHourlyCount < config.Runtime.GeonamesHourlyLimit && rlDailyCount < config.Runtime.GeonamesDailyLimit
 }
 
-// Increment increases both hourly and daily counters by one.
-func (r *RateLimiter) Increment() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+// rateIncrement increases both hourly and daily counters by one.
+func rateIncrement() {
+	rlMu.Lock()
+	defer rlMu.Unlock()
 
-	r.hourlyCount++
-	r.dailyCount++
+	rlHourlyCount++
+	rlDailyCount++
 }
 
-// Save writes the current rate limiter state to the state file.
-func (r *RateLimiter) Save() {
-	r.mu.Lock()
+// SaveRateLimiter writes the current rate limiter state to the state file.
+// Called on shutdown so counters survive a restart.
+func SaveRateLimiter() {
+	rlMu.Lock()
 	state := rateLimiterState{
-		HourlyCount: r.hourlyCount,
-		DailyCount:  r.dailyCount,
-		CurrentHour: r.currentHour,
-		CurrentDay:  r.currentDay,
+		HourlyCount: rlHourlyCount,
+		DailyCount:  rlDailyCount,
+		CurrentHour: rlCurrentHour,
+		CurrentDay:  rlCurrentDay,
 	}
-	r.mu.Unlock()
+	rlMu.Unlock()
 
-	if r.stateFile == "" {
+	if rlStateFile == "" {
 		return
 	}
 
@@ -112,20 +108,5 @@ func (r *RateLimiter) Save() {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(r.stateFile, data, 0644)
-}
-
-// Status returns the current state of the rate limiter as a map.
-func (r *RateLimiter) Status() map[string]interface{} {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	return map[string]interface{}{
-		"hourly_count": r.hourlyCount,
-		"hourly_limit": r.rtConfig.GeonamesHourlyLimit,
-		"daily_count":  r.dailyCount,
-		"daily_limit":  r.rtConfig.GeonamesDailyLimit,
-		"current_hour": r.currentHour,
-		"current_day":  r.currentDay,
-	}
+	_ = os.WriteFile(rlStateFile, data, 0644)
 }

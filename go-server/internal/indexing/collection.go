@@ -4,14 +4,15 @@ import (
 	"fmt"
 	"strconv"
 
+	"photo-loka/internal/collections"
 	"photo-loka/internal/queue"
 	"photo-loka/internal/utils"
 )
 
 // InitialIndexing lists all files in a collection, filters ignored files,
 // and enqueues each for indexing with High priority.
-func (idx *Indexer) InitialIndexing(collectionID int64) error {
-	collection, err := idx.collectionsDB.Get(collectionID)
+func InitialIndexing(collectionID int64) error {
+	collection, err := collections.Get(collectionID)
 	if err != nil {
 		return fmt.Errorf("getting collection %d: %w", collectionID, err)
 	}
@@ -19,7 +20,7 @@ func (idx *Indexer) InitialIndexing(collectionID int64) error {
 		return fmt.Errorf("collection %d not found", collectionID)
 	}
 
-	files, err := idx.organizer.ListAllFiles(collection.CollectionPath)
+	files, err := ListAllFiles(collection.CollectionPath)
 	if err != nil {
 		return fmt.Errorf("listing files for collection %d: %w", collectionID, err)
 	}
@@ -37,16 +38,16 @@ func (idx *Indexer) InitialIndexing(collectionID int64) error {
 			Priority:    queue.High,
 			Description: f,
 			Fn: func() error {
-				return idx.IndexFile(col, f, "", true)
+				return IndexFile(col, f, "", true)
 			},
 		})
 	}
 
 	if len(tasks) > 0 {
-		idx.indexQueue.EnqueueMany(tasks)
+		indexQueue.EnqueueMany(tasks)
 	}
 
-	idx.logger.Info("initial indexing started",
+	idxLogger.Info("initial indexing started",
 		"collection_id", collectionID,
 		"files_enqueued", len(tasks),
 	)
@@ -60,8 +61,8 @@ func (idx *Indexer) InitialIndexing(collectionID int64) error {
 // NOTE: Deleted files (present in DB but not on disk) are detected but NOT acted on.
 // Node.js also detects deletions but does not trash/remove them automatically.
 // This is intentional - automatic deletion is risky; user should handle manually.
-func (idx *Indexer) ScanForChanges(collectionID int64) error {
-	collection, err := idx.collectionsDB.Get(collectionID)
+func ScanForChanges(collectionID int64) error {
+	collection, err := collections.Get(collectionID)
 	if err != nil {
 		return fmt.Errorf("getting collection %d: %w", collectionID, err)
 	}
@@ -70,13 +71,13 @@ func (idx *Indexer) ScanForChanges(collectionID int64) error {
 	}
 
 	// Get current disk state
-	diskFiles, err := idx.organizer.GetFilesMtime(collection.CollectionPath)
+	diskFiles, err := GetFilesMtime(collection.CollectionPath)
 	if err != nil {
 		return fmt.Errorf("getting disk files for collection %d: %w", collectionID, err)
 	}
 
 	// Get indexed state from DB
-	indexedFiles, err := idx.db.GetIndexedFiles(collectionID)
+	indexedFiles, err := GetIndexedFiles(collectionID)
 	if err != nil {
 		return fmt.Errorf("getting indexed files for collection %d: %w", collectionID, err)
 	}
@@ -105,7 +106,7 @@ func (idx *Indexer) ScanForChanges(collectionID int64) error {
 				Priority:    queue.High,
 				Description: f,
 				Fn: func() error {
-					return idx.IndexFile(col, f, "", true)
+					return IndexFile(col, f, "", true)
 				},
 			})
 		} else {
@@ -122,7 +123,7 @@ func (idx *Indexer) ScanForChanges(collectionID int64) error {
 						Priority:    queue.High,
 						Description: f,
 						Fn: func() error {
-							return idx.IndexFile(col, f, existingUUID, true)
+							return IndexFile(col, f, existingUUID, true)
 						},
 					})
 				}
@@ -140,10 +141,10 @@ func (idx *Indexer) ScanForChanges(collectionID int64) error {
 	}
 
 	if len(tasks) > 0 {
-		idx.indexQueue.EnqueueMany(tasks)
+		indexQueue.EnqueueMany(tasks)
 	}
 
-	idx.logger.Info("scan for changes complete",
+	idxLogger.Info("scan for changes complete",
 		"collection_id", collectionID,
 		"added", addedCount,
 		"changed", changedCount,
@@ -151,7 +152,7 @@ func (idx *Indexer) ScanForChanges(collectionID int64) error {
 	)
 
 	if deletedCount > 0 {
-		idx.logger.Warn("scan for changes: files missing from disk (deleted?); skipped - admin must review and trash/remove manually",
+		idxLogger.Warn("scan for changes: files missing from disk (deleted?); skipped - admin must review and trash/remove manually",
 			"collection_id", collectionID,
 			"deleted_count", deletedCount,
 		)
@@ -161,8 +162,8 @@ func (idx *Indexer) ScanForChanges(collectionID int64) error {
 }
 
 // RefreshMetadataForCollection re-extracts metadata for all indexed files in a collection.
-func (idx *Indexer) RefreshMetadataForCollection(collectionID int64) error {
-	indexedFiles, err := idx.db.GetIndexedFiles(collectionID)
+func RefreshMetadataForCollection(collectionID int64) error {
+	indexedFiles, err := GetIndexedFiles(collectionID)
 	if err != nil {
 		return fmt.Errorf("getting indexed files for refresh, collection %d: %w", collectionID, err)
 	}
@@ -174,16 +175,16 @@ func (idx *Indexer) RefreshMetadataForCollection(collectionID int64) error {
 			Priority:    queue.Normal,
 			Description: f.Filename,
 			Fn: func() error {
-				return idx.RefreshMetadata(f.UUID, f.Filename)
+				return RefreshMetadata(f.UUID, f.Filename)
 			},
 		})
 	}
 
 	if len(tasks) > 0 {
-		idx.indexQueue.EnqueueMany(tasks)
+		indexQueue.EnqueueMany(tasks)
 	}
 
-	idx.logger.Info("metadata refresh started",
+	idxLogger.Info("metadata refresh started",
 		"collection_id", collectionID,
 		"files_enqueued", len(tasks),
 	)

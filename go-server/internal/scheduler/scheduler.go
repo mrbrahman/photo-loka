@@ -8,14 +8,15 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
-// Scheduler wraps robfig/cron to manage named cron jobs.
-type Scheduler struct {
-	cron     *cron.Cron
-	jobs     map[string]cron.EntryID // name -> entry ID
-	patterns map[string]string       // name -> cron pattern
-	mu       sync.Mutex
-	logger   *slog.Logger
-}
+// The cron scheduler is package-level (single instance). Init creates and
+// starts the cron runner; the named-job registry and its guard are package vars.
+var (
+	cronRunner *cron.Cron
+	jobs       = make(map[string]cron.EntryID) // name -> entry ID
+	patterns   = make(map[string]string)       // name -> cron pattern
+	mu         sync.Mutex
+	logger     = slog.Default().With("component", "scheduler")
+)
 
 // JobInfo describes a registered cron job.
 type JobInfo struct {
@@ -23,83 +24,77 @@ type JobInfo struct {
 	Pattern string `json:"pattern"`
 }
 
-// New creates and starts a new Scheduler with seconds-optional parser.
-func New() *Scheduler {
-	c := cron.New(cron.WithParser(cron.NewParser(
+// Init creates and starts the cron runner with a seconds-optional parser.
+// Called once at startup.
+func Init() {
+	cronRunner = cron.New(cron.WithParser(cron.NewParser(
 		cron.SecondOptional | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow,
 	)))
-	c.Start()
-
-	return &Scheduler{
-		cron:     c,
-		jobs:     make(map[string]cron.EntryID),
-		patterns: make(map[string]string),
-		logger:   slog.Default().With("component", "scheduler"),
-	}
+	cronRunner.Start()
 }
 
 // AddJob registers a named cron job with the given pattern and handler.
 // If a job with the same name already exists, it is replaced.
-func (s *Scheduler) AddJob(name, pattern string, handler func()) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func AddJob(name, pattern string, handler func()) error {
+	mu.Lock()
+	defer mu.Unlock()
 
 	// Remove existing job with same name if present
-	if existingID, exists := s.jobs[name]; exists {
-		s.cron.Remove(existingID)
-		delete(s.jobs, name)
-		delete(s.patterns, name)
+	if existingID, exists := jobs[name]; exists {
+		cronRunner.Remove(existingID)
+		delete(jobs, name)
+		delete(patterns, name)
 	}
 
-	entryID, err := s.cron.AddFunc(pattern, handler)
+	entryID, err := cronRunner.AddFunc(pattern, handler)
 	if err != nil {
 		return fmt.Errorf("adding cron job %q with pattern %q: %w", name, pattern, err)
 	}
 
-	s.jobs[name] = entryID
-	s.patterns[name] = pattern
+	jobs[name] = entryID
+	patterns[name] = pattern
 
-	s.logger.Debug("cron job added", "name", name, "pattern", pattern)
+	logger.Debug("cron job added", "name", name, "pattern", pattern)
 	return nil
 }
 
 // DeleteJob removes and stops a named job.
-func (s *Scheduler) DeleteJob(name string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func DeleteJob(name string) {
+	mu.Lock()
+	defer mu.Unlock()
 
-	if entryID, exists := s.jobs[name]; exists {
-		s.cron.Remove(entryID)
-		delete(s.jobs, name)
-		delete(s.patterns, name)
-		s.logger.Debug("cron job deleted", "name", name)
+	if entryID, exists := jobs[name]; exists {
+		cronRunner.Remove(entryID)
+		delete(jobs, name)
+		delete(patterns, name)
+		logger.Debug("cron job deleted", "name", name)
 	}
 }
 
 // DeleteAllJobs removes and stops all registered jobs.
-func (s *Scheduler) DeleteAllJobs() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func DeleteAllJobs() {
+	mu.Lock()
+	defer mu.Unlock()
 
-	for name, entryID := range s.jobs {
-		s.cron.Remove(entryID)
-		s.logger.Debug("cron job deleted", "name", name)
+	for name, entryID := range jobs {
+		cronRunner.Remove(entryID)
+		logger.Debug("cron job deleted", "name", name)
 	}
 
-	s.jobs = make(map[string]cron.EntryID)
-	s.patterns = make(map[string]string)
+	jobs = make(map[string]cron.EntryID)
+	patterns = make(map[string]string)
 }
 
 // ListAllJobs returns information about all active cron jobs.
-func (s *Scheduler) ListAllJobs() []JobInfo {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func ListAllJobs() []JobInfo {
+	mu.Lock()
+	defer mu.Unlock()
 
-	result := make([]JobInfo, 0, len(s.jobs))
-	for name := range s.jobs {
+	result := make([]JobInfo, 0, len(jobs))
+	for name := range jobs {
 		result = append(result, JobInfo{
 			Name:    name,
-			Pattern: s.patterns[name],
+			Pattern: patterns[name],
 		})
 	}
 
@@ -107,8 +102,8 @@ func (s *Scheduler) ListAllJobs() []JobInfo {
 }
 
 // Stop stops the cron runner. No more jobs will execute after this call.
-func (s *Scheduler) Stop() {
-	ctx := s.cron.Stop()
+func Stop() {
+	ctx := cronRunner.Stop()
 	<-ctx.Done()
-	s.logger.Info("scheduler stopped")
+	logger.Info("scheduler stopped")
 }

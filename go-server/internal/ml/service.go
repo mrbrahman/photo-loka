@@ -6,27 +6,22 @@ import (
 	"fmt"
 	"log/slog"
 
+	"photo-loka/internal/config"
 	"photo-loka/internal/media"
 )
 
-// Service orchestrates ML operations including face recognition and semantic search.
-type Service struct {
-	client    *Client
-	db        *MLDB
-	facesDir  string
-	thumbsDir string
-	logger    *slog.Logger
-}
+// ML operations (face recognition, image encoding) are package-level functions.
+// client is the ML HTTP client, built once via Init; face/thumbnail dirs are
+// read from config.Startup at use time.
+var (
+	client *apiClient
+	logger = slog.Default().With("component", "ml-service")
+)
 
-// NewService creates a new ML Service.
-func NewService(client *Client, db *MLDB, facesDir, thumbsDir string) *Service {
-	return &Service{
-		client:    client,
-		db:        db,
-		facesDir:  facesDir,
-		thumbsDir: thumbsDir,
-		logger:    slog.Default().With("component", "ml-service"),
-	}
+// Init builds the ML service HTTP client from config.Startup. Called once at
+// startup, after LoadStartupConfig.
+func Init() {
+	client = newAPIClient(config.Startup.MLServiceURL)
 }
 
 // ProcessFaceRecognition runs face recognition for a media item.
@@ -35,9 +30,9 @@ func NewService(client *Client, db *MLDB, facesDir, thumbsDir string) *Service {
 // service loads the file via libvips -- using the pre-extracted first-frame
 // JPEG for videos -- and falls back to the path-based ML endpoint if that
 // also fails (e.g. format unsupported).
-func (s *Service) ProcessFaceRecognition(uuid string, mlBuf *media.MLBuffer) (map[string]interface{}, error) {
+func ProcessFaceRecognition(uuid string, mlBuf *media.MLBuffer) (map[string]interface{}, error) {
 	// Get item info from DB for the ML call
-	item, err := s.db.GetItemForRecognition(uuid)
+	item, err := getItemForRecognition(uuid)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get item info for %s: %w", uuid, err)
 	}
@@ -55,7 +50,7 @@ func (s *Service) ProcessFaceRecognition(uuid string, mlBuf *media.MLBuffer) (ma
 	// so the scaled-up bbox (in this file's pixel space) matches the crop source.
 	feedFile := item.Filename
 	if item.Mediatype == "video" {
-		feedFile = media.VideoFramePath(uuid, s.thumbsDir)
+		feedFile = media.VideoFramePath(uuid, config.Startup.ThumbsDir)
 	}
 
 	// If no buffer was supplied by the caller, produce one now.
@@ -66,14 +61,14 @@ func (s *Service) ProcessFaceRecognition(uuid string, mlBuf *media.MLBuffer) (ma
 	var result map[string]interface{}
 	if mlBuf != nil {
 		imageBytes := base64.StdEncoding.EncodeToString(mlBuf.JPEG)
-		result, err = s.client.RecognizeFacesBuffer(uuid, imageBytes, item.Orientation, xmpRegions)
+		result, err = client.RecognizeFacesBuffer(uuid, imageBytes, item.Orientation, xmpRegions)
 		if err != nil {
 			return nil, fmt.Errorf("face recognition (buffer) failed for %s: %w", uuid, err)
 		}
 		scaleFaceBboxes(result, mlBuf.Scale)
 	} else {
 		// Fallback: path-based endpoint (Python reads the file directly).
-		result, err = s.client.RecognizeFaces(uuid, item.Filename, item.Orientation, xmpRegions)
+		result, err = client.RecognizeFaces(uuid, item.Filename, item.Orientation, xmpRegions)
 		if err != nil {
 			return nil, fmt.Errorf("face recognition failed for %s: %w", uuid, err)
 		}
@@ -100,7 +95,7 @@ func (s *Service) ProcessFaceRecognition(uuid string, mlBuf *media.MLBuffer) (ma
 	}
 
 	// Save results to DB
-	if err := s.db.SaveFaceResults(uuid, faces, unmatched); err != nil {
+	if err := saveFaceResults(uuid, faces, unmatched); err != nil {
 		return nil, fmt.Errorf("failed to save face results for %s: %w", uuid, err)
 	}
 
@@ -108,12 +103,12 @@ func (s *Service) ProcessFaceRecognition(uuid string, mlBuf *media.MLBuffer) (ma
 	// images, the extracted frame for videos. bbox is in feedFile pixel space
 	// after the scale-up above, so the crop source must match feedFile.
 	if len(faces) > 0 {
-		if err := media.ExtractFaceThumbnails(uuid, feedFile, faces, s.facesDir); err != nil {
-			s.logger.Warn("face thumbnail extraction failed", "uuid", uuid, "error", err)
+		if err := media.ExtractFaceThumbnails(uuid, feedFile, faces, config.Startup.FacesDir); err != nil {
+			logger.Warn("face thumbnail extraction failed", "uuid", uuid, "error", err)
 		}
 	}
 
-	s.logger.Info("face recognition complete", "uuid", uuid, "faces", len(faces), "unmatched", len(unmatched))
+	logger.Info("face recognition complete", "uuid", uuid, "faces", len(faces), "unmatched", len(unmatched))
 	return result, nil
 }
 
@@ -147,15 +142,15 @@ func scaleFaceBboxes(result map[string]interface{}, scale float64) {
 // mlBuf is a pre-produced 640px buffer from the thumbnail step; pass nil to
 // have the service produce it here. No-ops if buffer production fails (CLIP
 // encoding is not available via the path-based endpoint).
-func (s *Service) ProcessImageEncoding(uuid string, mlBuf *media.MLBuffer) error {
+func ProcessImageEncoding(uuid string, mlBuf *media.MLBuffer) error {
 	if mlBuf == nil {
-		item, err := s.db.GetItemForRecognition(uuid)
+		item, err := getItemForRecognition(uuid)
 		if err != nil {
 			return fmt.Errorf("failed to get item info for encoding %s: %w", uuid, err)
 		}
 		feedFile := item.Filename
 		if item.Mediatype == "video" {
-			feedFile = media.VideoFramePath(uuid, s.thumbsDir)
+			feedFile = media.VideoFramePath(uuid, config.Startup.ThumbsDir)
 		}
 		mlBuf, _ = media.ExportMLBuffer(uuid, feedFile)
 	}
@@ -165,97 +160,109 @@ func (s *Service) ProcessImageEncoding(uuid string, mlBuf *media.MLBuffer) error
 	}
 
 	imageBytes := base64.StdEncoding.EncodeToString(mlBuf.JPEG)
-	_, err := s.client.EncodeImageBuffer(uuid, imageBytes)
+	_, err := client.EncodeImageBuffer(uuid, imageBytes)
 	if err != nil {
 		return fmt.Errorf("image encoding failed for %s: %w", uuid, err)
 	}
 
-	s.logger.Info("image encoding complete", "uuid", uuid)
+	logger.Info("image encoding complete", "uuid", uuid)
 	return nil
 }
 
 // GetFacesByUUID returns all face records for a given uuid.
-func (s *Service) GetFacesByUUID(uuid string) ([]map[string]interface{}, error) {
-	return s.db.GetFacesByUUID(uuid)
+func GetFacesByUUID(uuid string) ([]map[string]interface{}, error) {
+	return getFacesByUUID(uuid)
 }
 
 // GetFacesByPerson returns all face records for a given person name.
-func (s *Service) GetFacesByPerson(name string) ([]map[string]interface{}, error) {
-	return s.db.GetFacesByPerson(name)
+func GetFacesByPerson(name string) ([]map[string]interface{}, error) {
+	return queryFacesByPerson(name)
 }
 
 // NameFaceCluster assigns a name to a face cluster in both the ML service and DB.
-func (s *Service) NameFaceCluster(clusterID, name string) (int64, error) {
+func NameFaceCluster(clusterID, name string) (int64, error) {
 	// Update ML service
-	if err := s.client.NameFaceCluster(clusterID, name); err != nil {
+	if err := client.NameFaceCluster(clusterID, name); err != nil {
 		return 0, fmt.Errorf("failed to name cluster in ML service: %w", err)
 	}
 
 	// Update local DB
-	rowsAffected, err := s.db.NameFaceCluster(clusterID, name)
+	rowsAffected, err := nameFaceClusterDB(clusterID, name)
 	if err != nil {
 		return 0, fmt.Errorf("failed to name cluster in DB: %w", err)
 	}
 
-	s.logger.Info("named face cluster", "cluster_id", clusterID, "name", name, "rows_affected", rowsAffected)
+	logger.Info("named face cluster", "cluster_id", clusterID, "name", name, "rows_affected", rowsAffected)
 	return rowsAffected, nil
 }
 
 // UpdatePersonName renames a person in both the ML service and DB.
-func (s *Service) UpdatePersonName(oldName, newName string) (int64, error) {
+func UpdatePersonName(oldName, newName string) (int64, error) {
 	// Update ML service
-	if err := s.client.UpdatePersonName(oldName, newName); err != nil {
+	if err := client.UpdatePersonName(oldName, newName); err != nil {
 		return 0, fmt.Errorf("failed to update person name in ML service: %w", err)
 	}
 
 	// Update local DB
-	rowsAffected, err := s.db.UpdatePersonName(oldName, newName)
+	rowsAffected, err := updatePersonNameDB(oldName, newName)
 	if err != nil {
 		return 0, fmt.Errorf("failed to update person name in DB: %w", err)
 	}
 
-	s.logger.Info("updated person name", "old_name", oldName, "new_name", newName, "rows_affected", rowsAffected)
+	logger.Info("updated person name", "old_name", oldName, "new_name", newName, "rows_affected", rowsAffected)
 	return rowsAffected, nil
 }
 
 // GetFaceSuggestions retrieves name suggestions for a face cluster from the ML service.
-func (s *Service) GetFaceSuggestions(clusterID string) (map[string]interface{}, error) {
-	return s.client.GetFaceSuggestions(clusterID)
+func GetFaceSuggestions(clusterID string) (map[string]interface{}, error) {
+	return client.GetFaceSuggestions(clusterID)
+}
+
+// Available reports whether the ML client has been initialized (i.e. Init was
+// called). Used by callers that must degrade gracefully when ML is not wired.
+func Available() bool {
+	return client != nil
+}
+
+// SearchByText performs semantic (CLIP) search via the ML service and returns
+// the raw response.
+func SearchByText(query string) (map[string]interface{}, error) {
+	return client.SearchByText(query)
 }
 
 // SearchPersonNames searches for person names matching a query string.
-func (s *Service) SearchPersonNames(query string) ([]string, error) {
-	return s.db.SearchPersonNames(query)
+func SearchPersonNames(query string) ([]string, error) {
+	return searchPersonNamesDB(query)
 }
 
 // DismissCluster marks a face cluster as dismissed.
-func (s *Service) DismissCluster(clusterID string) error {
-	if err := s.db.DismissCluster(clusterID); err != nil {
+func DismissCluster(clusterID string) error {
+	if err := dismissClusterDB(clusterID); err != nil {
 		return err
 	}
-	s.logger.Info("dismissed cluster", "cluster_id", clusterID)
+	logger.Info("dismissed cluster", "cluster_id", clusterID)
 	return nil
 }
 
 // UndismissCluster restores a dismissed face cluster.
-func (s *Service) UndismissCluster(clusterID string) error {
-	if err := s.db.UndismissCluster(clusterID); err != nil {
+func UndismissCluster(clusterID string) error {
+	if err := undismissClusterDB(clusterID); err != nil {
 		return err
 	}
-	s.logger.Info("undismissed cluster", "cluster_id", clusterID)
+	logger.Info("undismissed cluster", "cluster_id", clusterID)
 	return nil
 }
 
 // CleanupMLData removes all ML data for a uuid from both the DB and external ML service.
-func (s *Service) CleanupMLData(uuid string) {
+func CleanupMLData(uuid string) {
 	// Delete from local DB
-	clusterIDs, err := s.db.DeleteFaceData(uuid)
+	clusterIDs, err := deleteFaceData(uuid)
 	if err != nil {
-		s.logger.Error("failed to delete face data from DB", "uuid", uuid, "error", err)
+		logger.Error("failed to delete face data from DB", "uuid", uuid, "error", err)
 	} else if len(clusterIDs) > 0 {
-		s.logger.Info("deleted face data", "uuid", uuid, "cluster_ids", clusterIDs)
+		logger.Info("deleted face data", "uuid", uuid, "cluster_ids", clusterIDs)
 	}
 
 	// Call ML service cleanup (logs errors internally)
-	s.client.CleanupMLData(uuid)
+	client.CleanupMLData(uuid)
 }

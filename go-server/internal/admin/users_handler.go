@@ -10,29 +10,19 @@ import (
 	"photo-loka/internal/auth"
 )
 
-// UsersHandler handles user management endpoints.
-type UsersHandler struct {
-	authService *auth.Service
-}
-
-// NewUsersHandler creates a new UsersHandler.
-func NewUsersHandler(authSvc *auth.Service) *UsersHandler {
-	return &UsersHandler{authService: authSvc}
-}
-
-// RegisterRoutes registers user management routes on the given router group.
-func (h *UsersHandler) RegisterRoutes(rg *gin.RouterGroup) {
-	rg.GET("/users", h.getUsers)
-	rg.POST("/users", h.createUser)
-	rg.PATCH("/users/:userId/role", h.updateRole)
-	rg.POST("/users/:userId/unlock", h.unlockUser)
-	rg.POST("/users/:userId/token", h.generateToken)
+// RegisterUsersRoutes registers user management routes on the given router group.
+func RegisterUsersRoutes(rg *gin.RouterGroup) {
+	rg.GET("/users", getUsers)
+	rg.POST("/users", createUser)
+	rg.PATCH("/users/:userId/role", updateRole)
+	rg.POST("/users/:userId/unlock", unlockUser)
+	rg.POST("/users/:userId/token", generateToken)
 }
 
 // getUsers returns all users.
 // GET /api/admin/users
-func (h *UsersHandler) getUsers(c *gin.Context) {
-	users, err := h.authService.GetAllUsers()
+func getUsers(c *gin.Context) {
+	users, err := auth.GetAllUsers()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{
@@ -48,7 +38,7 @@ func (h *UsersHandler) getUsers(c *gin.Context) {
 
 // createUser creates a new user.
 // POST /api/admin/users
-func (h *UsersHandler) createUser(c *gin.Context) {
+func createUser(c *gin.Context) {
 	var body struct {
 		Username string `json:"username" binding:"required"`
 		Password string `json:"password" binding:"required"`
@@ -87,7 +77,7 @@ func (h *UsersHandler) createUser(c *gin.Context) {
 		return
 	}
 
-	userID, err := h.authService.CreateUser(body.Username, body.Password, body.Role)
+	userID, err := auth.CreateUser(body.Username, body.Password, body.Role)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 			c.JSON(http.StatusConflict, gin.H{
@@ -116,7 +106,7 @@ func (h *UsersHandler) createUser(c *gin.Context) {
 
 // updateRole changes a user's role.
 // PATCH /api/admin/users/:userId/role
-func (h *UsersHandler) updateRole(c *gin.Context) {
+func updateRole(c *gin.Context) {
 	userIDParam := c.Param("userId")
 	targetUserID, err := strconv.ParseInt(userIDParam, 10, 64)
 	if err != nil {
@@ -165,7 +155,7 @@ func (h *UsersHandler) updateRole(c *gin.Context) {
 		return
 	}
 
-	if err := h.authService.UpdateUserRole(targetUserID, body.Role); err != nil {
+	if err := auth.UpdateUserRole(targetUserID, body.Role); err != nil {
 		statusCode := http.StatusInternalServerError
 		if appErr, ok := err.(*auth.AppError); ok {
 			statusCode = appErr.StatusCode
@@ -184,7 +174,7 @@ func (h *UsersHandler) updateRole(c *gin.Context) {
 
 // unlockUser unlocks a locked user account.
 // POST /api/admin/users/:userId/unlock
-func (h *UsersHandler) unlockUser(c *gin.Context) {
+func unlockUser(c *gin.Context) {
 	userIDParam := c.Param("userId")
 	_, err := strconv.ParseInt(userIDParam, 10, 64)
 	if err != nil {
@@ -201,7 +191,7 @@ func (h *UsersHandler) unlockUser(c *gin.Context) {
 	// We need to look up the user first. For now, we'll use GetAllUsers and find the match.
 	// However, the service's UnlockUser takes username. Let's use a different approach:
 	// We'll add UnlockUserByID or look up all users.
-	users, err := h.authService.GetAllUsers()
+	users, err := auth.GetAllUsers()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{
@@ -231,7 +221,7 @@ func (h *UsersHandler) unlockUser(c *gin.Context) {
 		return
 	}
 
-	if err := h.authService.UnlockUser(username); err != nil {
+	if err := auth.UnlockUser(username); err != nil {
 		statusCode := http.StatusInternalServerError
 		if appErr, ok := err.(*auth.AppError); ok {
 			statusCode = appErr.StatusCode
@@ -250,7 +240,7 @@ func (h *UsersHandler) unlockUser(c *gin.Context) {
 
 // generateToken generates a long-lived API token for a user.
 // POST /api/admin/users/:userId/token
-func (h *UsersHandler) generateToken(c *gin.Context) {
+func generateToken(c *gin.Context) {
 	userIDParam := c.Param("userId")
 	_, err := strconv.ParseInt(userIDParam, 10, 64)
 	if err != nil {
@@ -283,7 +273,7 @@ func (h *UsersHandler) generateToken(c *gin.Context) {
 	}
 
 	// Look up username by userId
-	users, err := h.authService.GetAllUsers()
+	users, err := auth.GetAllUsers()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{
@@ -313,7 +303,7 @@ func (h *UsersHandler) generateToken(c *gin.Context) {
 		return
 	}
 
-	token, err := h.authService.GenerateAPIToken(username, body.ExpiresInDays)
+	token, err := auth.GenerateAPIToken(username, body.ExpiresInDays)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{

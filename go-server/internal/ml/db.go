@@ -4,17 +4,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+
+	"photo-loka/internal/database"
 )
-
-// MLDB handles database operations for face recognition.
-type MLDB struct {
-	db *sql.DB
-}
-
-// NewMLDB creates a new MLDB instance.
-func NewMLDB(conn *sql.DB) *MLDB {
-	return &MLDB{db: conn}
-}
 
 // jsonOrNull returns a JSON string or nil if the value is nil.
 func jsonOrNull(val interface{}) interface{} {
@@ -54,10 +46,10 @@ type ItemForRecognition struct {
 }
 
 // GetItemForRecognition retrieves the filename, orientation, mediatype, and xmpregion for a uuid.
-func (m *MLDB) GetItemForRecognition(uuid string) (*ItemForRecognition, error) {
+func getItemForRecognition(uuid string) (*ItemForRecognition, error) {
 	item := &ItemForRecognition{}
 	var xmpregion sql.NullString
-	err := m.db.QueryRow(
+	err := database.DB.QueryRow(
 		`SELECT filename, COALESCE(orientation, 1), COALESCE(mediatype, 'image'), xmpregion FROM metadata WHERE uuid = ?`,
 		uuid,
 	).Scan(&item.Filename, &item.Orientation, &item.Mediatype, &xmpregion)
@@ -72,8 +64,8 @@ func (m *MLDB) GetItemForRecognition(uuid string) (*ItemForRecognition, error) {
 
 // SaveFaceResults deletes old face data for a uuid, inserts new faces and unmatched entries,
 // and updates the metadata.faces field.
-func (m *MLDB) SaveFaceResults(uuid string, faces []map[string]interface{}, unmatched []map[string]interface{}) error {
-	tx, err := m.db.Begin()
+func saveFaceResults(uuid string, faces []map[string]interface{}, unmatched []map[string]interface{}) error {
+	tx, err := database.DB.Begin()
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -164,8 +156,8 @@ func (m *MLDB) SaveFaceResults(uuid string, faces []map[string]interface{}, unma
 }
 
 // GetFacesByUUID returns all face records for a given uuid.
-func (m *MLDB) GetFacesByUUID(uuid string) ([]map[string]interface{}, error) {
-	rows, err := m.db.Query(
+func getFacesByUUID(uuid string) ([]map[string]interface{}, error) {
+	rows, err := database.DB.Query(
 		`SELECT uuid, face_idx, person_name, gender, age, confidence, bbox,
 				landmarks, pose, cluster_id, cluster_name, cluster_confidence,
 				cluster_consensus_count, cluster_reference_image_ids, cluster_is_new,
@@ -186,8 +178,8 @@ func (m *MLDB) GetFacesByUUID(uuid string) ([]map[string]interface{}, error) {
 }
 
 // GetFacesByPerson returns all face records for a given person name.
-func (m *MLDB) GetFacesByPerson(name string) ([]map[string]interface{}, error) {
-	rows, err := m.db.Query(
+func queryFacesByPerson(name string) ([]map[string]interface{}, error) {
+	rows, err := database.DB.Query(
 		`SELECT uuid, face_idx, person_name, gender, age, confidence, bbox,
 				landmarks, pose, cluster_id, cluster_name, cluster_confidence,
 				cluster_consensus_count, cluster_reference_image_ids, cluster_is_new,
@@ -205,10 +197,11 @@ func (m *MLDB) GetFacesByPerson(name string) ([]map[string]interface{}, error) {
 
 	return scanRowsToMaps(rows)
 }
+
 // NameFaceCluster assigns a person_name to all face records with a given cluster_id.
 // Also updates cluster_name on the records. Returns the number of rows affected.
-func (m *MLDB) NameFaceCluster(clusterID, name string) (int64, error) {
-	tx, err := m.db.Begin()
+func nameFaceClusterDB(clusterID, name string) (int64, error) {
+	tx, err := database.DB.Begin()
 	if err != nil {
 		return 0, fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -244,8 +237,8 @@ func (m *MLDB) NameFaceCluster(clusterID, name string) (int64, error) {
 
 // UpdatePersonName renames a person across all face records.
 // Returns the number of rows affected.
-func (m *MLDB) UpdatePersonName(oldName, newName string) (int64, error) {
-	tx, err := m.db.Begin()
+func updatePersonNameDB(oldName, newName string) (int64, error) {
+	tx, err := database.DB.Begin()
 	if err != nil {
 		return 0, fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -281,8 +274,8 @@ func (m *MLDB) UpdatePersonName(oldName, newName string) (int64, error) {
 
 // SearchPersonNames searches for person names matching the query (prefix LIKE).
 // Returns up to 20 results.
-func (m *MLDB) SearchPersonNames(query string) ([]string, error) {
-	rows, err := m.db.Query(
+func searchPersonNamesDB(query string) ([]string, error) {
+	rows, err := database.DB.Query(
 		`SELECT DISTINCT person_name FROM face_recognition
 		 WHERE person_name IS NOT NULL AND person_name LIKE ? || '%'
 		 ORDER BY person_name
@@ -307,8 +300,8 @@ func (m *MLDB) SearchPersonNames(query string) ([]string, error) {
 }
 
 // DismissCluster inserts a cluster_id into the face_dismissed_clusters table.
-func (m *MLDB) DismissCluster(clusterID string) error {
-	_, err := m.db.Exec(
+func dismissClusterDB(clusterID string) error {
+	_, err := database.DB.Exec(
 		`INSERT OR IGNORE INTO face_dismissed_clusters (cluster_id) VALUES (?)`,
 		clusterID,
 	)
@@ -316,8 +309,8 @@ func (m *MLDB) DismissCluster(clusterID string) error {
 }
 
 // UndismissCluster removes a cluster_id from the face_dismissed_clusters table.
-func (m *MLDB) UndismissCluster(clusterID string) error {
-	_, err := m.db.Exec(
+func undismissClusterDB(clusterID string) error {
+	_, err := database.DB.Exec(
 		`DELETE FROM face_dismissed_clusters WHERE cluster_id = ?`,
 		clusterID,
 	)
@@ -326,9 +319,9 @@ func (m *MLDB) UndismissCluster(clusterID string) error {
 
 // DeleteFaceData removes all face records for a uuid and returns the affected cluster_ids
 // for thumbnail cleanup.
-func (m *MLDB) DeleteFaceData(uuid string) ([]string, error) {
+func deleteFaceData(uuid string) ([]string, error) {
 	// Get cluster_ids before deletion
-	rows, err := m.db.Query(
+	rows, err := database.DB.Query(
 		`SELECT DISTINCT cluster_id FROM face_recognition WHERE uuid = ?`,
 		uuid,
 	)
@@ -352,16 +345,16 @@ func (m *MLDB) DeleteFaceData(uuid string) ([]string, error) {
 	}
 
 	// Delete face records
-	if _, err := m.db.Exec(`DELETE FROM face_recognition WHERE uuid = ?`, uuid); err != nil {
+	if _, err := database.DB.Exec(`DELETE FROM face_recognition WHERE uuid = ?`, uuid); err != nil {
 		return nil, err
 	}
 	// Delete unmatched records
-	if _, err := m.db.Exec(`DELETE FROM face_recognition_unmatched WHERE uuid = ?`, uuid); err != nil {
+	if _, err := database.DB.Exec(`DELETE FROM face_recognition_unmatched WHERE uuid = ?`, uuid); err != nil {
 		return nil, err
 	}
 
 	// Clear metadata.faces
-	if _, err := m.db.Exec(`UPDATE metadata SET faces = NULL WHERE uuid = ?`, uuid); err != nil {
+	if _, err := database.DB.Exec(`UPDATE metadata SET faces = NULL WHERE uuid = ?`, uuid); err != nil {
 		return nil, err
 	}
 

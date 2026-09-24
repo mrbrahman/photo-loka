@@ -5,12 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-)
 
-// SearchDB provides database operations for search functionality.
-type SearchDB struct {
-	db *sql.DB
-}
+	"photo-loka/internal/database"
+)
 
 // DayGroup represents a day with its grouped items for the timeline view.
 type DayGroup struct {
@@ -28,11 +25,6 @@ type FlatResult struct {
 type DateRange struct {
 	FromDate string
 	ToDate   string
-}
-
-// NewSearchDB creates a new SearchDB instance.
-func NewSearchDB(conn *sql.DB) *SearchDB {
-	return &SearchDB{db: conn}
 }
 
 // itemSelect is the json_object() SQL expression that produces the standard item JSON shape.
@@ -65,7 +57,7 @@ const itemSelect = `
     )`
 
 // RunSearch builds and executes a search query, returning either day-grouped or flat results.
-func (s *SearchDB) RunSearch(collectionID *int64, searchStr string, trashed bool, groupByDay bool, orderBy string, dateRange *DateRange) (interface{}, error) {
+func RunSearch(collectionID *int64, searchStr string, trashed bool, groupByDay bool, orderBy string, dateRange *DateRange) (interface{}, error) {
 	var filters []string
 	limit := false
 
@@ -150,20 +142,20 @@ func (s *SearchDB) RunSearch(collectionID *int64, searchStr string, trashed bool
 		`, itemSelect, whereClause, orderByClause(orderBy), limitClause)
 	}
 
-	rows, err := s.db.Query(sqlQuery)
+	rows, err := database.DB.Query(sqlQuery)
 	if err != nil {
 		return nil, fmt.Errorf("executing search query: %w", err)
 	}
 	defer rows.Close()
 
 	if groupByDay {
-		return s.scanDayGrouped(rows)
+		return scanDayGrouped(rows)
 	}
-	return s.scanFlat(rows)
+	return scanFlat(rows)
 }
 
 // scanDayGrouped reads day-grouped query results.
-func (s *SearchDB) scanDayGrouped(rows *sql.Rows) ([]DayGroup, error) {
+func scanDayGrouped(rows *sql.Rows) ([]DayGroup, error) {
 	var results []DayGroup
 	for rows.Next() {
 		var day string
@@ -191,7 +183,7 @@ func (s *SearchDB) scanDayGrouped(rows *sql.Rows) ([]DayGroup, error) {
 }
 
 // scanFlat reads flat (non-grouped) query results.
-func (s *SearchDB) scanFlat(rows *sql.Rows) ([]FlatResult, error) {
+func scanFlat(rows *sql.Rows) ([]FlatResult, error) {
 	var results []FlatResult
 	for rows.Next() {
 		var albumName sql.NullString
@@ -222,7 +214,7 @@ func (s *SearchDB) scanFlat(rows *sql.Rows) ([]FlatResult, error) {
 }
 
 // GetItemInfo returns full metadata for a single item by UUID, including face details.
-func (s *SearchDB) GetItemInfo(uuid string) (map[string]interface{}, error) {
+func GetItemInfo(uuid string) (map[string]interface{}, error) {
 	query := `
 		SELECT
 			uuid, album_date, album_name, filename,
@@ -247,7 +239,7 @@ func (s *SearchDB) GetItemInfo(uuid string) (map[string]interface{}, error) {
 		FROM metadata
 		WHERE uuid = ?`
 
-	rows, err := s.db.Query(query, uuid)
+	rows, err := database.DB.Query(query, uuid)
 	if err != nil {
 		return nil, fmt.Errorf("querying item info for %s: %w", uuid, err)
 	}
@@ -282,7 +274,7 @@ func (s *SearchDB) GetItemInfo(uuid string) (map[string]interface{}, error) {
 		if b, ok := val.([]byte); ok {
 			strVal := string(b)
 			// Try to parse as JSON if it looks like JSON
-			if (strings.HasPrefix(strVal, "[") || strings.HasPrefix(strVal, "{")) {
+			if strings.HasPrefix(strVal, "[") || strings.HasPrefix(strVal, "{") {
 				var jsonVal interface{}
 				if err := json.Unmarshal(b, &jsonVal); err == nil {
 					result[col] = jsonVal
@@ -299,7 +291,7 @@ func (s *SearchDB) GetItemInfo(uuid string) (map[string]interface{}, error) {
 }
 
 // GetGpsCoordinates returns rounded GPS coordinates with item counts for map clustering.
-func (s *SearchDB) GetGpsCoordinates(collectionID *int64) ([]map[string]interface{}, error) {
+func GetGpsCoordinates(collectionID *int64) ([]map[string]interface{}, error) {
 	collectionFilter := ""
 	if collectionID != nil {
 		collectionFilter = fmt.Sprintf("AND collection_id = %d", *collectionID)
@@ -320,7 +312,7 @@ func (s *SearchDB) GetGpsCoordinates(collectionID *int64) ([]map[string]interfac
 		GROUP BY 1, 2
 	`, collectionFilter)
 
-	rows, err := s.db.Query(query)
+	rows, err := database.DB.Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("querying GPS coordinates: %w", err)
 	}
@@ -351,9 +343,9 @@ func (s *SearchDB) GetGpsCoordinates(collectionID *int64) ([]map[string]interfac
 }
 
 // SearchByGps searches for items within GPS bounding box coordinates.
-func (s *SearchDB) SearchByGps(collectionID *int64, swLat, swLng, neLat, neLng float64) (interface{}, error) {
+func SearchByGps(collectionID *int64, swLat, swLng, neLat, neLng float64) (interface{}, error) {
 	searchStr := fmt.Sprintf(`raw:"round(gps_lat, 4) between %f and %f and round(gps_lng, 4) between %f and %f"`, swLat, neLat, swLng, neLng)
-	return s.RunSearch(collectionID, searchStr, false, true, "", nil)
+	return RunSearch(collectionID, searchStr, false, true, "", nil)
 }
 
 // orderByClause returns the ORDER BY clause for flat (non-grouped) queries.

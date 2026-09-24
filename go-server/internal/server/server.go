@@ -22,7 +22,6 @@ import (
 	"photo-loka/internal/collections"
 	"photo-loka/internal/config"
 	"photo-loka/internal/dashboard"
-	"photo-loka/internal/database"
 	"photo-loka/internal/frames"
 	"photo-loka/internal/geo"
 	"photo-loka/internal/indexing"
@@ -32,51 +31,18 @@ import (
 	"photo-loka/internal/search"
 )
 
-// Server holds the Gin engine and application dependencies.
-type Server struct {
-	Router             *gin.Engine
-	Config             *config.StartupConfig
-	DB                 *database.DB
-	AuthService        *auth.Service
-	FrameIPChecker     auth.FrameIPChecker
-	CollectionsHandler *collections.Handler
-	AlbumsHandler      *albums.Handler
-	SearchHandler      *search.Handler
-	MediaHandler       *media.Handler
-	DashboardHandler   *dashboard.Handler
-	IndexingHandler    *indexing.Handler
-	GeoHandler         *geo.Handler
-	MLHandler          *ml.Handler
-	ItemsHandler       *items.Handler
-	FramesHandler      *frames.Handler
-	ConfigHandler      *admin.ConfigHandler
-	UsersHandler       *admin.UsersHandler
-	JobsHandler        *admin.JobsHandler
-	AuthnHandler       *authn.Handler
-}
+// Package-level Gin engine, set by Setup. The HTTP layer is a process-wide
+// singleton, so there is no Server struct: Setup builds the engine and mounts
+// routes; Run serves it. Startup config is read from config.Startup.
+var router *gin.Engine
 
-// New creates a configured Server with all routes and middleware.
-func New(cfg *config.StartupConfig, db *database.DB, authSvc *auth.Service,
-	collectionsHandler *collections.Handler,
-	albumsHandler *albums.Handler,
-	searchHandler *search.Handler,
-	mediaHandler *media.Handler,
-	dashboardHandler *dashboard.Handler,
-	indexingHandler *indexing.Handler,
-	geoHandler *geo.Handler,
-	mlHandler *ml.Handler,
-	itemsHandler *items.Handler,
-	framesHandler *frames.Handler,
-	configHandler *admin.ConfigHandler,
-	usersHandler *admin.UsersHandler,
-	jobsHandler *admin.JobsHandler,
-	authnHandler *authn.Handler,
-	frameIPChecker auth.FrameIPChecker,
-	webFS http.FileSystem,
-) *Server {
+// Setup builds the Gin engine, installs middleware, and mounts all routes.
+// Every route package is a package-level singleton reading config.Startup /
+// config.Runtime directly, so Setup only needs the web asset filesystem.
+func Setup(webFS http.FileSystem) {
 	gin.SetMode(gin.ReleaseMode)
 
-	router := gin.New()
+	router = gin.New()
 	router.Use(gin.Recovery())
 
 	// Request logging middleware (skip thumbnail requests)
@@ -85,98 +51,74 @@ func New(cfg *config.StartupConfig, db *database.DB, authSvc *auth.Service,
 	// Serve static files with Cache-Control: no-cache
 	router.Use(staticFileHandler(webFS))
 
-	s := &Server{
-		Router:             router,
-		Config:             cfg,
-		DB:                 db,
-		AuthService:        authSvc,
-		FrameIPChecker:     frameIPChecker,
-		CollectionsHandler: collectionsHandler,
-		AlbumsHandler:      albumsHandler,
-		SearchHandler:      searchHandler,
-		MediaHandler:       mediaHandler,
-		DashboardHandler:   dashboardHandler,
-		IndexingHandler:    indexingHandler,
-		GeoHandler:         geoHandler,
-		MLHandler:          mlHandler,
-		ItemsHandler:       itemsHandler,
-		FramesHandler:      framesHandler,
-		ConfigHandler:      configHandler,
-		UsersHandler:       usersHandler,
-		JobsHandler:        jobsHandler,
-		AuthnHandler:       authnHandler,
-	}
-
-	s.setupRoutes()
-
-	return s
+	setupRoutes()
 }
 
 // setupRoutes mounts all route groups.
-func (s *Server) setupRoutes() {
+func setupRoutes() {
 	// Health and ping
-	s.Router.GET("/ping", func(c *gin.Context) {
+	router.GET("/ping", func(c *gin.Context) {
 		c.Status(http.StatusNoContent)
 	})
-	s.Router.GET("/health", func(c *gin.Context) {
+	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
 	// Public auth routes (no auth required)
-	authnGroup := s.Router.Group("/api/authn")
-	s.AuthnHandler.RegisterRoutes(authnGroup)
+	authnGroup := router.Group("/api/authn")
+	authn.RegisterRoutes(authnGroup)
 
 	// Public frame routes (no auth required)
-	s.FramesHandler.RegisterPublicRoutes(&s.Router.RouterGroup)
+	frames.RegisterPublicRoutes(&router.RouterGroup)
 
 	// Public API routes (authenticated but non-admin)
-	publicAPI := s.Router.Group("/api")
-	publicAPI.Use(auth.AuthMiddleware(s.AuthService))
+	publicAPI := router.Group("/api")
+	publicAPI.Use(auth.AuthMiddleware())
 	{
 		// Collections summary (non-admin)
-		s.CollectionsHandler.RegisterPublicRoutes(publicAPI)
+		collections.RegisterPublicRoutes(publicAPI)
 	}
 
 	// Authenticated routes
-	apiGroup := s.Router.Group("/api")
-	apiGroup.Use(auth.AuthMiddleware(s.AuthService))
+	apiGroup := router.Group("/api")
+	apiGroup.Use(auth.AuthMiddleware())
 	{
-		s.SearchHandler.RegisterRoutes(apiGroup)
-		s.AlbumsHandler.RegisterRoutes(apiGroup)
-		s.ItemsHandler.RegisterRoutes(apiGroup)
-		s.GeoHandler.RegisterRoutes(apiGroup)
-		s.MLHandler.RegisterRoutes(apiGroup)
+		search.RegisterRoutes(apiGroup)
+		albums.RegisterRoutes(apiGroup)
+		items.RegisterRoutes(apiGroup)
+		geo.RegisterRoutes(apiGroup)
+		ml.RegisterRoutes(apiGroup)
 	}
 
 	// Media routes (with frame IP bypass)
-	mediaGroup := s.Router.Group("/api")
-	mediaGroup.Use(auth.MediaAuthMiddleware(s.AuthService, s.FrameIPChecker))
+	mediaGroup := router.Group("/api")
+	mediaGroup.Use(auth.MediaAuthMiddleware(frames.AllFrameIPs))
 	{
-		s.MediaHandler.RegisterRoutes(mediaGroup)
+		media.RegisterRoutes(mediaGroup)
 	}
 
 	// Admin routes
-	adminGroup := s.Router.Group("/api/admin")
-	adminGroup.Use(auth.AuthMiddleware(s.AuthService))
+	adminGroup := router.Group("/api/admin")
+	adminGroup.Use(auth.AuthMiddleware())
 	adminGroup.Use(auth.AdminMiddleware())
 	{
-		s.CollectionsHandler.RegisterAdminRoutes(adminGroup)
-		s.DashboardHandler.RegisterRoutes(adminGroup)
-		s.IndexingHandler.RegisterRoutes(adminGroup)
-		s.FramesHandler.RegisterAdminRoutes(adminGroup)
-		s.ConfigHandler.RegisterRoutes(adminGroup)
-		s.UsersHandler.RegisterRoutes(adminGroup)
-		s.JobsHandler.RegisterRoutes(adminGroup)
+		collections.RegisterAdminRoutes(adminGroup)
+		dashboard.RegisterRoutes(adminGroup)
+		indexing.RegisterRoutes(adminGroup)
+		frames.RegisterAdminRoutes(adminGroup)
+		admin.RegisterConfigRoutes(adminGroup)
+		admin.RegisterUsersRoutes(adminGroup)
+		admin.RegisterJobsRoutes(adminGroup)
 	}
 }
 
 // Run starts the HTTP server with graceful shutdown.
-func (s *Server) Run() error {
-	addr := fmt.Sprintf(":%d", s.Config.Port)
+func Run() error {
+	addr := fmt.Sprintf(":%d", config.Startup.Port)
 
 	srv := &http.Server{
 		Addr:    addr,
-		Handler: s.Router,
+		Handler: router,
 	}
 
 	// Channel to listen for interrupt signals
@@ -186,7 +128,7 @@ func (s *Server) Run() error {
 	// Start server in goroutine
 	errCh := make(chan error, 1)
 	go func() {
-		slog.Info("server started", "port", s.Config.Port)
+		slog.Info("server started", "port", config.Startup.Port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			errCh <- err
 		}

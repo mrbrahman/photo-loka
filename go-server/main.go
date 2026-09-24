@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -16,24 +15,18 @@ import (
 
 	"github.com/lmittmann/tint"
 
-	"photo-loka/internal/admin"
-	"photo-loka/internal/albums"
 	"photo-loka/internal/auth"
-	"photo-loka/internal/authn"
 	"photo-loka/internal/collections"
 	"photo-loka/internal/config"
-	"photo-loka/internal/dashboard"
 	"photo-loka/internal/database"
-	"photo-loka/internal/frames"
 	"photo-loka/internal/geo"
 	"photo-loka/internal/indexing"
-	"photo-loka/internal/items"
 	"photo-loka/internal/jobs"
+	"photo-loka/internal/lifecycle"
 	"photo-loka/internal/media"
 	"photo-loka/internal/ml"
 	"photo-loka/internal/queue"
 	"photo-loka/internal/scheduler"
-	"photo-loka/internal/search"
 	"photo-loka/internal/server"
 )
 
@@ -137,19 +130,18 @@ func runServe() {
 	// Preflight: validate config and dependencies together
 	preflightCheck()
 
-	// Load startup config
-	cfg, err := config.LoadStartupConfig()
-	if err != nil {
+	// Load startup config (publishes the package-level config.Startup singleton).
+	if _, err := config.LoadStartupConfig(); err != nil {
 		slog.Error("failed to load startup config", "error", err)
 		os.Exit(1)
 	}
 
 	if os.Getenv("ML_SERVICE_URL") == "" {
-		slog.Info("ML_SERVICE_URL not set, using default", "url", cfg.MLServiceURL)
+		slog.Info("ML_SERVICE_URL not set, using default", "url", config.Startup.MLServiceURL)
 	}
 
 	// Check if ML service is reachable
-	checkMLService(cfg.MLServiceURL)
+	checkMLService(config.Startup.MLServiceURL)
 
 	// Initialize libvips for image processing
 	if err := media.InitVips(); err != nil {
@@ -167,45 +159,24 @@ func runServe() {
 	}
 	defer media.CloseExiftool()
 
-	// Open database
-	db, err := database.Open(cfg.DBFile)
-	if err != nil {
+	// Open database (publishes the package-level database.DB)
+	if err := database.Open(config.Startup.DBFile); err != nil {
 		slog.Error("failed to open database", "error", err)
 		os.Exit(1)
 	}
-	defer db.Close()
+	defer database.Close()
 
 	// Load runtime config from the database (table + defaults are created by
-	// migrations, which ran inside database.Open above).
-	rtCfg, err := config.LoadRuntimeConfig(db.Conn)
-	if err != nil {
+	// migrations, which ran inside database.Open above). This also publishes the
+	// config.Runtime singleton used across packages.
+	if _, err := config.LoadRuntimeConfig(database.DB); err != nil {
 		slog.Error("failed to load runtime config", "error", err)
 		os.Exit(1)
 	}
 	slog.Info("runtime config loaded from database")
 
-	// Create auth service
-	authDB := auth.NewAuthDB(db.Conn)
-	authSvc := auth.NewService(authDB, cfg.JWTSecret)
-
-	// Create collections service and handler
-	collectionsDB := collections.NewCollectionsDB(db.Conn)
-	collectionsSvc := collections.NewService(collectionsDB)
-	collectionsHandler := collections.NewHandler(collectionsSvc)
-
-	// Create albums DB (handler created after organizer below)
-	albumsDB := albums.NewAlbumsDB(db.Conn)
-
-	// Create search handler
-	searchDB := search.NewSearchDB(db.Conn)
-	mlClient := ml.NewClient(cfg.MLServiceURL)
-	searchHandler := search.NewHandler(searchDB, collectionsDB, albumsDB, mlClient)
-
-	// Create media handler
-	mediaHandler := media.NewHandler(cfg.ThumbsDir, cfg.FacesDir, db.Conn)
-
-	// Create dashboard handler
-	dashboardHandler := dashboard.NewHandler(db.Conn)
+	// Initialize package-level singletons that read config.Startup.
+	auth.Init()
 
 	// Create indexing queues
 	numCPU := runtime.NumCPU()
@@ -217,69 +188,34 @@ func runServe() {
 	videoQueue := queue.New(2)
 
 	// Apply maxConcurrency from runtime config if set
-	if rtCfg.MaxConcurrency > 0 {
-		indexQueue.SetConcurrency(rtCfg.MaxConcurrency)
+	if config.Runtime.MaxConcurrency > 0 {
+		indexQueue.SetConcurrency(config.Runtime.MaxConcurrency)
 	}
 
-	// Create indexing components
-	indexingDB := indexing.NewIndexingDB(db.Conn)
-	organizer := indexing.NewOrganizer(indexingDB, rtCfg)
-	albumsHandler := albums.NewHandler(albumsDB, collectionsDB, organizer)
-	indexer := indexing.NewIndexer(indexingDB, organizer, indexQueue, videoQueue, cfg.ThumbsDir, rtCfg, collectionsDB)
-	indexingHandler := indexing.NewHandler(indexer, indexQueue, videoQueue, rtCfg)
+	// Initialize the indexing package (work queues).
+	indexing.Init(indexQueue, videoQueue)
 
-	// Create geo components
+	// Initialize geo package (dedicated single-threaded queue + rate limiter).
 	geoQueue := queue.New(1) // geo runs single-threaded due to rate limits
-	geoDB := geo.NewGeoDB(db.Conn)
-	rateLimitStateFile := filepath.Join(cfg.DataDir, "rate_limit_state.json")
-	rateLimiter := geo.NewRateLimiter(rtCfg, rateLimitStateFile)
-	geoFinalizer := geo.NewFinalizer(geoDB, rateLimiter, cfg.GeonamesUsername)
-	geoService := geo.NewService(geoFinalizer, geoQueue)
-	geoHandler := geo.NewHandler(geoService)
+	geo.Init(geoQueue)
 
-	// Create ML components
-	mlDB := ml.NewMLDB(db.Conn)
-	mlService := ml.NewService(mlClient, mlDB, cfg.FacesDir, cfg.ThumbsDir)
-	mlHandler := ml.NewHandler(mlService)
+	// Initialize ML package (HTTP client).
+	ml.Init()
 
-	// Wire geo and ML services into the indexer for post-indexing enrichments
-	indexer.SetGeoService(geoService)
-	indexer.SetMLService(mlService)
-
-	// Create items handler
-	itemsHandler := items.NewHandler(indexer, organizer, mlService, collectionsDB, rtCfg, cfg.ThumbsDir)
-
-	// Scheduler
-	sched := scheduler.New()
-
-	// Frames
-	framesDB := frames.NewFramesDB(db.Conn)
-	frameManager := frames.NewManager(framesDB, searchDB, sched)
-	framesHandler := frames.NewHandler(frameManager)
-
-	// Jobs
-	fileWatcher := jobs.NewFileWatcher(indexer, collectionsDB)
-	scheduledIndexing := jobs.NewScheduledIndexing(sched, indexer, collectionsDB)
+	// Scheduler (package-level cron runner)
+	scheduler.Init()
 
 	// Wire collection change callback to restart watchers/cron
-	collectionsHandler.OnCollectionChanged = func(collectionID int64) {
-		col, err := collectionsDB.Get(collectionID)
+	collections.OnCollectionChanged = func(collectionID int64) {
+		col, err := collections.Get(collectionID)
 		if err != nil || col == nil {
 			return
 		}
-		fileWatcher.StopForCollection(collectionID)
-		scheduledIndexing.StopForCollection(collectionID)
-		fileWatcher.StartForCollection(col)
-		scheduledIndexing.ScheduleForCollection(col)
+		jobs.StopForCollection(collectionID)
+		jobs.StopScheduledForCollection(collectionID)
+		jobs.StartForCollection(col)
+		jobs.ScheduleForCollection(col)
 	}
-
-	// Admin handlers
-	configHandler := admin.NewConfigHandler(rtCfg)
-	usersHandler := admin.NewUsersHandler(authSvc)
-	jobsHandler := admin.NewJobsHandler(sched, fileWatcher, scheduledIndexing, collectionsDB, frameManager)
-
-	// Authn handler
-	authnHandler := authn.NewHandler(authSvc)
 
 	// Determine web assets filesystem: use ../web on disk if present, else embedded
 	var webFS http.FileSystem
@@ -295,72 +231,27 @@ func runServe() {
 		os.Exit(1)
 	}
 
-	// Create and run server
-	srv := server.New(cfg, db, authSvc,
-		collectionsHandler,
-		albumsHandler,
-		searchHandler,
-		mediaHandler,
-		dashboardHandler,
-		indexingHandler,
-		geoHandler,
-		mlHandler,
-		itemsHandler,
-		framesHandler,
-		configHandler,
-		usersHandler,
-		jobsHandler,
-		authnHandler,
-		frameManager,
-		webFS,
-	)
+	// Configure the HTTP server. Every route package is a package-level
+	// singleton reading config.Startup / config.Runtime directly, so Setup only
+	// needs the web asset filesystem.
+	server.Setup(webFS)
 
-	slog.Info("starting Photo-Loka", "port", cfg.Port, "data_dir", cfg.DataDir)
+	slog.Info("starting Photo-Loka", "port", config.Startup.Port, "data_dir", config.Startup.DataDir)
 
-	// Startup activities
-	if rtCfg.StartFileWatcherAtStartup {
-		if err := fileWatcher.StartForAllCollections(); err != nil {
-			slog.Error("failed to start file watchers", "error", err)
-		}
-	} else {
-		// Mark immediate intakes as stopped in DB when watchers are disabled
-		collectionsDB.SetIntakeStatusByMethod("immediate", "stopped")
-		slog.Info("file watcher at startup disabled - marked immediate intakes as stopped")
+	// Startup orchestration (watchers, scheduled indexing, frames, cron jobs).
+	lifecycleDeps := lifecycle.Deps{
+		IndexQueue: indexQueue,
+		VideoQueue: videoQueue,
+		GeoQueue:   geoQueue,
 	}
-	if rtCfg.StartScheduledIndexingAtStartup {
-		if err := scheduledIndexing.ScheduleAll(); err != nil {
-			slog.Error("failed to schedule intake indexing", "error", err)
-		}
-	} else {
-		// Mark scheduled intakes as stopped in DB when scheduling is disabled
-		collectionsDB.SetIntakeStatusByMethod("scheduled", "stopped")
-		slog.Info("scheduled indexing at startup disabled - marked scheduled intakes as stopped")
-	}
-	if err := frameManager.LoadAllFrames(); err != nil {
-		slog.Error("failed to load frames", "error", err)
-	}
+	lifecycle.StartupActions(lifecycleDeps, auth.CleanupExpiredTokens)
 
-	// Schedule frame cron jobs (reset, pause/resume)
-	frameManager.ScheduleAllFrameJobs()
-
-	// Schedule token cleanup (daily at 3am)
-	sched.AddJob("token-cleanup", "0 3 * * *", func() {
-		authSvc.CleanupExpiredTokens()
-	})
-
-	if err := srv.Run(); err != nil {
+	if err := server.Run(); err != nil {
 		slog.Error("server error", "error", err)
 		os.Exit(1)
 	}
 
-	// Shutdown activities
-	sched.Stop()
-	fileWatcher.StopAll()
-	scheduledIndexing.StopAll()
-	rateLimiter.Save() // persist rate limit counters for next startup
-	indexQueue.Stop()
-	videoQueue.Stop()
-	geoQueue.Stop()
+	lifecycle.ShutdownCleanup(lifecycleDeps)
 }
 
 func runCreateUser() {
@@ -385,10 +276,10 @@ func runCreateUser() {
 		os.Exit(1)
 	}
 
-	authSvc := initAuthService()
-	defer closeDB(authSvc)
+	initAuthCLI()
+	defer closeDB()
 
-	userID, err := authSvc.CreateUser(*username, *password, *role)
+	userID, err := auth.CreateUser(*username, *password, *role)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating user: %v\n", err)
 		os.Exit(1)
@@ -412,10 +303,10 @@ func runUnlockUser() {
 		os.Exit(1)
 	}
 
-	authSvc := initAuthService()
-	defer closeDB(authSvc)
+	initAuthCLI()
+	defer closeDB()
 
-	if err := authSvc.UnlockUser(*username); err != nil {
+	if err := auth.UnlockUser(*username); err != nil {
 		fmt.Fprintf(os.Stderr, "Error unlocking user: %v\n", err)
 		os.Exit(1)
 	}
@@ -441,10 +332,10 @@ func runGenerateToken() {
 		days = d
 	}
 
-	authSvc := initAuthService()
-	defer closeDB(authSvc)
+	initAuthCLI()
+	defer closeDB()
 
-	token, err := authSvc.GenerateAPIToken(username, days)
+	token, err := auth.GenerateAPIToken(username, days)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error generating token: %v\n", err)
 		os.Exit(1)
@@ -453,35 +344,24 @@ func runGenerateToken() {
 	fmt.Printf("API token for %s (expires in %d days):\n\n%s\n", username, days, token)
 }
 
-// initAuthService loads config, opens DB, and returns an auth Service for CLI commands.
-// Caller is responsible for calling closeDB.
-func initAuthService() *auth.Service {
-	cfg, err := config.LoadStartupConfig()
-	if err != nil {
+// initAuthCLI loads config, opens the DB, and initializes the auth package for
+// CLI commands. Caller is responsible for calling closeDB.
+func initAuthCLI() {
+	if _, err := config.LoadStartupConfig(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
 		os.Exit(1)
 	}
 
-	db, err := database.Open(cfg.DBFile)
-	if err != nil {
+	if err := database.Open(config.Startup.DBFile); err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening database: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Store db reference for cleanup
-	cliDB = db
-
-	authDB := auth.NewAuthDB(db.Conn)
-	return auth.NewService(authDB, cfg.JWTSecret)
+	auth.Init()
 }
 
-// cliDB holds a reference to the database for CLI cleanup.
-var cliDB *database.DB
-
-func closeDB(_ *auth.Service) {
-	if cliDB != nil {
-		cliDB.Close()
-	}
+func closeDB() {
+	database.Close()
 }
 
 // checkMLService pings the ML service health endpoint and warns if it's not reachable.

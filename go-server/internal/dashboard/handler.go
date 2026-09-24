@@ -1,18 +1,14 @@
 package dashboard
 
 import (
-	"database/sql"
 	"fmt"
 	"net/http"
 	"syscall"
 
 	"github.com/gin-gonic/gin"
-)
 
-// Handler provides HTTP handlers for the admin dashboard.
-type Handler struct {
-	db *sql.DB
-}
+	"photo-loka/internal/database"
+)
 
 // LibraryStats holds the overall library statistics.
 type LibraryStats struct {
@@ -40,19 +36,14 @@ type CollectionStat struct {
 	FreeSpace      *int64 `json:"freeSpace"`
 }
 
-// NewHandler creates a new dashboard Handler.
-func NewHandler(conn *sql.DB) *Handler {
-	return &Handler{db: conn}
-}
-
 // RegisterRoutes registers dashboard routes on the given router group.
-func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
-	rg.GET("/dashboard/stats", h.getStats)
+func RegisterRoutes(rg *gin.RouterGroup) {
+	rg.GET("/dashboard/stats", getStats)
 }
 
 // getStats returns library and collection statistics.
-func (h *Handler) getStats(c *gin.Context) {
-	stats, err := h.queryLibraryStats()
+func getStats(c *gin.Context) {
+	stats, err := queryLibraryStats()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{"message": err.Error(), "code": "INTERNAL_ERROR"},
@@ -60,7 +51,7 @@ func (h *Handler) getStats(c *gin.Context) {
 		return
 	}
 
-	collStats, err := h.queryCollectionStats()
+	collStats, err := queryCollectionStats()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{"message": err.Error(), "code": "INTERNAL_ERROR"},
@@ -74,7 +65,7 @@ func (h *Handler) getStats(c *gin.Context) {
 }
 
 // queryLibraryStats runs the aggregate query for overall library stats.
-func (h *Handler) queryLibraryStats() (*LibraryStats, error) {
+func queryLibraryStats() (*LibraryStats, error) {
 	query := `
 		SELECT
 			count(*) filter (where coalesce(is_trashed, 0) = 0) as totalItems,
@@ -94,7 +85,7 @@ func (h *Handler) queryLibraryStats() (*LibraryStats, error) {
 	var stats LibraryStats
 	var imageCount, imageSize, videoCount, videoSize, audioCount, audioSize, otherCount, otherSize int64
 
-	err := h.db.QueryRow(query).Scan(
+	err := database.DB.QueryRow(query).Scan(
 		&stats.TotalItems,
 		&stats.TotalSize,
 		&stats.Albums,
@@ -130,7 +121,7 @@ func (h *Handler) queryLibraryStats() (*LibraryStats, error) {
 }
 
 // queryCollectionStats returns per-collection item counts and disk info.
-func (h *Handler) queryCollectionStats() ([]CollectionStat, error) {
+func queryCollectionStats() ([]CollectionStat, error) {
 	query := `
 		SELECT
 			c.collection_id,
@@ -143,7 +134,7 @@ func (h *Handler) queryCollectionStats() ([]CollectionStat, error) {
 		WHERE coalesce(m.is_trashed, 0) = 0
 		GROUP BY c.collection_id`
 
-	rows, err := h.db.Query(query)
+	rows, err := database.DB.Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("querying collection stats: %w", err)
 	}

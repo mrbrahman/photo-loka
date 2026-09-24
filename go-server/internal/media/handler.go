@@ -10,35 +10,23 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+
+	"photo-loka/internal/config"
+	"photo-loka/internal/database"
 )
 
-// Handler provides HTTP handlers for media serving (thumbnails, images, videos).
-type Handler struct {
-	thumbsDir string
-	facesDir  string
-	db        *sql.DB
-}
-
-// NewHandler creates a new media Handler.
-func NewHandler(thumbsDir, facesDir string, conn *sql.DB) *Handler {
-	return &Handler{
-		thumbsDir: thumbsDir,
-		facesDir:  facesDir,
-		db:        conn,
-	}
-}
-
-// RegisterRoutes registers media routes on the given router group.
-func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
-	rg.GET("/getThumbnail", h.getThumbnail)
-	rg.GET("/getImage", h.getImage)
-	rg.GET("/getVideo", h.getVideo)
-	rg.GET("/getFaceThumbnail", h.getFaceThumbnail)
+// RegisterRoutes registers media routes on the given router group. The thumbnail
+// and faces directories are read from config.Startup at use time.
+func RegisterRoutes(rg *gin.RouterGroup) {
+	rg.GET("/getThumbnail", getThumbnail)
+	rg.GET("/getImage", getImage)
+	rg.GET("/getVideo", getVideo)
+	rg.GET("/getFaceThumbnail", getFaceThumbnail)
 }
 
 // getThumbnail serves a thumbnail image for the given uuid and height.
-// Thumbnails are stored at: thumbsDir/u[0]/u[1]/u[2]/uuid_hN.webp
-func (h *Handler) getThumbnail(c *gin.Context) {
+// Thumbnails are stored at: config.Startup.ThumbsDir/u[0]/u[1]/u[2]/uuid_hN.webp
+func getThumbnail(c *gin.Context) {
 	uuid := c.Query("uuid")
 	if uuid == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -57,7 +45,7 @@ func (h *Handler) getThumbnail(c *gin.Context) {
 	heightBucket := bucketHeight(height)
 
 	// Build thumbnail path: first 3 chars of uuid as subdirectories
-	// e.g. uuid "abc123..." -> thumbsDir/a/b/c/abc123..._h250.webp
+	// e.g. uuid "abc123..." -> config.Startup.ThumbsDir/a/b/c/abc123..._h250.webp
 	if len(uuid) < 3 {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": gin.H{"message": "Invalid uuid", "code": "VALIDATION_ERROR"},
@@ -66,7 +54,7 @@ func (h *Handler) getThumbnail(c *gin.Context) {
 	}
 
 	thumbPath := filepath.Join(
-		h.thumbsDir,
+		config.Startup.ThumbsDir,
 		string(uuid[0]),
 		string(uuid[1]),
 		string(uuid[2]),
@@ -83,7 +71,7 @@ func (h *Handler) getThumbnail(c *gin.Context) {
 }
 
 // getImage serves a resized image (fit within 1920x1080) for the given uuid.
-func (h *Handler) getImage(c *gin.Context) {
+func getImage(c *gin.Context) {
 	uuid := c.Query("uuid")
 	if uuid == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -94,7 +82,7 @@ func (h *Handler) getImage(c *gin.Context) {
 
 	// filename in DB is the absolute path
 	var filename string
-	err := h.db.QueryRow("SELECT filename FROM metadata WHERE uuid = ?", uuid).Scan(&filename)
+	err := database.DB.QueryRow("SELECT filename FROM metadata WHERE uuid = ?", uuid).Scan(&filename)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": gin.H{"message": "Item not found", "code": "NOT_FOUND"},
@@ -122,7 +110,7 @@ func (h *Handler) getImage(c *gin.Context) {
 
 // getVideo serves a video file with range request support.
 // If quality=compressed, tries the compressed webm first; otherwise serves original.
-func (h *Handler) getVideo(c *gin.Context) {
+func getVideo(c *gin.Context) {
 	uuid := c.Query("uuid")
 	if uuid == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -134,7 +122,7 @@ func (h *Handler) getVideo(c *gin.Context) {
 	quality := c.DefaultQuery("quality", "compressed")
 
 	var filename string
-	err := h.db.QueryRow("SELECT filename FROM metadata WHERE uuid = ?", uuid).Scan(&filename)
+	err := database.DB.QueryRow("SELECT filename FROM metadata WHERE uuid = ?", uuid).Scan(&filename)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": gin.H{"message": "Item not found", "code": "NOT_FOUND"},
@@ -146,7 +134,7 @@ func (h *Handler) getVideo(c *gin.Context) {
 
 	if quality == "compressed" && len(uuid) >= 3 {
 		// Check for compressed versions in priority order (matching Node.js resolveVideoPath)
-		thumbDir := filepath.Join(h.thumbsDir, string(uuid[0]), string(uuid[1]), string(uuid[2]))
+		thumbDir := filepath.Join(config.Startup.ThumbsDir, string(uuid[0]), string(uuid[1]), string(uuid[2]))
 		candidates := []string{
 			filepath.Join(thumbDir, uuid+"_2pass_vp9_compressed_video.webm"),
 			filepath.Join(thumbDir, uuid+"_2pass_vp8_compressed_video.webm"),
@@ -200,8 +188,8 @@ func (h *Handler) getVideo(c *gin.Context) {
 }
 
 // getFaceThumbnail serves a face thumbnail image.
-// Path: facesDir/cluster_id/uuid.jpg
-func (h *Handler) getFaceThumbnail(c *gin.Context) {
+// Path: config.Startup.FacesDir/cluster_id/uuid.jpg
+func getFaceThumbnail(c *gin.Context) {
 	uuid := c.Query("uuid")
 	if uuid == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -218,7 +206,7 @@ func (h *Handler) getFaceThumbnail(c *gin.Context) {
 		return
 	}
 
-	facePath := filepath.Join(h.facesDir, clusterID, uuid+".jpg")
+	facePath := filepath.Join(config.Startup.FacesDir, clusterID, uuid+".jpg")
 
 	if _, err := os.Stat(facePath); os.IsNotExist(err) {
 		c.Status(http.StatusNotFound)
@@ -230,7 +218,7 @@ func (h *Handler) getFaceThumbnail(c *gin.Context) {
 }
 
 // getFilePathByUUID looks up the filename and collection_path for a given UUID.
-func (h *Handler) getFilePathByUUID(uuid string) (filename, collectionPath string, err error) {
+func getFilePathByUUID(uuid string) (filename, collectionPath string, err error) {
 	query := `
 		SELECT m.filename, c.collection_path
 		FROM metadata m
@@ -238,7 +226,7 @@ func (h *Handler) getFilePathByUUID(uuid string) (filename, collectionPath strin
 		WHERE m.uuid = ?`
 
 	var fname, cpath sql.NullString
-	err = h.db.QueryRow(query, uuid).Scan(&fname, &cpath)
+	err = database.DB.QueryRow(query, uuid).Scan(&fname, &cpath)
 	if err == sql.ErrNoRows {
 		return "", "", nil
 	}

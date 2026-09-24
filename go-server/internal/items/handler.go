@@ -18,48 +18,28 @@ import (
 	"photo-loka/internal/ml"
 )
 
-// Handler provides HTTP route handlers for item operations.
-type Handler struct {
-	indexer      *indexing.Indexer
-	organizer    *indexing.Organizer
-	mlService    *ml.Service
-	colDB        *collections.CollectionsDB
-	rtConfig     *config.RuntimeConfig
-	thumbsDir    string
-	logger       *slog.Logger
-}
-
-// NewHandler creates a new items Handler.
-func NewHandler(indexer *indexing.Indexer, org *indexing.Organizer, mlSvc *ml.Service, colDB *collections.CollectionsDB, rtCfg *config.RuntimeConfig, thumbsDir string) *Handler {
-	return &Handler{
-		indexer:   indexer,
-		organizer: org,
-		mlService: mlSvc,
-		colDB:     colDB,
-		rtConfig:  rtCfg,
-		thumbsDir: thumbsDir,
-		logger:    slog.Default().With("component", "items-handler"),
-	}
-}
+// logger for the item route handlers. Startup and runtime config are read from
+// the config.Startup / config.Runtime singletons directly.
+var logger = slog.Default().With("component", "items-handler")
 
 // RegisterRoutes registers all item-related routes on the given router group.
-func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
-	rg.PUT("/updateRating", h.updateRating)
-	rg.PUT("/updateDescription", h.updateDescription)
-	rg.PUT("/renameFile", h.renameFile)
-	rg.PUT("/refreshThumbs/:uuid", h.refreshThumbs)
-	rg.PUT("/compressVideo/:uuid", h.compressVideo)
-	rg.PUT("/moveItems", h.moveItems)
-	rg.DELETE("/trashItems", h.trashItems)
-	rg.PUT("/togglePrivate", h.togglePrivate)
-	rg.PUT("/restoreFromTrash", h.restoreFromTrash)
-	rg.DELETE("/cleanupTrash", h.cleanupTrash)
-	rg.DELETE("/emptyTrash", h.cleanupTrash) // same handler as cleanupTrash; kept for API compatibility
+func RegisterRoutes(rg *gin.RouterGroup) {
+	rg.PUT("/updateRating", updateRating)
+	rg.PUT("/updateDescription", updateDescription)
+	rg.PUT("/renameFile", renameFile)
+	rg.PUT("/refreshThumbs/:uuid", refreshThumbs)
+	rg.PUT("/compressVideo/:uuid", compressVideo)
+	rg.PUT("/moveItems", moveItems)
+	rg.DELETE("/trashItems", trashItems)
+	rg.PUT("/togglePrivate", togglePrivate)
+	rg.PUT("/restoreFromTrash", restoreFromTrash)
+	rg.DELETE("/cleanupTrash", cleanupTrash)
+	rg.DELETE("/emptyTrash", cleanupTrash) // same handler as cleanupTrash; kept for API compatibility
 }
 
 // updateRating updates the rating (stars) for one or more items.
 // PUT /updateRating (body: {uuid_arr, newRating})
-func (h *Handler) updateRating(c *gin.Context) {
+func updateRating(c *gin.Context) {
 	var body struct {
 		UUIDs     []string `json:"uuid_arr" binding:"required"`
 		NewRating int      `json:"newRating"`
@@ -76,7 +56,7 @@ func (h *Handler) updateRating(c *gin.Context) {
 	// file_modified_at is set to now so that the exif write scheduler picks it up
 	fileModifyDate := time.Now().Format(time.RFC3339)
 
-	if err := h.indexer.DB().UpdateRating(body.UUIDs, body.NewRating, fileModifyDate); err != nil {
+	if err := indexing.UpdateRating(body.UUIDs, body.NewRating, fileModifyDate); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": "failed to update rating: " + err.Error(),
 			"code":    "DB_ERROR",
@@ -87,8 +67,8 @@ func (h *Handler) updateRating(c *gin.Context) {
 	// Schedule exif write for rating
 	exifUpdate := map[string]interface{}{"Rating": body.NewRating, "FileModifyDate": fileModifyDate}
 	exifJSON, _ := json.Marshal(exifUpdate)
-	if err := h.indexer.DB().ScheduleExif(body.UUIDs, string(exifJSON)); err != nil {
-		h.logger.Error("failed to schedule exif write for rating", "error", err)
+	if err := indexing.ScheduleExif(body.UUIDs, string(exifJSON)); err != nil {
+		logger.Error("failed to schedule exif write for rating", "error", err)
 	}
 
 	c.Status(http.StatusOK)
@@ -96,7 +76,7 @@ func (h *Handler) updateRating(c *gin.Context) {
 
 // updateDescription updates the description for a single item.
 // PUT /updateDescription (body: {uuid, description})
-func (h *Handler) updateDescription(c *gin.Context) {
+func updateDescription(c *gin.Context) {
 	var body struct {
 		UUID        string `json:"uuid" binding:"required"`
 		Description string `json:"description"`
@@ -112,7 +92,7 @@ func (h *Handler) updateDescription(c *gin.Context) {
 
 	fileModifyDate := time.Now().Format(time.RFC3339)
 
-	if err := h.indexer.DB().UpdateDescription(body.UUID, body.Description, fileModifyDate); err != nil {
+	if err := indexing.UpdateDescription(body.UUID, body.Description, fileModifyDate); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": "failed to update description: " + err.Error(),
 			"code":    "DB_ERROR",
@@ -123,8 +103,8 @@ func (h *Handler) updateDescription(c *gin.Context) {
 	// Schedule exif write for description
 	exifUpdate := map[string]interface{}{"ImageDescription": body.Description, "FileModifyDate": fileModifyDate}
 	exifJSON, _ := json.Marshal(exifUpdate)
-	if err := h.indexer.DB().ScheduleExif([]string{body.UUID}, string(exifJSON)); err != nil {
-		h.logger.Error("failed to schedule exif write for description", "error", err)
+	if err := indexing.ScheduleExif([]string{body.UUID}, string(exifJSON)); err != nil {
+		logger.Error("failed to schedule exif write for description", "error", err)
 	}
 
 	c.Status(http.StatusOK)
@@ -132,7 +112,7 @@ func (h *Handler) updateDescription(c *gin.Context) {
 
 // renameFile renames a media file.
 // PUT /renameFile (body: {collection_id, uuid, newBasename})
-func (h *Handler) renameFile(c *gin.Context) {
+func renameFile(c *gin.Context) {
 	var body struct {
 		CollectionID int64  `json:"collection_id" binding:"required"`
 		UUID         string `json:"uuid" binding:"required"`
@@ -148,7 +128,7 @@ func (h *Handler) renameFile(c *gin.Context) {
 	}
 
 	// Get current filename from DB
-	oldFilename, err := h.indexer.DB().GetFileName(body.UUID)
+	oldFilename, err := indexing.GetFileName(body.UUID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": gin.H{
 			"message": "item not found: " + err.Error(),
@@ -162,7 +142,7 @@ func (h *Handler) renameFile(c *gin.Context) {
 	newFilename := filepath.Join(dir, body.NewBasename)
 
 	// Move (rename) the file
-	if err := h.organizer.MoveItem(body.CollectionID, oldFilename, newFilename, false); err != nil {
+	if err := indexing.MoveItem(body.CollectionID, oldFilename, newFilename, false); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": "failed to rename file: " + err.Error(),
 			"code":    "FS_ERROR",
@@ -171,7 +151,7 @@ func (h *Handler) renameFile(c *gin.Context) {
 	}
 
 	// Update DB filename
-	if err := h.indexer.DB().UpdateFilename(body.UUID, newFilename); err != nil {
+	if err := indexing.UpdateFilename(body.UUID, newFilename); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": "file renamed but DB update failed: " + err.Error(),
 			"code":    "DB_ERROR",
@@ -184,7 +164,7 @@ func (h *Handler) renameFile(c *gin.Context) {
 
 // refreshThumbs regenerates thumbnails for an item.
 // PUT /refreshThumbs/:uuid
-func (h *Handler) refreshThumbs(c *gin.Context) {
+func refreshThumbs(c *gin.Context) {
 	uuid := c.Param("uuid")
 	if uuid == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
@@ -194,7 +174,7 @@ func (h *Handler) refreshThumbs(c *gin.Context) {
 		return
 	}
 
-	filename, err := h.indexer.DB().GetFileName(uuid)
+	filename, err := indexing.GetFileName(uuid)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": gin.H{
 			"message": "item not found: " + err.Error(),
@@ -212,21 +192,21 @@ func (h *Handler) refreshThumbs(c *gin.Context) {
 	go func() {
 		if isVideo {
 			// Extract a frame from the video first
-			framePath, err := media.GenerateVideoThumbnail(uuid, filename, h.thumbsDir)
+			framePath, err := media.GenerateVideoThumbnail(uuid, filename, config.Startup.ThumbsDir)
 			if err != nil {
-				h.logger.Error("video thumbnail extraction failed", "uuid", uuid, "error", err)
+				logger.Error("video thumbnail extraction failed", "uuid", uuid, "error", err)
 				return
 			}
 			// Generate standard thumbnails from the extracted frame
-			if _, err := media.CreateImageThumbnails(uuid, framePath, h.thumbsDir); err != nil {
-				h.logger.Error("thumbnail creation from video frame failed", "uuid", uuid, "error", err)
+			if _, err := media.CreateImageThumbnails(uuid, framePath, config.Startup.ThumbsDir); err != nil {
+				logger.Error("thumbnail creation from video frame failed", "uuid", uuid, "error", err)
 			}
 		} else {
-			if _, err := media.CreateImageThumbnails(uuid, filename, h.thumbsDir); err != nil {
-				h.logger.Error("thumbnail creation failed", "uuid", uuid, "error", err)
+			if _, err := media.CreateImageThumbnails(uuid, filename, config.Startup.ThumbsDir); err != nil {
+				logger.Error("thumbnail creation failed", "uuid", uuid, "error", err)
 			}
 		}
-		h.logger.Info("thumbnails refreshed", "uuid", uuid)
+		logger.Info("thumbnails refreshed", "uuid", uuid)
 	}()
 
 	c.JSON(http.StatusAccepted, gin.H{"message": "thumbnail refresh started", "uuid": uuid})
@@ -234,7 +214,7 @@ func (h *Handler) refreshThumbs(c *gin.Context) {
 
 // compressVideo queues video compression for an item.
 // PUT /compressVideo/:uuid
-func (h *Handler) compressVideo(c *gin.Context) {
+func compressVideo(c *gin.Context) {
 	uuid := c.Param("uuid")
 	if uuid == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
@@ -244,7 +224,7 @@ func (h *Handler) compressVideo(c *gin.Context) {
 		return
 	}
 
-	filename, err := h.indexer.DB().GetFileName(uuid)
+	filename, err := indexing.GetFileName(uuid)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": gin.H{
 			"message": "item not found: " + err.Error(),
@@ -253,9 +233,9 @@ func (h *Handler) compressVideo(c *gin.Context) {
 		return
 	}
 
-	encoder := h.rtConfig.VideoEncoder
-	if err := media.CompressVideo(uuid, filename, h.thumbsDir, encoder); err != nil {
-		h.logger.Error("video compression failed", "uuid", uuid, "error", err)
+	encoder := config.Runtime.VideoEncoder
+	if err := media.CompressVideo(uuid, filename, config.Startup.ThumbsDir, encoder); err != nil {
+		logger.Error("video compression failed", "uuid", uuid, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": "video compression failed: " + err.Error(),
 			"code":    "COMPRESS_ERROR",
@@ -263,13 +243,13 @@ func (h *Handler) compressVideo(c *gin.Context) {
 		return
 	}
 
-	h.logger.Info("video compression complete", "uuid", uuid)
+	logger.Info("video compression complete", "uuid", uuid)
 	c.Status(http.StatusOK)
 }
 
 // trashItems moves items to the collection's .trash folder.
 // DELETE /trashItems (body: {collection_id, uuid_arr})
-func (h *Handler) trashItems(c *gin.Context) {
+func trashItems(c *gin.Context) {
 	var body struct {
 		CollectionID int64    `json:"collection_id" binding:"required"`
 		UUIDs        []string `json:"uuid_arr" binding:"required"`
@@ -283,7 +263,7 @@ func (h *Handler) trashItems(c *gin.Context) {
 		return
 	}
 
-	if err := h.organizer.MoveFileToTrash(body.CollectionID, body.UUIDs); err != nil {
+	if err := indexing.MoveFileToTrash(body.CollectionID, body.UUIDs); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": "failed to trash items: " + err.Error(),
 			"code":    "FS_ERROR",
@@ -296,7 +276,7 @@ func (h *Handler) trashItems(c *gin.Context) {
 
 // togglePrivate marks or unmarks items as private.
 // PUT /togglePrivate (body: {collection_id, uuid_arr, makePrivate})
-func (h *Handler) togglePrivate(c *gin.Context) {
+func togglePrivate(c *gin.Context) {
 	var body struct {
 		CollectionID int64    `json:"collection_id" binding:"required"`
 		UUIDs        []string `json:"uuid_arr" binding:"required"`
@@ -313,9 +293,9 @@ func (h *Handler) togglePrivate(c *gin.Context) {
 
 	var err error
 	if body.MakePrivate {
-		err = h.organizer.MarkFilePrivate(body.CollectionID, body.UUIDs)
+		err = indexing.MarkFilePrivate(body.CollectionID, body.UUIDs)
 	} else {
-		err = h.organizer.UnmarkFilePrivate(body.CollectionID, body.UUIDs)
+		err = indexing.UnmarkFilePrivate(body.CollectionID, body.UUIDs)
 	}
 
 	if err != nil {
@@ -331,7 +311,7 @@ func (h *Handler) togglePrivate(c *gin.Context) {
 
 // restoreFromTrash restores items from the .trash folder.
 // PUT /restoreFromTrash (body: {collection_id, uuid_arr})
-func (h *Handler) restoreFromTrash(c *gin.Context) {
+func restoreFromTrash(c *gin.Context) {
 	var body struct {
 		CollectionID int64    `json:"collection_id" binding:"required"`
 		UUIDs        []string `json:"uuid_arr" binding:"required"`
@@ -345,7 +325,7 @@ func (h *Handler) restoreFromTrash(c *gin.Context) {
 		return
 	}
 
-	if err := h.organizer.RestoreFromTrash(body.CollectionID, body.UUIDs); err != nil {
+	if err := indexing.RestoreFromTrash(body.CollectionID, body.UUIDs); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"message": "failed to restore items: " + err.Error(),
 			"code":    "FS_ERROR",
@@ -358,7 +338,7 @@ func (h *Handler) restoreFromTrash(c *gin.Context) {
 
 // cleanupTrash permanently deletes specific trashed items and their associated data.
 // DELETE /cleanupTrash (body: {collection_id, uuid_arr})
-func (h *Handler) cleanupTrash(c *gin.Context) {
+func cleanupTrash(c *gin.Context) {
 	var body struct {
 		CollectionID int64    `json:"collection_id" binding:"required"`
 		UUIDs        []string `json:"uuid_arr" binding:"required"`
@@ -372,7 +352,7 @@ func (h *Handler) cleanupTrash(c *gin.Context) {
 		return
 	}
 
-	errors := h.permanentlyDeleteItems(body.UUIDs)
+	errors := permanentlyDeleteItems(body.UUIDs)
 	if len(errors) > 0 {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{
@@ -389,11 +369,11 @@ func (h *Handler) cleanupTrash(c *gin.Context) {
 
 // permanentlyDeleteItems removes files, thumbnails, face data, and metadata rows.
 // Returns a list of error strings for items that failed.
-func (h *Handler) permanentlyDeleteItems(uuids []string) []string {
+func permanentlyDeleteItems(uuids []string) []string {
 	var errs []string
 
 	// Get filenames for all items
-	filenames, err := h.indexer.DB().GetFileNames(uuids)
+	filenames, err := indexing.GetFileNames(uuids)
 	if err != nil {
 		return []string{"failed to get filenames: " + err.Error()}
 	}
@@ -404,29 +384,29 @@ func (h *Handler) permanentlyDeleteItems(uuids []string) []string {
 		// 1. Delete the physical file (if it exists)
 		if ok && filename != "" {
 			if err := os.Remove(filename); err != nil && !os.IsNotExist(err) {
-				h.logger.Error("failed to delete file", "uuid", uuid, "file", filename, "error", err)
+				logger.Error("failed to delete file", "uuid", uuid, "file", filename, "error", err)
 				errs = append(errs, fmt.Sprintf("%s: failed to delete file: %v", uuid, err))
 				continue
 			}
 		}
 
 		// 2. Delete thumbnails
-		media.DeleteThumbnails(uuid, h.thumbsDir)
+		media.DeleteThumbnails(uuid, config.Startup.ThumbsDir)
 
 		// 3. Delete compressed video files
-		media.DeleteCompressedVideo(uuid, h.thumbsDir)
+		media.DeleteCompressedVideo(uuid, config.Startup.ThumbsDir)
 
 		// 4. Cleanup face/ML data (DB + external ML service)
-		h.mlService.CleanupMLData(uuid)
+		ml.CleanupMLData(uuid)
 
 		// 5. Delete metadata row from DB
-		if err := h.indexer.DB().DeleteMetadata(uuid); err != nil {
-			h.logger.Error("failed to delete metadata", "uuid", uuid, "error", err)
+		if err := indexing.DeleteMetadata(uuid); err != nil {
+			logger.Error("failed to delete metadata", "uuid", uuid, "error", err)
 			errs = append(errs, fmt.Sprintf("%s: failed to delete metadata: %v", uuid, err))
 			continue
 		}
 
-		h.logger.Debug("permanently deleted item", "uuid", uuid)
+		logger.Debug("permanently deleted item", "uuid", uuid)
 	}
 
 	return errs
@@ -451,7 +431,7 @@ type moveItemsRequest struct {
 }
 
 // moveItems moves selected items to a target album folder and updates the DB.
-func (h *Handler) moveItems(c *gin.Context) {
+func moveItems(c *gin.Context) {
 	var req moveItemsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -468,7 +448,7 @@ func (h *Handler) moveItems(c *gin.Context) {
 	}
 
 	// Get collection to compute target folder path
-	col, err := h.colDB.Get(req.CollectionID)
+	col, err := collections.Get(req.CollectionID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{"message": err.Error(), "code": "INTERNAL_ERROR"},
@@ -477,7 +457,7 @@ func (h *Handler) moveItems(c *gin.Context) {
 	}
 
 	// Compute target folder absolute path
-	targetDir := h.organizer.AlbumFolderAbsPath(col, req.TargetAlbumDate, req.TargetAlbumName)
+	targetDir := indexing.AlbumFolderAbsPath(col, req.TargetAlbumDate, req.TargetAlbumName)
 
 	// Ensure target directory exists
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
@@ -488,7 +468,7 @@ func (h *Handler) moveItems(c *gin.Context) {
 	}
 
 	// Get filenames for all uuids
-	filenames, err := h.indexer.DB().GetFileNames(req.UUIDs)
+	filenames, err := indexing.GetFileNames(req.UUIDs)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{"message": err.Error(), "code": "INTERNAL_ERROR"},
@@ -517,7 +497,7 @@ func (h *Handler) moveItems(c *gin.Context) {
 	// TODO: Consider parallelizing file moves (Node.js uses Promise.allSettled).
 	// Sequential is fine for same-device renames; parallelism helps for cross-device copy+delete.
 	for _, entry := range plan {
-		if err := h.organizer.MoveItem(req.CollectionID, entry.src, entry.dest, false); err != nil {
+		if err := indexing.MoveItem(req.CollectionID, entry.src, entry.dest, false); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error": gin.H{"message": fmt.Sprintf("Failed to move %s: %s", entry.uuid, err.Error()), "code": "MOVE_ERROR"},
 			})
@@ -530,8 +510,8 @@ func (h *Handler) moveItems(c *gin.Context) {
 	for i, entry := range plan {
 		moveEntries[i] = indexing.MoveEntry{UUID: entry.uuid, Dest: entry.dest}
 	}
-	if err := h.indexer.DB().UpdateAlbumForItems(moveEntries, req.TargetAlbumDate, req.TargetAlbumName); err != nil {
-		h.logger.Error("failed to update DB after moves", "error", err)
+	if err := indexing.UpdateAlbumForItems(moveEntries, req.TargetAlbumDate, req.TargetAlbumName); err != nil {
+		logger.Error("failed to update DB after moves", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{"message": "Files moved but DB update failed: " + err.Error(), "code": "DB_ERROR"},
 		})
