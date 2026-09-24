@@ -19,7 +19,7 @@ import (
 )
 
 // logger for the item route handlers. Startup and runtime config are read from
-// the config.Startup / config.Rt singletons directly.
+// the config.Startup / config.Runtime singletons directly.
 var logger = slog.Default().With("component", "items-handler")
 
 // RegisterRoutes registers all item-related routes on the given router group.
@@ -233,7 +233,7 @@ func compressVideo(c *gin.Context) {
 		return
 	}
 
-	encoder := config.Rt.VideoEncoder
+	encoder := config.Runtime.VideoEncoder
 	if err := media.CompressVideo(uuid, filename, config.Startup.ThumbsDir, encoder); err != nil {
 		logger.Error("video compression failed", "uuid", uuid, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{

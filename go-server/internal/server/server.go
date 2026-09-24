@@ -38,7 +38,7 @@ var router *gin.Engine
 
 // Setup builds the Gin engine, installs middleware, and mounts all routes.
 // Every route package is a package-level singleton reading config.Startup /
-// config.Rt directly, so Setup only needs the web asset filesystem.
+// config.Runtime directly, so Setup only needs the web asset filesystem.
 func Setup(webFS http.FileSystem) {
 	gin.SetMode(gin.ReleaseMode)
 

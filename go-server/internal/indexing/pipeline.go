@@ -139,7 +139,7 @@ func IndexFile(collection *collections.Collection, sourceFile string, existingUU
 	// and moves it to the thumbs dir instead of re-encoding. Not implemented here;
 	// videos will always be enqueued for compression if the collection has compress_videos enabled.
 	if exifData.Mediatype == "video" && collection.CompressVideos != nil && *collection.CompressVideos == 1 {
-		encoder := config.Rt.VideoEncoder
+		encoder := config.Runtime.VideoEncoder
 		if encoder == "" {
 			encoder = media.EncoderVP9
 		}
@@ -229,7 +229,7 @@ func IndexFile(collection *collections.Collection, sourceFile string, existingUU
 	// Step 9: Enqueue face recognition and image encoding for images and videos.
 	// For videos, the first-frame buffer from step 5 is passed through.
 	// Passing nil (e.g. if thumbnail failed) causes the service to re-read the file.
-	if (exifData.Mediatype == "image" || exifData.Mediatype == "video") && config.Rt.PerformFaceRecognition {
+	if (exifData.Mediatype == "image" || exifData.Mediatype == "video") && config.Runtime.PerformFaceRecognition {
 		faceUUID := fileUUID
 		buf := mlBuf // capture for closure
 		indexQueue.Enqueue(queue.Task{

@@ -18,7 +18,7 @@ func RegisterConfigRoutes(rg *gin.RouterGroup) {
 // getConfig returns the current runtime configuration.
 // GET /api/admin/getConfig
 func getConfig(c *gin.Context) {
-	c.JSON(http.StatusOK, config.Rt)
+	c.JSON(http.StatusOK, config.Runtime)
 }
 
 // updateConfig updates a single runtime config field.
@@ -53,7 +53,7 @@ func updateConfig(c *gin.Context) {
 	}
 
 	// Return the actual stored value (after type conversion) rather than the raw input
-	storedValue, _ := config.Rt.Get(body.Key)
+	storedValue, _ := config.Runtime.Get(body.Key)
 	c.JSON(http.StatusOK, gin.H{
 		"key":   body.Key,
 		"value": storedValue,
@@ -63,7 +63,7 @@ func updateConfig(c *gin.Context) {
 // dispatchConfigUpdate routes an untyped API value to the matching typed setter,
 // validating the JSON type per key.
 func dispatchConfigUpdate(key string, value interface{}) error {
-	rc := config.Rt
+	rc := config.Runtime
 	switch key {
 	case "startFileWatcherAtStartup":
 		b, err := asBool(key, value)

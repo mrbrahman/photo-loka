@@ -168,7 +168,7 @@ func runServe() {
 
 	// Load runtime config from the database (table + defaults are created by
 	// migrations, which ran inside database.Open above). This also publishes the
-	// config.Rt singleton used across packages.
+	// config.Runtime singleton used across packages.
 	if _, err := config.LoadRuntimeConfig(database.DB); err != nil {
 		slog.Error("failed to load runtime config", "error", err)
 		os.Exit(1)
@@ -188,8 +188,8 @@ func runServe() {
 	videoQueue := queue.New(2)
 
 	// Apply maxConcurrency from runtime config if set
-	if config.Rt.MaxConcurrency > 0 {
-		indexQueue.SetConcurrency(config.Rt.MaxConcurrency)
+	if config.Runtime.MaxConcurrency > 0 {
+		indexQueue.SetConcurrency(config.Runtime.MaxConcurrency)
 	}
 
 	// Initialize the indexing package (work queues).
@@ -232,7 +232,7 @@ func runServe() {
 	}
 
 	// Configure the HTTP server. Every route package is a package-level
-	// singleton reading config.Startup / config.Rt directly, so Setup only
+	// singleton reading config.Startup / config.Runtime directly, so Setup only
 	// needs the web asset filesystem.
 	server.Setup(webFS)
 

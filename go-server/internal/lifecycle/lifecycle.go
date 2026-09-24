@@ -30,7 +30,7 @@ type Deps struct {
 // intake watchers and scheduled indexing per runtime config, load frames and
 // schedule their cron jobs, and register the daily token-cleanup job.
 func StartupActions(d Deps, cleanupTokens func()) {
-	if config.Rt.StartFileWatcherAtStartup {
+	if config.Runtime.StartFileWatcherAtStartup {
 		if err := jobs.StartForAllCollections(); err != nil {
 			slog.Error("failed to start file watchers", "error", err)
 		}
@@ -40,7 +40,7 @@ func StartupActions(d Deps, cleanupTokens func()) {
 		slog.Info("file watcher at startup disabled - marked immediate intakes as stopped")
 	}
 
-	if config.Rt.StartScheduledIndexingAtStartup {
+	if config.Runtime.StartScheduledIndexingAtStartup {
 		if err := jobs.ScheduleAll(); err != nil {
 			slog.Error("failed to schedule intake indexing", "error", err)
 		}

@@ -10,7 +10,7 @@ import (
 )
 
 // Rate limiting for geonames API calls is package-level (single instance).
-// Limits are read from the config.Rt singleton at check time; the counters and
+// Limits are read from the config.Runtime singleton at check time; the counters and
 // their state file are package vars, initialized by initRateLimiter (called
 // from Init).
 var (
@@ -76,7 +76,7 @@ func rateCheck() bool {
 		rlCurrentDay = now.YearDay()
 	}
 
-	return rlHourlyCount < config.Rt.GeonamesHourlyLimit && rlDailyCount < config.Rt.GeonamesDailyLimit
+	return rlHourlyCount < config.Runtime.GeonamesHourlyLimit && rlDailyCount < config.Runtime.GeonamesDailyLimit
 }
 
 // rateIncrement increases both hourly and daily counters by one.

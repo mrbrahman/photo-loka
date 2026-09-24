@@ -412,7 +412,7 @@ func GetFilesMtime(dir string) (map[string]int64, error) {
 
 // logChange records a file operation in the audit table if auditing is enabled.
 func logChange(collectionID int64, action, path1 string, path2 *string) {
-	if !config.Rt.AuditFiles {
+	if !config.Runtime.AuditFiles {
 		return
 	}
 
