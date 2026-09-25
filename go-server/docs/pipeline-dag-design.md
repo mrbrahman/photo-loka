@@ -21,7 +21,7 @@ Airflow-like syntax, but note carefully what it does and does not describe:
 
 ```
 [cpu, gpu]
-cpu >> [bring-to-collection(5), thumbnail-extraction(5), geo-address(10)] >> video-compression(4)
+cpu >> [bring-to-collection(5), generate-image-thumbnails(5), generate-video-thumbnail(5), geo-lookup(10)] >> video-compression(4)
 gpu >> face-recognition(1) >> image-encoding(1)
 ```
 
@@ -31,9 +31,13 @@ There are two orthogonal concerns layered on the same picture:
 
 1. **Data flow (fixed, hardcoded in Go).** The set of stages is finite and known.
    The orchestrator already knows how an item moves between stages: every item
-   enters at `bring-to-collection` first, and only after that does it fan out to
-   the remaining stages. This routing is wired in Go code, not in the diagram or
-   any config. The diagram never changes it.
+   enters at `bring-to-collection` first, then fans out and flows through the
+   downstream stages according to a fixed dependency graph (see the [Data flow]
+   section below). It is not a flat fan-out from `bring-to-collection` - some
+   stages depend on the output of an intermediate stage (e.g.
+   `face-recognition` and `image-encoding` consume the compressed image produced
+   by `generate-image-thumbnails`). This routing is wired in Go code, not in the
+   diagram or any config. The diagram never changes it.
 
 2. **Resource scheduling (what the diagram expresses).** The `>>` operator and
    the `[...]` grouping describe *which stages may run at the same time as which*,
@@ -43,7 +47,7 @@ There are two orthogonal concerns layered on the same picture:
 ## Terminology
 
 - **Stage** - a unit of work with its own queue and concurrency (e.g.
-  `thumbnail-extraction(5)` = a stage with max concurrency 5). Stages are fixed.
+  `generate-image-thumbnails(5)` = a stage with max concurrency 5). Stages are fixed.
 - **Resource group** - a purely visual label (`cpu`, `gpu`) used to group stages
   that compete for the same resource. Groups have no runtime meaning of their own;
   they are documentation to make the diagram readable. The names can be anything.
@@ -100,13 +104,13 @@ Directionality and tie-breaks (`>>` is one-directional; A has priority):
 
 Worked example:
 ```
-cpu >> [bring-to-collection(5), thumbnail-extraction(5), geo-address(10)] >> video-compression(4)
+cpu >> [bring-to-collection(5), generate-image-thumbnails(5), generate-video-thumbnail(5), geo-lookup(10)] >> video-compression(4)
 ```
-- `bring-to-collection`, `thumbnail-extraction`, `geo-address` coexist - they run
-  in parallel, each with its own concurrency.
+- `bring-to-collection`, `generate-image-thumbnails`, `generate-video-thumbnail`,
+  `geo-lookup` coexist - they run in parallel, each with its own concurrency.
 - `video-compression` is gated behind that whole bracket: it will not *start* a
-  new task while any of the three bracketed stages is busy. It waits until all
-  three are fully drained (zero running AND zero pending across them), then
+  new task while any of the bracketed stages is busy. It waits until they are
+  all fully drained (zero running AND zero pending across them), then
   dispatches.
 - The `gpu` lane (`face-recognition >> image-encoding`) runs independently of the
   cpu lane, since they contend on a different resource. Within it, `image-encoding`
@@ -114,12 +118,45 @@ cpu >> [bring-to-collection(5), thumbnail-extraction(5), geo-address(10)] >> vid
 
 ## Data flow (separate, hardcoded)
 
-Independent of the diagram, the orchestrator knows the item routing in Go:
+Independent of the diagram's resource lanes, the orchestrator knows the item
+routing in Go. Unlike a flat fan-out, the current data flow is a multi-level
+dependency graph:
+
+```mermaid
+flowchart LR
+    A["bring-to-collection<br><i>(exiftool)</i>"] --> B{Is it video?}
+    A --> H["geo-lookup<br><i>(geonames)</i>"]
+
+    B -- Yes --> C["generate-video-thumbnail<br><i>(ffmpeg)</i>"]
+    C --> D
+    B -- Yes --> G["video-compression<br><i>(ffmpeg)</i>"]
+    B -- No --> D["generate-image-thumbnails<br><i>(libvips)</i>"]
+
+
+    D --> E["face-recognition<br><i>(insightface)</i>"]
+    D --> F["image-encoding<br><i>(clip)</i>"]
+```
+
+Routing rules (fixed, in code):
 - An item always enters at `bring-to-collection`.
-- After `bring-to-collection` completes for that item, it is forwarded to the
-  downstream stages (thumbnail, geo, face-recognition, ...).
-- Nothing else depends on any other stage for routing - `bring-to-collection` is
-  the only hard predecessor.
+- After `bring-to-collection`, the item fans out to `geo-lookup` and to a
+  media-type branch:
+  - **Video items:** `generate-video-thumbnail` and `video-compression` both run
+    (the two ffmpeg stages are independent of each other).
+    `generate-video-thumbnail` then feeds `generate-image-thumbnails` (the
+    extracted video frame is treated like an image from that point on).
+  - **Image items:** go directly to `generate-image-thumbnails`.
+- `generate-image-thumbnails` (libvips) is the predecessor for both ML stages:
+  `face-recognition` (insightface) and `image-encoding` (clip). This is the
+  key change from the earlier design - since the ML enhancement, both consume
+  the compressed image produced by `generate-image-thumbnails` rather than the
+  original file, so they are no longer direct successors of
+  `bring-to-collection`.
+
+Unlike the earlier design where `bring-to-collection` was the only hard
+predecessor and everything else was a flat fan-out, the graph now has real
+intermediate dependencies: `generate-image-thumbnails` sits between the entry
+stage (or the video-thumbnail stage) and the ML stages.
 
 This routing is fixed and lives in code. The diagram/config never edits it; it
 only tunes concurrency and gating.
@@ -128,8 +165,9 @@ only tunes concurrency and gating.
 
 ```
 resource: cpu
-  +-- bring-to-collection (5) --+-- thumbnail-extraction (5) --+
-  |                             +-- geo-address (10) ----------+---[gate]--> video-compression (4)
+  +-- bring-to-collection (5) --+-- generate-image-thumbnails (5) --+
+  |                             +-- generate-video-thumbnail (5) ---+
+  |                             +-- geo-lookup (10) ----------------+---[gate]--> video-compression (4)
   |
 resource: gpu
   +-- face-recognition (1) ---[gate]--> image-encoding (1)
@@ -276,9 +314,15 @@ Note there is no `JoinTracker` here. The earlier design had a fan-in join becaus
 it modeled `>>` as a per-item data dependency (video-compression waits for both
 thumbnail AND geo *for the same item*). Under the corrected model, `>>` is a
 *resource gate*, not a per-item join, so join tracking is not needed for
-gating. If a genuine per-item fan-in dependency exists in the data flow, it would
-be handled separately in the hardcoded routing - but the current stages do not
-require it (bring-to-collection is the only predecessor).
+gating. The data-flow graph does have intermediate dependencies (e.g.
+`face-recognition` and `image-encoding` run only after
+`generate-image-thumbnails`, and `generate-video-thumbnail` feeds
+`generate-image-thumbnails`), but each of those is a single-predecessor edge
+expressed directly in the hardcoded routing (`Downstreams`) - a stage simply
+enqueues its successor when it finishes. No stage waits on *multiple*
+predecessors for the same item, so no fan-in join tracker is required. If a
+genuine per-item fan-in dependency is ever added, it would be handled separately
+in the hardcoded routing.
 
 ### 5. Config format
 
@@ -287,7 +331,7 @@ not configurable. A compact DSL mirroring the diagram:
 
 ```
 [cpu, gpu]
-cpu >> [bring-to-collection(5), thumbnail-extraction(5), geo-address(10)] >> video-compression(4)
+cpu >> [bring-to-collection(5), generate-image-thumbnails(5), generate-video-thumbnail(5), geo-lookup(10)] >> video-compression(4)
 gpu >> face-recognition(1) >> image-encoding(1)
 ```
 
@@ -302,13 +346,15 @@ pipeline:
   stages:
     - name: bring-to-collection
       concurrency: 5
-    - name: thumbnail-extraction
+    - name: generate-image-thumbnails
       concurrency: 5
-    - name: geo-address
+    - name: generate-video-thumbnail
+      concurrency: 5
+    - name: geo-lookup
       concurrency: 10
     - name: video-compression
       concurrency: 4
-      gated-by: [bring-to-collection, thumbnail-extraction, geo-address]
+      gated-by: [bring-to-collection, generate-image-thumbnails, generate-video-thumbnail, geo-lookup]
     - name: face-recognition
       concurrency: 1
     - name: image-encoding
@@ -331,9 +377,12 @@ Status should expose, per stage: pending, running, and whether it is currently
 ### 7. Conditional stages
 
 Some stages only apply to certain media types:
-- video-compression: only for video items
-- face-recognition: only for images
-- geo-address: only if GPS coordinates exist
+- generate-video-thumbnail, video-compression: only for video items
+- generate-image-thumbnails: for images directly, and for videos after
+  generate-video-thumbnail produces a frame
+- face-recognition, image-encoding: only for items that have a generated image
+  (i.e. downstream of generate-image-thumbnails)
+- geo-lookup: only if GPS coordinates exist
 
 The stage function handles this (returns nil immediately if not applicable), or we
 add a `Condition func(*PipelineItem) bool` field to Stage. This is orthogonal to
