@@ -16,111 +16,22 @@ The `internal/queue/Queue` struct supports:
 
 ## Goal
 
-Allow users to define a configurable processing pipeline. The diagram uses an
-Airflow-like syntax, but note carefully what it does and does not describe:
+Allow users to define a configurable processing pipeline. There are two
+orthogonal concerns, and keeping them separate is the whole point of this design:
 
-```
-[cpu, gpu]
-cpu >> [bring-to-collection(5), generate-image-thumbnails(5), generate-video-thumbnail(5), geo-lookup(10)] >> video-compression(4)
-gpu >> face-recognition(1) >> image-encoding(1)
-```
+1. **Data flow** - how an item moves from stage to stage. This is *fixed* and
+   hardcoded in Go. It defines what the pipeline *is*.
+2. **Resource scheduling** - which stages are allowed to run at the same time as
+   which, so contended resources (CPU, GPU, rate-limited APIs) are not
+   oversubscribed. This is the *tunable* part the user configures.
 
-**The diagram schedules resources. It does NOT define data flow.**
+The rest of this document covers the two in that order: the fixed data flow
+first, then the configurable scheduling on top of it.
 
-There are two orthogonal concerns layered on the same picture:
+## Static data flow (fixed, hardcoded)
 
-1. **Data flow (fixed, hardcoded in Go).** The set of stages is finite and known.
-   The orchestrator already knows how an item moves between stages: every item
-   enters at `bring-to-collection` first, then fans out and flows through the
-   downstream stages according to a fixed dependency graph (see the [Data flow]
-   section below). It is not a flat fan-out from `bring-to-collection` - some
-   stages depend on the output of an intermediate stage (e.g.
-   `face-recognition` and `image-encoding` consume the compressed image produced
-   by `generate-image-thumbnails`). This routing is wired in Go code, not in the
-   diagram or any config. The diagram never changes it.
-
-2. **Resource scheduling (what the diagram expresses).** The `>>` operator and
-   the `[...]` grouping describe *which stages may run at the same time as which*,
-   based on resource contention (CPU vs GPU, or a stage that needs a resource to
-   itself). This is the tunable part.
-
-## Terminology
-
-- **Stage** - a unit of work with its own queue and concurrency (e.g.
-  `generate-image-thumbnails(5)` = a stage with max concurrency 5). Stages are fixed.
-- **Resource group** - a purely visual label (`cpu`, `gpu`) used to group stages
-  that compete for the same resource. Groups have no runtime meaning of their own;
-  they are documentation to make the diagram readable. The names can be anything.
-- **Gate (`>>`)** - a one-directional resource-exclusion relationship. `A >> B`
-  means "B must not run while A is running." See below for the precise rule.
-- **Coexisting stages (`[a, b, c]`)** - stages listed together in a bracket may
-  run concurrently with each other. They share the resource cooperatively (each
-  has its own concurrency limit).
-- **Busy** - a stage is *busy* when it has any task running OR any task pending
-  (running + pending > 0). A stage is *fully drained* when it is not busy: nothing
-  running and nothing queued. Gating keys off "busy," so a stage with only pending
-  tasks still counts as busy and keeps its gated downstream closed.
-
-## Gating semantics (the core of this change)
-
-`A >> B` is about avoiding *concurrent execution*, not about data dependency and
-not about pending work.
-
-Precise rule:
-- **B must not start a task while A is *busy*, where busy means A has any task
-  running OR any task pending (running + pending > 0).** In other words, B waits
-  until A is *fully drained* - nothing running and nothing queued.
-- A pending B task is allowed to sit in B's queue. It simply is not *dispatched*
-  (started) while A is busy.
-- The gate is evaluated at **dispatch time** - the instant B is about to start a
-  task, it checks whether any upstream gate (A) is busy. A pending B task becomes
-  eligible only once A is fully drained, so the check cannot be done only at
-  enqueue time.
-
-Why "fully drained" and not merely "no running task": using running+pending avoids
-a blip where A momentarily has zero running tasks (between two of its own items)
-but still has queued work. Under a "no running task" rule, B could opportunistically
-grab a slot in that gap and then overlap with A when A picks up its next pending
-item. Requiring A to be fully drained removes that race: B only starts once A is
-genuinely done.
-
-Tradeoff (accepted): this is stricter / more throughput-conservative. Under a
-continuous trickle of input (e.g. a live folder watch that keeps feeding an
-upstream), the upstream may rarely reach empty, so a gated stage could be delayed
-for a long time. For this app's common case - batch indexing a folder, draining it,
-then compressing - "fully drained" is exactly the desired behavior and the trickle
-concern does not apply. If steady-trickle starvation ever becomes a problem, revisit
-per-gate configurability.
-
-Directionality and tie-breaks (`>>` is one-directional; A has priority):
-- **A never waits for B.** B yields to A.
-- If A becomes busy again while B already has tasks running, those in-flight B
-  tasks are **not** killed - they finish naturally. But no *new* B task is
-  dispatched until A is fully drained again.
-- So the invariant is "do not *start* B while A is busy." With the fully-drained
-  rule this overlap is rare (B only started because A was empty, and A becoming
-  busy again requires new input), but if it does occur, B's already-running work
-  finishes rather than being killed. This is an accepted tradeoff.
-
-Worked example:
-```
-cpu >> [bring-to-collection(5), generate-image-thumbnails(5), generate-video-thumbnail(5), geo-lookup(10)] >> video-compression(4)
-```
-- `bring-to-collection`, `generate-image-thumbnails`, `generate-video-thumbnail`,
-  `geo-lookup` coexist - they run in parallel, each with its own concurrency.
-- `video-compression` is gated behind that whole bracket: it will not *start* a
-  new task while any of the bracketed stages is busy. It waits until they are
-  all fully drained (zero running AND zero pending across them), then
-  dispatches.
-- The `gpu` lane (`face-recognition >> image-encoding`) runs independently of the
-  cpu lane, since they contend on a different resource. Within it, `image-encoding`
-  will not start while `face-recognition` is busy (running or pending).
-
-## Data flow (separate, hardcoded)
-
-Independent of the diagram's resource lanes, the orchestrator knows the item
-routing in Go. Unlike a flat fan-out, the current data flow is a multi-level
-dependency graph:
+Every item enters at `bring-to-collection` and then flows through a fixed
+dependency graph. This routing lives in Go code; no config or diagram changes it.
 
 ```mermaid
 flowchart LR
@@ -143,40 +54,177 @@ Routing rules (fixed, in code):
   media-type branch:
   - **Video items:** `generate-video-thumbnail` and `video-compression` both run
     (the two ffmpeg stages are independent of each other).
-    `generate-video-thumbnail` then feeds `generate-image-thumbnails` (the
-    extracted video frame is treated like an image from that point on).
+    `generate-video-thumbnail` then feeds `generate-image-thumbnails` - the
+    extracted video frame is treated like an image from that point on.
   - **Image items:** go directly to `generate-image-thumbnails`.
-- `generate-image-thumbnails` (libvips) is the predecessor for both ML stages:
-  `face-recognition` (insightface) and `image-encoding` (clip). This is the
-  key change from the earlier design - since the ML enhancement, both consume
-  the compressed image produced by `generate-image-thumbnails` rather than the
-  original file, so they are no longer direct successors of
-  `bring-to-collection`.
+- `generate-image-thumbnails` (libvips) is the predecessor for both ML stages,
+  `face-recognition` (insightface) and `image-encoding` (clip). Since the ML
+  enhancement, both consume the compressed image produced by
+  `generate-image-thumbnails` rather than the original file.
 
-Unlike the earlier design where `bring-to-collection` was the only hard
-predecessor and everything else was a flat fan-out, the graph now has real
-intermediate dependencies: `generate-image-thumbnails` sits between the entry
-stage (or the video-thumbnail stage) and the ML stages.
+Each edge is a single-predecessor edge: a stage enqueues its successor(s) when it
+finishes. No stage waits on *multiple* predecessors for the same item, so there is
+no fan-in join to track.
 
-This routing is fixed and lives in code. The diagram/config never edits it; it
-only tunes concurrency and gating.
+## Dynamic resource scheduling (configurable)
 
-## Visual Representation (resource view)
+The data flow above says nothing about *concurrency*. Running everything as fast
+as possible would oversubscribe contended resources. But which stages contend
+depends entirely on the machine, so this layer is tunable per install:
 
+- On a box with a GPU, `face-recognition` and `image-encoding` (both GPU-bound)
+  can run in parallel with the CPU-bound stages like `video-compression` - two
+  different resources, no contention.
+- On a CPU-only box, those same three stages all fight for the CPU, so the user
+  may want to serialize some of them (e.g. do not run `video-compression` while
+  the ML stages are running).
+- On a box with lots of CPU, the user may instead raise per-stage concurrency
+  (e.g. compress 5 videos at once) and gate very little.
+
+Crucially, **resource gating is independent of data flow.** A gate can sit
+between two stages that have no data-flow relationship at all (e.g.
+`video-compression` gated behind `face-recognition` purely because they share a
+CPU on a GPU-less box, even though the data flow lets them run in parallel). So
+gating is captured as its own graph, not derived from the data-flow graph or from
+any left-to-right ordering.
+
+The mechanism is a one-directional **gate** between stages. Each gate is an
+explicit edge "B is gated behind A": B must not start a task while A is busy.
+Stages with no gate between them may run concurrently. This is orthogonal to each
+stage's own *internal* concurrency (how many items it processes in parallel).
+
+### Terminology
+
+- **Stage** - a unit of work with its own queue and concurrency (e.g.
+  `generate-image-thumbnails` with max concurrency 5). Stages are fixed.
+- **Busy** - a stage is *busy* when it has any task running OR any task pending
+  (running + pending > 0). A stage is *fully drained* when it is not busy:
+  nothing running and nothing queued.
+- **Gate** - a one-directional exclusion relationship. If B is gated behind A,
+  then B must not start a task while A is busy. B yields to A; A never waits for B.
+- **Concurrency** - a stage's own max parallelism (how many items it runs at
+  once). Independent of gating.
+- **Coexisting stages** - any two stages with no gate edge between them may run
+  concurrently, each up to its own concurrency limit.
+
+### Gating semantics (the core of this change)
+
+A gate is about avoiding *concurrent execution*, not about data dependency and
+not about pending work.
+
+Precise rule:
+- **A gated stage B must not start a task while its upstream A is *busy*, where
+  busy means A has any task running OR any task pending (running + pending > 0).**
+  In other words, B waits until A is *fully drained* - nothing running and nothing
+  queued.
+- A pending B task is allowed to sit in B's queue. It simply is not *dispatched*
+  (started) while A is busy.
+- The gate is evaluated at **dispatch time** - the instant B is about to start a
+  task, it checks whether any upstream is busy. A pending B task becomes eligible
+  only once the upstream is fully drained, so the check cannot be done only at
+  enqueue time.
+
+Why "fully drained" and not merely "no running task": using running+pending avoids
+a blip where A momentarily has zero running tasks (between two of its own items)
+but still has queued work. Under a "no running task" rule, B could opportunistically
+grab a slot in that gap and then overlap with A when A picks up its next pending
+item. Requiring A to be fully drained removes that race: B only starts once A is
+genuinely done.
+
+Tradeoff (accepted): this is stricter / more throughput-conservative. Under a
+continuous trickle of input (e.g. a live folder watch that keeps feeding an
+upstream), the upstream may rarely reach empty, so a gated stage could be delayed
+for a long time. For this app's common case - batch indexing a folder, draining it,
+then compressing - "fully drained" is exactly the desired behavior and the trickle
+concern does not apply. If steady-trickle starvation ever becomes a problem, revisit
+per-gate configurability.
+
+Directionality and tie-breaks (a gate is one-directional; the upstream has priority):
+- **The upstream A never waits for the gated stage B.** B yields to A.
+- If A becomes busy again while B already has tasks running, those in-flight B
+  tasks are **not** killed - they finish naturally. But no *new* B task is
+  dispatched until A is fully drained again.
+- So the invariant is "do not *start* B while A is busy." With the fully-drained
+  rule this overlap is rare (B only started because A was empty, and A becoming
+  busy again requires new input), but if it does occur, B's already-running work
+  finishes rather than being killed. This is an accepted tradeoff.
+
+### Example configurations
+
+The same fixed data flow can be scheduled many ways depending on the hardware available.
+The diagrams below show only the **gate graph** - each dotted edge with a lock
+label reads "A blocks B" (B does not start while A is busy). The dotted line and
+lock label are deliberately different from the solid data-flow arrows `-->` in the
+[Static data flow] section, so the two graphs are not confused; a gate edge may
+connect stages that have no data-flow relationship. The number in parentheses is
+each stage's own max concurrency (internal parallelism), independent of gating.
+Stages with no gate
+edge between them run concurrently.
+
+For the first cut, the user supplies this configuration as JSON text (see [Config
+format] below); a graphical builder may come later. Either way, the model is the
+same gate graph.
+
+**GPU box** - the two ML stages run on the GPU, everything else on CPU. The two
+resources do not contend, so there are no gates at all: every stage runs as soon
+as its data-flow predecessor is done, bounded only by its own concurrency. (No
+gate edges.)
+
+```mermaid
+flowchart LR
+    a["bring-to-collection (5)"]
+    b["geo-lookup (10)"]
+    c["generate-video-thumbnail (5)"]
+    d["generate-image-thumbnails (5)"]
+    e["face-recognition (2)"]
+    f["image-encoding (2)"]
+    g["video-compression (4)"]
 ```
-resource: cpu
-  +-- bring-to-collection (5) --+-- generate-image-thumbnails (5) --+
-  |                             +-- generate-video-thumbnail (5) ---+
-  |                             +-- geo-lookup (10) ----------------+---[gate]--> video-compression (4)
-  |
-resource: gpu
-  +-- face-recognition (1) ---[gate]--> image-encoding (1)
+
+**CPU-only box** - no GPU, so the ML stages and video compression all compete for
+the CPU. The user serializes the CPU-heavy work so only one heavy model runs at a
+time and compression waits for both: `face-recognition` blocks `image-encoding`,
+and both ML stages block `video-compression`. The compression gate runs *tangent*
+to data flow - there is no data-flow edge between `video-compression` and the ML
+stages, yet on this box they contend for the CPU. Lighter stages
+(`bring-to-collection`, `geo-lookup`, thumbnails) are left ungated.
+
+```mermaid
+flowchart LR
+    a["bring-to-collection (5)"]
+    b["geo-lookup (10)"]
+    c["generate-video-thumbnail (5)"]
+    d["generate-image-thumbnails (5)"]
+    e["face-recognition (1)"]
+    f["image-encoding (1)"]
+    g["video-compression (2)"]
+
+    e -.->| 🔒 | f
+    e -.->| 🔒 | g
+    f -.->| 🔒 | g
 ```
 
-The arrows here mean "gated behind," i.e. the right side does not start while the
-left side is busy (running or pending). They are NOT data-flow arrows.
+**Big-CPU box** - lots of CPU, no GPU. Instead of gating, the user raises
+concurrency so many items run at once (e.g. 5 concurrent video compressions). The
+two ML stages are left to run concurrently (no gate between them), but
+`video-compression` is still gated behind both - it is the heaviest CPU consumer,
+so it waits until the ML work is fully drained.
 
-## Implementation Plan (tentative)
+```mermaid
+flowchart LR
+    a["bring-to-collection (5)"]
+    b["geo-lookup (10)"]
+    c["generate-video-thumbnail (5)"]
+    d["generate-image-thumbnails (5)"]
+    e["face-recognition (3)"]
+    f["image-encoding (3)"]
+    g["video-compression (5)"]
+
+    e -.->| 🔒 | g
+    f -.->| 🔒 | g
+```
+
+## Tentative design in Go
 
 ### 1. Each stage = a `queue.Queue` instance (already available)
 
@@ -205,7 +253,7 @@ type Stage struct {
 
 Note the two lists are separate on purpose: `Downstreams` is data flow,
 `GatedBy` is resource scheduling. They are configured from different sources
-(Downstreams from code; GatedBy derived from the diagram/config).
+(Downstreams from code; GatedBy derived from the user's scheduling config).
 
 ### 3. Gate evaluation
 
@@ -267,7 +315,7 @@ blip does not arise: a gated stage only starts once its upstreams are genuinely
 empty, and the one-directional rule handles the rare case where new input arrives
 at an upstream just after it drained.
 
-### Control Responsibility
+#### Control Responsibility
 
 - **The queue** decides moment-to-moment whether it may dispatch, by evaluating its
   `CanDispatch()` predicate at dispatch time. Gating never sets the queue's paused
@@ -310,57 +358,51 @@ func (p *Pipeline) enqueue(stage *Stage, item *PipelineItem) {
 }
 ```
 
-Note there is no `JoinTracker` here. The earlier design had a fan-in join because
-it modeled `>>` as a per-item data dependency (video-compression waits for both
-thumbnail AND geo *for the same item*). Under the corrected model, `>>` is a
-*resource gate*, not a per-item join, so join tracking is not needed for
-gating. The data-flow graph does have intermediate dependencies (e.g.
-`face-recognition` and `image-encoding` run only after
-`generate-image-thumbnails`, and `generate-video-thumbnail` feeds
-`generate-image-thumbnails`), but each of those is a single-predecessor edge
-expressed directly in the hardcoded routing (`Downstreams`) - a stage simply
-enqueues its successor when it finishes. No stage waits on *multiple*
-predecessors for the same item, so no fan-in join tracker is required. If a
-genuine per-item fan-in dependency is ever added, it would be handled separately
-in the hardcoded routing.
+Note there is no `JoinTracker` here. An earlier design modeled the gate as a
+per-item data dependency (video-compression waits for both thumbnail AND geo *for
+the same item*) and needed a fan-in join. Under this model the gate is a *resource*
+constraint, not a per-item join, so no join tracking is needed. The data-flow graph
+does have intermediate dependencies (e.g. `face-recognition` and `image-encoding`
+run only after `generate-image-thumbnails`, and `generate-video-thumbnail` feeds
+`generate-image-thumbnails`), but each is a single-predecessor edge expressed
+directly in the hardcoded routing (`Downstreams`) - a stage simply enqueues its
+successor when it finishes. No stage waits on *multiple* predecessors for the same
+item, so no fan-in join tracker is required. If a genuine per-item fan-in
+dependency is ever added, it would be handled separately in the hardcoded routing.
 
 ### 5. Config format
 
-Only the tunable parts (concurrency and gating) come from config. Data flow is
-not configurable. A compact DSL mirroring the diagram:
+Only the tunable parts (per-stage concurrency and gating) come from config. Data
+flow is not configurable.
 
-```
-[cpu, gpu]
-cpu >> [bring-to-collection(5), generate-image-thumbnails(5), generate-video-thumbnail(5), geo-lookup(10)] >> video-compression(4)
-gpu >> face-recognition(1) >> image-encoding(1)
+The config is JSON: a flat list of stages, each with its own `concurrency` and an
+optional inline `gatedBy` list naming the stages it is gated behind. Because gating
+is an independent graph (not tied to data flow or any ordering), `gatedBy` can name
+*any* stage. Absence of a `gatedBy` entry means no gate - the stage may run
+concurrently with everything it is not gated behind.
+
+Concretely (the "CPU-only box" example above - `video-compression` gated behind
+both ML stages, and `image-encoding` gated behind `face-recognition`):
+
+```json
+{
+  "stages": [
+    { "name": "bring-to-collection", "concurrency": 5 },
+    { "name": "geo-lookup", "concurrency": 10 },
+    { "name": "generate-video-thumbnail", "concurrency": 5 },
+    { "name": "generate-image-thumbnails", "concurrency": 5 },
+    { "name": "face-recognition", "concurrency": 1 },
+    { "name": "image-encoding", "concurrency": 1, "gatedBy": ["face-recognition"] },
+    { "name": "video-compression", "concurrency": 2, "gatedBy": ["face-recognition", "image-encoding"] }
+  ]
+}
 ```
 
-Parsed into:
-- per-stage concurrency (the `(N)`),
-- `GatedBy` edges (from `>>`),
-- resource-group labels are parsed but only retained for display/validation.
-
-Equivalent explicit form:
-```yaml
-pipeline:
-  stages:
-    - name: bring-to-collection
-      concurrency: 5
-    - name: generate-image-thumbnails
-      concurrency: 5
-    - name: generate-video-thumbnail
-      concurrency: 5
-    - name: geo-lookup
-      concurrency: 10
-    - name: video-compression
-      concurrency: 4
-      gated-by: [bring-to-collection, generate-image-thumbnails, generate-video-thumbnail, geo-lookup]
-    - name: face-recognition
-      concurrency: 1
-    - name: image-encoding
-      concurrency: 1
-      gated-by: [face-recognition]
-```
+Each entry in `gatedBy` becomes a `GatedBy` edge on that stage (read "this stage is
+gated behind the named stage"). Validation: every stage in the fixed data flow must
+appear exactly once; every name in a `gatedBy` list must be a known stage; and the
+gate graph must be acyclic (a cycle would deadlock, since each stage would wait for
+the other to drain).
 
 ### 6. Runtime control APIs
 
@@ -396,22 +438,24 @@ gating.
 3. Future step: Add the dispatch-time gate predicate (`CanDispatch`) and the
    on-drained signal to `queue.Queue` (Option A), then wire `GatedBy` +
    drained-transition re-check in the orchestrator.
-4. Future step: Add config parsing (DSL or YAML) for concurrency + gating only.
+4. Future step: Add config parsing for concurrency + gating only.
 5. Future step: Add per-stage status/control endpoints (including gated state).
 
 ## Confirmed Decisions
 
-- **Gate condition (confirmed):** `A >> B` gates B until A is *fully drained*
-  (running + pending == 0), not merely momentarily idle. This avoids the blip where
-  A has zero running but still-queued work. Accepted tradeoff: stricter/more
-  conservative; a continuous trickle into A could delay B. Fine for the batch-index
-  workload; revisit per-gate config if trickle starvation ever appears.
-- **Tie-break (confirmed):** `>>` is one-directional. A never waits for B; B yields
-  to A. When A becomes busy again while B has tasks running, those in-flight B tasks
-  finish naturally (they are never killed), but no new B task is dispatched until A
-  is fully drained. Brief overlap of B's in-flight work with A's newly-arrived work is
-  accepted.
-- **Gate scope (confirmed):** gating pauses only the directly gated stage(s) and
+- **Gate condition (confirmed):** a gate holds the downstream until its upstream is
+  *fully drained* (running + pending == 0), not merely momentarily idle. This
+  avoids the blip where the upstream has zero running but still-queued work.
+  Accepted tradeoff: stricter/more conservative; a continuous trickle into an
+  upstream could delay its downstream. Fine for the batch-index workload; revisit
+  per-gate config if trickle starvation ever appears.
+- **Tie-break (confirmed):** a gate is one-directional. The upstream never waits
+  for the gated stage; the gated stage yields to the upstream. When an upstream
+  becomes busy again while its gated stage has tasks running, those in-flight tasks
+  finish naturally (they are never killed), but no new task is dispatched until the
+  upstream is fully drained. Brief overlap of in-flight downstream work with the
+  upstream's newly-arrived work is accepted.
+- **Gate scope (confirmed):** gating holds only the directly gated stage(s) and
   everything downstream of them - not the whole pipeline.
 - **Drained re-check (confirmed, required):** the kick fires on an upstream's
   **busy -> drained transition** (running + pending reaches zero), NOT on every
@@ -427,7 +471,7 @@ gating.
 go-server/internal/pipeline/
     stage.go       # Stage struct (Downstreams + GatedBy)
     pipeline.go    # Pipeline orchestrator, Submit, enqueue, gate re-check
-    config.go      # Parse DSL/YAML into concurrency + gating (not data flow)
+    config.go      # Parse JSON stages (concurrency + inline gatedBy), validate DAG (not data flow)
     handler.go     # Per-stage status/control endpoints
 ```
 
