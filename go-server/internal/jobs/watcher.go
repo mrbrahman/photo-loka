@@ -10,7 +10,6 @@ import (
 
 	"photo-loka/internal/collections"
 	"photo-loka/internal/indexing"
-	"photo-loka/internal/queue"
 	"photo-loka/internal/utils"
 )
 
@@ -213,15 +212,7 @@ func enqueueFile(collectionID int64, filePath string) {
 		return
 	}
 
-	col := collection
-	f := filePath
-	indexing.IndexQueue().Enqueue(queue.Task{
-		Priority:    queue.High,
-		Description: f,
-		Fn: func() error {
-			return indexing.IndexFile(col, f, "", false)
-		},
-	})
+	indexing.Submit(collection, filePath, "", false)
 
 	fwLogger().Info("watcher: file added",
 		"collection_id", collectionID,

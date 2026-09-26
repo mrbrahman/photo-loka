@@ -164,6 +164,25 @@ func GetFileName(uuid string) (string, error) {
 	return filename, nil
 }
 
+// GetFileInfo returns the filename and mediatype for a uuid. Used by pipeline
+// stages invoked standalone (with only a uuid) to hydrate their inputs.
+func GetFileInfo(uuid string) (filename, mediatype string, err error) {
+	var mt sql.NullString
+	err = database.DB.QueryRow(
+		"SELECT filename, mediatype FROM metadata WHERE uuid = ?", uuid,
+	).Scan(&filename, &mt)
+	if err == sql.ErrNoRows {
+		return "", "", fmt.Errorf("uuid %s not found", uuid)
+	}
+	if err != nil {
+		return "", "", fmt.Errorf("querying file info for uuid %s: %w", uuid, err)
+	}
+	if mt.Valid {
+		mediatype = mt.String
+	}
+	return filename, mediatype, nil
+}
+
 // GetFileNames returns a uuid->filename map for the given uuids.
 func GetFileNames(uuids []string) (map[string]string, error) {
 	if len(uuids) == 0 {

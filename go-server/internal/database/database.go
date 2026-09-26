@@ -123,6 +123,7 @@ func runMigrations() error {
 		{version: 11, filename: "migrations/011-geo-lookups.sql"},
 		{version: 12, filename: "migrations/012-capture-time-columns.sql"},
 		{version: 13, filename: "migrations/013-runtime-config.sql"},
+		{version: 14, filename: "migrations/014-pipeline-config.sql"},
 	}
 
 	for _, m := range migrations {

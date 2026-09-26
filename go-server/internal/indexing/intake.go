@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"photo-loka/internal/collections"
-	"photo-loka/internal/queue"
 	"photo-loka/internal/utils"
 )
 
@@ -119,28 +118,15 @@ func enqueueIntakeFiles(collection *collections.Collection, dir string, staleDay
 		return fmt.Errorf("finding pending files in %s: %w", dir, err)
 	}
 
-	var tasks []queue.Task
 	for _, file := range files {
-		f := file
-		col := collection
-		tasks = append(tasks, queue.Task{
-			Priority:    queue.High,
-			Description: f,
-			Fn: func() error {
-				return IndexFile(col, f, "", false)
-			},
-		})
-	}
-
-	if len(tasks) > 0 {
-		indexQueue.EnqueueMany(tasks)
+		submit(collection, file, "", false)
 	}
 
 	idxLogger().Info("intake indexing started",
 		"collection_id", collection.CollectionID,
 		"dir", dir,
 		"stale_days", staleDays,
-		"files_enqueued", len(tasks),
+		"files_enqueued", len(files),
 	)
 
 	return nil

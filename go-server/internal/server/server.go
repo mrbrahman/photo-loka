@@ -28,6 +28,7 @@ import (
 	"photo-loka/internal/items"
 	"photo-loka/internal/media"
 	"photo-loka/internal/ml"
+	"photo-loka/internal/pipeline"
 	"photo-loka/internal/search"
 )
 
@@ -109,6 +110,7 @@ func setupRoutes() {
 		admin.RegisterConfigRoutes(adminGroup)
 		admin.RegisterUsersRoutes(adminGroup)
 		admin.RegisterJobsRoutes(adminGroup)
+		pipeline.RegisterRoutes(adminGroup)
 	}
 }
 

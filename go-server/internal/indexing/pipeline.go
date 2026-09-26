@@ -5,57 +5,114 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
-	"time"
 
 	"github.com/google/uuid"
 
 	"photo-loka/internal/collections"
-	"photo-loka/internal/config"
-	"photo-loka/internal/geo"
 	"photo-loka/internal/media"
-	"photo-loka/internal/ml"
-	"photo-loka/internal/queue"
 	"photo-loka/internal/utils"
 )
 
-// The indexing pipeline is package-level (single instance in this process).
-// Init wires the two work queues; the thumbnails dir is read from
-// config.Startup at use time. idxLogger is the pipeline logger.
+// SubmitEntry is the pipeline entry point, injected by the pipeline package at
+// startup (pipeline.Init sets it). The indexing package's discovery functions
+// (InitialIndexing, ScanForChanges, intake) call this to hand a newly found
+// file to the orchestrator instead of enqueuing IndexFile directly. Using a
+// function var (like collections.OnCollectionChanged) keeps indexing free of an
+// import cycle on the pipeline package.
+//
+// Signature: (collection, sourceFile, existingUUID, inPlace).
+var SubmitEntry func(collection *collections.Collection, sourceFile, existingUUID string, inPlace bool)
+
+// SubmitRefresh routes a metadata-only re-extract (RefreshMetadata) through the
+// pipeline, injected by the pipeline package at startup. Metadata refresh is
+// not part of the media data flow (it does not re-place the file), so it has
+// its own entry rather than going through bring-to-collection.
+var SubmitRefresh func(uuid, filename string)
+
+// Indexer admin control hooks, wired by the pipeline package at startup. These
+// back the legacy /getIndexerStatus, /pauseIndexer, etc. endpoints during the
+// pipeline transition. They are a stopgap: phase 5 of the pipeline design
+// replaces these with per-stage /api/admin/pipeline/* endpoints. Until then
+// they operate on the pipeline as a whole (aggregate/entry-stage semantics).
 var (
-	indexQueue *queue.Queue
-	videoQueue *queue.Queue
+	// PipelineStatus returns an aggregate status snapshot for the legacy status
+	// endpoint. Shape is decided by the pipeline package.
+	PipelineStatus func() map[string]interface{}
+	// PipelinePause / PipelineResume pause/resume all stages.
+	PipelinePause  func()
+	PipelineResume func()
+	// PipelineErrors aggregates recent errors across all stages.
+	PipelineErrors func() interface{}
+	// PipelineSetConcurrency sets the entry-stage concurrency (legacy
+	// "indexer concurrency" knob).
+	PipelineSetConcurrency func(n int)
 )
+
+// submit hands one file to the pipeline entry stage. No-op with a warning if
+// the pipeline has not wired SubmitEntry yet (should not happen after startup).
+func submit(collection *collections.Collection, sourceFile, existingUUID string, inPlace bool) {
+	if SubmitEntry == nil {
+		idxLogger().Error("pipeline SubmitEntry not wired; dropping file", "file", sourceFile)
+		return
+	}
+	SubmitEntry(collection, sourceFile, existingUUID, inPlace)
+}
+
+// submitRefresh routes a metadata-only refresh through the pipeline.
+func submitRefresh(uuid, filename string) {
+	if SubmitRefresh == nil {
+		idxLogger().Error("pipeline SubmitRefresh not wired; dropping refresh", "uuid", uuid)
+		return
+	}
+	SubmitRefresh(uuid, filename)
+}
+
+// Submit hands a single file to the pipeline entry stage. Exported for callers
+// outside this package (e.g. the file watcher) that discover new files.
+func Submit(collection *collections.Collection, sourceFile, existingUUID string, inPlace bool) {
+	submit(collection, sourceFile, existingUUID, inPlace)
+}
+
+// IndexerBusy reports whether the pipeline has any in-flight or pending work,
+// used by scheduled intake to avoid starting while indexing is active. Wired by
+// the pipeline package; returns false if not yet wired.
+var PipelineBusy func() bool
+
+// IndexerBusy reports whether the pipeline is currently processing work.
+func IndexerBusy() bool {
+	if PipelineBusy == nil {
+		return false
+	}
+	return PipelineBusy()
+}
 
 // idxLogger resolves the current default handler at call time (see frames.frLogger).
 func idxLogger() *slog.Logger { return slog.Default().With("component", "indexer") }
 
-// Init wires the indexing queues. Called once at startup.
-func Init(idxQueue, vidQueue *queue.Queue) {
-	indexQueue = idxQueue
-	videoQueue = vidQueue
+// BringToCollectionResult is the output of the entry stage: everything a
+// downstream pipeline stage needs to proceed without re-reading the file.
+type BringToCollectionResult struct {
+	UUID       string
+	FinalFile  string
+	Mediatype  string
+	ExifData   *media.ExifData
+	IsNew      bool // true if a new row was inserted (existingUUID was "")
+	CompressOK bool // collection wants video compression (video only)
 }
 
-// IndexQueue returns the indexing queue for external enqueue operations.
-func IndexQueue() *queue.Queue {
-	return indexQueue
-}
-
-// IndexFile runs the full indexing pipeline for a single file:
-// 1. Extract metadata (exif)
-// 2. Place file in collection folder
-// 3. Generate/reuse UUID
-// 4. Derive capture_date, capture_time, capture_tz_offset from CaptureDateTime
-// 5. Generate thumbnail
-// 6. Queue video compression if enabled
-// 7. Insert or update DB row
-// 8. Log completion time
-func IndexFile(collection *collections.Collection, sourceFile string, existingUUID string, inPlace bool) error {
-	start := time.Now()
-
+// BringToCollection is the pipeline entry stage: extract metadata, place the
+// file in the collection, generate/reuse the uuid, derive capture fields, and
+// insert/update the DB row (including exiftool geo data). This is intentionally
+// one stage: placement needs the capture date from exif, and the DB row must be
+// committed here so every downstream stage can self-hydrate by uuid.
+//
+// It does NOT enqueue thumbnails, ML, geo, or compression; the orchestrator
+// routes to those downstream stages. Callable standalone to (re)bring a file.
+func BringToCollection(collection *collections.Collection, sourceFile string, existingUUID string, inPlace bool) (*BringToCollectionResult, error) {
 	// Step 1: Extract metadata
 	exifData, err := media.ExtractMetadata(sourceFile)
 	if err != nil {
-		return fmt.Errorf("extracting metadata from %s: %w", sourceFile, err)
+		return nil, fmt.Errorf("extracting metadata from %s: %w", sourceFile, err)
 	}
 
 	// Audio fallback: audio files typically lack EXIF date fields.
@@ -82,7 +139,7 @@ func IndexFile(collection *collections.Collection, sourceFile string, existingUU
 	// Step 2: Place file in collection
 	placeResult, err := PlaceFileInCollection(collection, sourceFile, exifData.CaptureDateTime, inPlace)
 	if err != nil {
-		return fmt.Errorf("placing file %s in collection: %w", sourceFile, err)
+		return nil, fmt.Errorf("placing file %s in collection: %w", sourceFile, err)
 	}
 
 	// Step 3: Generate or reuse UUID
@@ -108,56 +165,9 @@ func IndexFile(collection *collections.Collection, sourceFile string, existingUU
 		}
 	}
 
-	// Step 5: Generate thumbnail
 	finalFile := placeResult.Filename
 
-	// mlBuf is produced alongside thumbnails, reusing the same libvips load.
-	// Passed to the ML tasks below so the service skips a second file read.
-	// For videos it comes from the first-frame JPEG; for images from the original.
-	var mlBuf *media.MLBuffer
-
-	if exifData.Mediatype == "video" {
-		// Extract a frame from the video first, then generate thumbnails from that frame.
-		framePath, err := media.GenerateVideoThumbnail(fileUUID, finalFile, config.Startup.ThumbsDir)
-		if err != nil {
-			idxLogger().Warn("video thumbnail extraction failed", "file", finalFile, "error", err)
-		} else {
-			var thumbErr error
-			mlBuf, thumbErr = media.CreateImageThumbnails(fileUUID, framePath, config.Startup.ThumbsDir)
-			if thumbErr != nil {
-				idxLogger().Warn("thumbnail creation from video frame failed", "file", finalFile, "error", thumbErr)
-			}
-		}
-	} else if exifData.Mediatype == "image" {
-		var err error
-		mlBuf, err = media.CreateImageThumbnails(fileUUID, finalFile, config.Startup.ThumbsDir)
-		if err != nil {
-			idxLogger().Warn("thumbnail creation failed", "file", finalFile, "error", err)
-		}
-	}
-
-	// Step 6: Queue video compression if enabled
-	// NOTE: Node.js checks for an existing _compressed_video.webm file beside the source
-	// and moves it to the thumbs dir instead of re-encoding. Not implemented here;
-	// videos will always be enqueued for compression if the collection has compress_videos enabled.
-	if exifData.Mediatype == "video" && collection.CompressVideos != nil && *collection.CompressVideos == 1 {
-		encoder := config.Runtime.VideoEncoder
-		if encoder == "" {
-			encoder = media.EncoderVP9
-		}
-
-		vidUUID := fileUUID
-		vidFile := finalFile
-		indexQueue.Enqueue(queue.Task{
-			Priority:    queue.Low,
-			Description: vidFile,
-			Fn: func() error {
-				return media.CompressVideo(vidUUID, vidFile, config.Startup.ThumbsDir, encoder)
-			},
-		})
-	}
-
-	// Step 7: Build and insert/update DB row
+	// Step 5: Build and insert/update DB row
 	row := buildMetadataRow(collection, fileUUID, placeResult, exifData, captureDate, captureTime, captureTzOffset)
 
 	// Derive private/trashed status from the on-disk filename prefix so that
@@ -185,85 +195,51 @@ func IndexFile(collection *collections.Collection, sourceFile string, existingUU
 	if existingUUID != "" {
 		// Update existing row
 		if err := UpdateMetadata(row); err != nil {
-			return fmt.Errorf("updating metadata for %s: %w", fileUUID, err)
+			return nil, fmt.Errorf("updating metadata for %s: %w", fileUUID, err)
 		}
 	} else {
 		// Insert new row
 		if err := InsertMetadata(row); err != nil {
-			return fmt.Errorf("inserting metadata for %s: %w", fileUUID, err)
+			return nil, fmt.Errorf("inserting metadata for %s: %w", fileUUID, err)
 		}
 	}
 
-	// Step 8: Store exiftool geo data and enqueue geo finalization
-	if exifData.GPSLat != nil && exifData.GPSLng != nil {
-		// Store exiftool geolocation data in geo_lookups for the finalizer to use
-		if exifData.ExiftoolGeoJSON != nil {
-			hasData := false
-			for _, v := range exifData.ExiftoolGeoJSON {
-				if v != nil {
-					hasData = true
-					break
-				}
-			}
-			if hasData {
-				geoJSON, _ := json.Marshal(exifData.ExiftoolGeoJSON)
-				if err := InsertGeoLookup(fileUUID, "exiftool", "geolocation", string(geoJSON)); err != nil {
-					idxLogger().Warn("failed to store exiftool geo data", "uuid", fileUUID, "error", err)
-				}
+	// Store exiftool geolocation data in geo_lookups for the geo stage to use.
+	// The geo finalization itself is a separate pipeline stage (see
+	// pipeline.GeoLookup); here we only persist what exiftool already extracted.
+	if exifData.GPSLat != nil && exifData.GPSLng != nil && exifData.ExiftoolGeoJSON != nil {
+		hasData := false
+		for _, v := range exifData.ExiftoolGeoJSON {
+			if v != nil {
+				hasData = true
+				break
 			}
 		}
-
-		// Enqueue geo finalization
-		{
-			opts := map[string]interface{}{
-				"gps_lat": *exifData.GPSLat,
-				"gps_lng": *exifData.GPSLng,
+		if hasData {
+			geoJSON, _ := json.Marshal(exifData.ExiftoolGeoJSON)
+			if err := InsertGeoLookup(fileUUID, "exiftool", "geolocation", string(geoJSON)); err != nil {
+				idxLogger().Warn("failed to store exiftool geo data", "uuid", fileUUID, "error", err)
 			}
-			if exifData.ExiftoolGeoJSON != nil {
-				if cc, ok := exifData.ExiftoolGeoJSON["GeolocationCountryCode"].(string); ok {
-					opts["country_code"] = cc
-				}
-			}
-			geo.Enqueue(fileUUID, opts)
 		}
 	}
 
-	// Step 9: Enqueue face recognition and image encoding for images and videos.
-	// For videos, the first-frame buffer from step 5 is passed through.
-	// Passing nil (e.g. if thumbnail failed) causes the service to re-read the file.
-	if (exifData.Mediatype == "image" || exifData.Mediatype == "video") && config.Runtime.PerformFaceRecognition {
-		faceUUID := fileUUID
-		buf := mlBuf // capture for closure
-		indexQueue.Enqueue(queue.Task{
-			Priority:    queue.Normal,
-			Description: "face:" + faceUUID,
-			Fn: func() error {
-				_, err := ml.ProcessFaceRecognition(faceUUID, buf)
-				return err
-			},
-		})
-		// Image encoding (CLIP) is intentionally not enabled in the pipeline yet.
-		// The buffer endpoint and ProcessImageEncoding are wired up and ready;
-		// uncomment to enable semantic-search indexing during indexing.
-		// indexQueue.Enqueue(queue.Task{
-		// 	Priority:    queue.Normal,
-		// 	Description: "encode:" + faceUUID,
-		// 	Fn: func() error {
-		// 		return mlSvc.ProcessImageEncoding(faceUUID, buf)
-		// 	},
-		// })
-	}
+	compressOK := exifData.Mediatype == "video" &&
+		collection.CompressVideos != nil && *collection.CompressVideos == 1
 
-	// Step 10: Log completion
-	duration := time.Since(start)
-	idxLogger().Info("file indexed",
+	idxLogger().Info("brought to collection",
 		"uuid", fileUUID,
 		"file", finalFile,
 		"mediatype", exifData.Mediatype,
-		"duration", duration.String(),
 	)
 
-	return nil
+	return &BringToCollectionResult{
+		UUID:       fileUUID,
+		FinalFile:  finalFile,
+		Mediatype:  exifData.Mediatype,
+		ExifData:   exifData,
+		IsNew:      existingUUID == "",
+		CompressOK: compressOK,
+	}, nil
 }
 
 // RefreshMetadata re-extracts metadata for an already indexed file and updates the DB.

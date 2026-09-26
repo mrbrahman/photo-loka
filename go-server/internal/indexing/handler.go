@@ -119,55 +119,51 @@ func startIntakeFileIndexing(c *gin.Context) {
 	c.Status(http.StatusAccepted)
 }
 
-// getIndexerStatus returns the current status of both queues.
+// getIndexerStatus returns an aggregate pipeline status snapshot.
 // GET /getIndexerStatus
+//
+// NOTE: legacy shape retained during the pipeline transition. Phase 5 of the
+// pipeline design replaces this with per-stage /api/admin/pipeline/status.
 func getIndexerStatus(c *gin.Context) {
-	status := indexQueue.GetStatus()
-	high, normal, low := indexQueue.QueueSizes()
-
-	c.JSON(http.StatusOK, gin.H{
-		"processingCnt":            status.Active,
-		"pendingCnt":               status.Pending,
-		"completedCnt":             status.Completed,
-		"failedCnt":                status.Failed,
-		"paused":                   status.IsPaused,
-		"isDynamic":                false,
-		"maxConcurrency":           status.MaxConcurrency,
-		"dynamicTargetConcurrency": nil,
-		"queueSizes": gin.H{
-			"high":   high,
-			"normal": normal,
-			"low":    low,
-		},
-		"systemMetrics": nil,
-	})
+	if PipelineStatus == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{
+			"message": "pipeline not initialized",
+			"code":    "NOT_READY",
+		}})
+		return
+	}
+	c.JSON(http.StatusOK, PipelineStatus())
 }
 
-// pauseIndexer pauses the index queue.
+// pauseIndexer pauses all pipeline stages.
 // PUT /pauseIndexer
 func pauseIndexer(c *gin.Context) {
-	indexQueue.Pause()
+	if PipelinePause != nil {
+		PipelinePause()
+	}
 	c.Status(http.StatusOK)
 }
 
-// resumeIndexer resumes the index queue.
+// resumeIndexer resumes all pipeline stages.
 // PUT /resumeIndexer
 func resumeIndexer(c *gin.Context) {
-	indexQueue.Resume()
+	if PipelineResume != nil {
+		PipelineResume()
+	}
 	c.Status(http.StatusOK)
 }
 
-// getIndexerErrors returns recent errors from both queues.
+// getIndexerErrors returns recent errors aggregated across pipeline stages.
 // GET /getIndexerErrors
 func getIndexerErrors(c *gin.Context) {
-	indexErrors := indexQueue.GetErrors()
-	videoErrors := videoQueue.GetErrors()
-
-	allErrors := append(indexErrors, videoErrors...)
-	c.JSON(http.StatusOK, allErrors)
+	if PipelineErrors == nil {
+		c.JSON(http.StatusOK, []interface{}{})
+		return
+	}
+	c.JSON(http.StatusOK, PipelineErrors())
 }
 
-// updateIndexerConcurrency changes the max concurrency of the index queue.
+// updateIndexerConcurrency changes the entry-stage (bring-to-collection) concurrency.
 // PUT /updateIndexerConcurrency/:concurrency
 func updateIndexerConcurrency(c *gin.Context) {
 	concurrencyStr := c.Param("concurrency")
@@ -180,7 +176,9 @@ func updateIndexerConcurrency(c *gin.Context) {
 		return
 	}
 
-	indexQueue.SetConcurrency(concurrency)
+	if PipelineSetConcurrency != nil {
+		PipelineSetConcurrency(concurrency)
+	}
 
 	// Persist to runtime config so it survives restart
 	if err := config.Runtime.SetMaxConcurrency(concurrency); err != nil {

@@ -36,9 +36,6 @@ class PlAdminSettings extends HTMLElement {
           <section>
             <h3 class="section-title">Media Processing</h3>
             <div class="field">
-              <sl-switch data-key="performFaceRecognition" help-text="Run face recognition during indexing.">Perform Face Recognition</sl-switch>
-            </div>
-            <div class="field">
               <sl-select data-key="videoEncoder" label="Video Encoder" help-text="Video encoder for compression. Container is auto-determined: webm for VP8/VP9, mp4 for H.264/H.265/AV1. Video compression is enabled per collection." size="small">
                 <sl-option value="libvpx">VP8 (libvpx) - Software</sl-option>
                 <sl-option value="libvpx-vp9">VP9 (libvpx-vp9) - Software</sl-option>

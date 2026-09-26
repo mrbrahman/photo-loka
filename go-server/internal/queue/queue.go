@@ -63,6 +63,21 @@ type Queue struct {
 	errors   []Error
 	errorsMu sync.Mutex
 
+	// canDispatch is an optional pre-dispatch predicate (gate hook). When set,
+	// the dispatch loop only starts a task if it returns true, in addition to
+	// the !isPaused check. Used by the pipeline orchestrator to gate a stage
+	// behind its busy upstreams (Option A in docs/pipeline-dag-design.md).
+	// Gating never touches the paused flag; a gated-closed queue is simply
+	// declining to dispatch, not paused.
+	canDispatch func() bool
+
+	// onDrained is an optional callback fired on the busy->drained transition:
+	// the instant a task completion brings running+pending to zero. The
+	// orchestrator uses it to kick stages gated behind this queue exactly when
+	// this queue empties (not on every completion). See design doc "Drained
+	// re-check".
+	onDrained func()
+
 	notify chan struct{}
 	done   chan struct{}
 	logger *slog.Logger
@@ -84,6 +99,30 @@ func New(maxConcurrency int) *Queue {
 	}
 	go q.dispatch()
 	return q
+}
+
+// SetCanDispatch installs an optional pre-dispatch predicate (gate hook). The
+// dispatch loop calls it before starting each task; if it returns false the
+// task is left pending and re-checked on the next notify. Pass nil to remove.
+// Wired once at startup by the orchestrator, so no locking is needed.
+func (q *Queue) SetCanDispatch(fn func() bool) {
+	q.canDispatch = fn
+}
+
+// SetOnDrained installs an optional callback fired on the busy->drained
+// transition (running+pending reaches zero after a task completes). Pass nil to
+// remove. Wired once at startup by the orchestrator.
+func (q *Queue) SetOnDrained(fn func()) {
+	q.onDrained = fn
+}
+
+// Kick nudges the dispatch loop to re-evaluate pending work (e.g. after a gated
+// upstream drains). Non-blocking.
+func (q *Queue) Kick() {
+	select {
+	case q.notify <- struct{}{}:
+	default:
+	}
 }
 
 // Enqueue adds a single task to the queue according to its priority.
@@ -226,6 +265,14 @@ func (q *Queue) drainQueue() {
 			return
 		}
 
+		// Respect the gate hook (Option A): if a gated upstream is busy, leave
+		// tasks pending and stop draining. We will be re-kicked via Kick() when
+		// the upstream drains (or on the next notify). Checked before dequeue so
+		// a task is not pulled out of the queue while the gate is closed.
+		if q.canDispatch != nil && !q.canDispatch() {
+			return
+		}
+
 		// Check if stopped.
 		select {
 		case <-q.done:
@@ -259,7 +306,20 @@ func (q *Queue) drainQueue() {
 		go func(t Task, s chan struct{}) {
 			defer func() {
 				<-s
-				q.active.Add(-1)
+				remaining := q.active.Add(-1)
+
+				// On-drained signal: fire only on the busy->drained transition,
+				// i.e. this completion brought running to zero AND nothing is
+				// pending. This is the only moment a downstream gate can open,
+				// so it avoids waking gated stages on every completion.
+				if remaining == 0 && q.onDrained != nil {
+					q.mu.Lock()
+					pending := len(q.high) + len(q.normal) + len(q.low)
+					q.mu.Unlock()
+					if pending == 0 {
+						q.onDrained()
+					}
+				}
 
 				// Kick the dispatch loop in case more tasks are pending.
 				select {

@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -20,12 +19,11 @@ import (
 	"photo-loka/internal/config"
 	"photo-loka/internal/database"
 	"photo-loka/internal/geo"
-	"photo-loka/internal/indexing"
 	"photo-loka/internal/jobs"
 	"photo-loka/internal/lifecycle"
 	"photo-loka/internal/media"
 	"photo-loka/internal/ml"
-	"photo-loka/internal/queue"
+	"photo-loka/internal/pipeline"
 	"photo-loka/internal/scheduler"
 	"photo-loka/internal/server"
 )
@@ -178,29 +176,21 @@ func runServe() {
 	// Initialize package-level singletons that read config.Startup.
 	auth.Init()
 
-	// Create indexing queues
-	numCPU := runtime.NumCPU()
-	indexConcurrency := numCPU - 1
-	if indexConcurrency < 1 {
-		indexConcurrency = 1
-	}
-	indexQueue := queue.New(indexConcurrency)
-	videoQueue := queue.New(2)
+	// Initialize geo package (geonames rate limiter). Geo has no work queue of
+	// its own; the pipeline owns the geo-lookup stage queue. This is a non-queue
+	// subsystem init and so lives here in the composition root.
+	geo.Init()
 
-	// Apply maxConcurrency from runtime config if set
-	if config.Runtime.MaxConcurrency > 0 {
-		indexQueue.SetConcurrency(config.Runtime.MaxConcurrency)
-	}
-
-	// Initialize the indexing package (work queues).
-	indexing.Init(indexQueue, videoQueue)
-
-	// Initialize geo package (dedicated single-threaded queue + rate limiter).
-	geoQueue := queue.New(1) // geo runs single-threaded due to rate limits
-	geo.Init(geoQueue)
-
-	// Initialize ML package (HTTP client).
+	// Initialize ML package (HTTP client). Non-queue subsystem used by search,
+	// ML routes, and trash cleanup as well as the pipeline. Must precede
+	// pipeline.Init so the pipeline can tell whether the ML stages are available.
 	ml.Init()
+
+	// Build the indexing pipeline. The pipeline owns and creates all per-stage
+	// work queues (including the single-worker geo-lookup queue) and wires the
+	// indexing package's Submit/admin hooks. Per-stage concurrency is derived
+	// from CPU count and the persisted maxConcurrency override.
+	pipeline.Init()
 
 	// Scheduler (package-level cron runner)
 	scheduler.Init()
@@ -239,11 +229,7 @@ func runServe() {
 	slog.Info("starting Photo-Loka", "port", config.Startup.Port, "data_dir", config.Startup.DataDir)
 
 	// Startup orchestration (watchers, scheduled indexing, frames, cron jobs).
-	lifecycleDeps := lifecycle.Deps{
-		IndexQueue: indexQueue,
-		VideoQueue: videoQueue,
-		GeoQueue:   geoQueue,
-	}
+	lifecycleDeps := lifecycle.Deps{}
 	lifecycle.StartupActions(lifecycleDeps, auth.CleanupExpiredTokens)
 
 	if err := server.Run(); err != nil {

@@ -5,7 +5,6 @@ import (
 	"strconv"
 
 	"photo-loka/internal/collections"
-	"photo-loka/internal/queue"
 	"photo-loka/internal/utils"
 )
 
@@ -25,31 +24,18 @@ func InitialIndexing(collectionID int64) error {
 		return fmt.Errorf("listing files for collection %d: %w", collectionID, err)
 	}
 
-	var tasks []queue.Task
+	var enqueued int
 	for _, file := range files {
 		if utils.ShouldIgnoreFile(file) {
 			continue
 		}
-
-		// Capture loop variable
-		f := file
-		col := collection
-		tasks = append(tasks, queue.Task{
-			Priority:    queue.High,
-			Description: f,
-			Fn: func() error {
-				return IndexFile(col, f, "", true)
-			},
-		})
-	}
-
-	if len(tasks) > 0 {
-		indexQueue.EnqueueMany(tasks)
+		submit(collection, file, "", true)
+		enqueued++
 	}
 
 	idxLogger().Info("initial indexing started",
 		"collection_id", collectionID,
-		"files_enqueued", len(tasks),
+		"files_enqueued", enqueued,
 	)
 
 	return nil
@@ -88,7 +74,6 @@ func ScanForChanges(collectionID int64) error {
 		indexedMap[indexedFiles[i].Filename] = &indexedFiles[i]
 	}
 
-	var tasks []queue.Task
 	var addedCount, changedCount int
 
 	for diskFile, diskMtime := range diskFiles {
@@ -99,33 +84,16 @@ func ScanForChanges(collectionID int64) error {
 		indexed, exists := indexedMap[diskFile]
 		if !exists {
 			// New file - not yet indexed
-			f := diskFile
-			col := collection
 			addedCount++
-			tasks = append(tasks, queue.Task{
-				Priority:    queue.High,
-				Description: f,
-				Fn: func() error {
-					return IndexFile(col, f, "", true)
-				},
-			})
+			submit(collection, diskFile, "", true)
 		} else {
 			// Check if file has been modified since last index
 			if indexed.FileModifiedAt != "" {
 				indexedMtime, err := parseMtimeString(indexed.FileModifiedAt)
 				if err == nil && diskMtime > indexedMtime {
 					// File changed since last index
-					f := diskFile
-					col := collection
-					existingUUID := indexed.UUID
 					changedCount++
-					tasks = append(tasks, queue.Task{
-						Priority:    queue.High,
-						Description: f,
-						Fn: func() error {
-							return IndexFile(col, f, existingUUID, true)
-						},
-					})
+					submit(collection, diskFile, indexed.UUID, true)
 				}
 			}
 		}
@@ -138,10 +106,6 @@ func ScanForChanges(collectionID int64) error {
 		if _, onDisk := diskFiles[filename]; !onDisk {
 			deletedCount++
 		}
-	}
-
-	if len(tasks) > 0 {
-		indexQueue.EnqueueMany(tasks)
 	}
 
 	idxLogger().Info("scan for changes complete",
@@ -168,25 +132,13 @@ func RefreshMetadataForCollection(collectionID int64) error {
 		return fmt.Errorf("getting indexed files for refresh, collection %d: %w", collectionID, err)
 	}
 
-	var tasks []queue.Task
 	for _, file := range indexedFiles {
-		f := file
-		tasks = append(tasks, queue.Task{
-			Priority:    queue.Normal,
-			Description: f.Filename,
-			Fn: func() error {
-				return RefreshMetadata(f.UUID, f.Filename)
-			},
-		})
-	}
-
-	if len(tasks) > 0 {
-		indexQueue.EnqueueMany(tasks)
+		submitRefresh(file.UUID, file.Filename)
 	}
 
 	idxLogger().Info("metadata refresh started",
 		"collection_id", collectionID,
-		"files_enqueued", len(tasks),
+		"files_enqueued", len(indexedFiles),
 	)
 
 	return nil

@@ -1,20 +1,38 @@
 import { notify } from '../utils.mjs';
-import { getIndexerStatus, getIndexerErrors, pauseIndexer, resumeIndexer, updateIndexerConcurrency } from '../api/admin-api.mjs';
+import { getIndexerStatus, getIndexerErrors } from '../api/admin-api.mjs';
 
 import sheet from "./styles/pl-admin-indexer.css" with { type: "css" };
 
-// TODO: Replace polling with SSE for live updates
-// Implementation plan:
-// - Server: GET /api/admin/indexer/events (SSE endpoint, auth via refresh token cookie)
-// - Single EventSource connection carrying named event types:
-//   event: status  -> { processingCnt, pendingCnt, completedCnt, failedCnt, paused, ... }
-//   event: activity -> { action: 'start'|'end'|'error', task: '...', duration?: ... }
-// - Server subscribes to indexerEvents emitter (start, end, error, start_batch, all_done)
-//   and pushes status snapshot after each event
-// - Client: EventSource opened on connectedCallback, closed on disconnectedCallback
-//   source.addEventListener('status', ...) replaces polling
-//   source.addEventListener('activity', ...) feeds a live scrolling activity log
-// - Throttle status pushes to max 1/second if indexer is very active
+// Display-only view of the staged indexing pipeline. Everything is derived from
+// getIndexerStatus, which returns the four cross-stage aggregate counters plus a
+// per-stage `stages` map (pending, active, completed, failed, paused,
+// gatedClosed, maxConcurrency). Per-stage and global controls (pause/resume,
+// concurrency) are intentionally not wired here yet -- a later pass adds them.
+//
+// TODO: Replace polling with SSE for live updates (see prior plan); add per-stage
+// controls once the control UX is designed.
+
+// Fixed data-flow order for displaying stage cards (matches the pipeline graph).
+const STAGE_ORDER = [
+  'bring-to-collection',
+  'geo-lookup',
+  'generate-video-thumbnail',
+  'generate-image-thumbnails',
+  'face-recognition',
+  'image-encoding',
+  'video-compression',
+];
+
+// Short, friendly labels for the stage cards.
+const STAGE_LABELS = {
+  'bring-to-collection': 'Bring to Collection',
+  'geo-lookup': 'Geo Lookup',
+  'generate-video-thumbnail': 'Video Thumbnail',
+  'generate-image-thumbnails': 'Image Thumbnails',
+  'face-recognition': 'Face Recognition',
+  'image-encoding': 'Image Encoding',
+  'video-compression': 'Video Compression',
+};
 
 class PlAdminIndexer extends HTMLElement {
 
@@ -31,24 +49,14 @@ class PlAdminIndexer extends HTMLElement {
           <sl-icon-button id="refresh-btn" name="arrow-clockwise" label="Refresh"></sl-icon-button>
         </div>
 
-        <!-- Status Panel -->
+        <!-- Aggregate summary -->
         <div class="section">
-          <h3 class="section-title">Status (since last restart)</h3>
-          <div class="status-grid status-row-config">
+          <h3 class="section-title">Overall (since last restart)</h3>
+          <div class="status-grid status-row-counters">
             <div class="status-card">
               <div class="status-label">State</div>
               <div class="status-value" id="state-value">--</div>
             </div>
-            <div class="status-card">
-              <div class="status-label">Mode</div>
-              <div class="status-value" id="mode-value">--</div>
-            </div>
-            <div class="status-card" id="target-concurrency-card" style="display:none">
-              <div class="status-label">Target Concurrency</div>
-              <div class="status-value" id="target-concurrency-value">--</div>
-            </div>
-          </div>
-          <div class="status-grid status-row-counters">
             <div class="status-card">
               <div class="status-label">Processing</div>
               <div class="status-value" id="processing-value">--</div>
@@ -66,29 +74,13 @@ class PlAdminIndexer extends HTMLElement {
               <div class="status-value" id="failed-value">--</div>
             </div>
           </div>
-
-          <div class="queue-breakdown" id="queue-breakdown">>
-            <span class="queue-label">Queue:</span>
-            <sl-badge variant="danger" pill id="queue-high">high: 0</sl-badge>
-            <sl-badge variant="primary" pill id="queue-normal">normal: 0</sl-badge>
-            <sl-badge variant="neutral" pill id="queue-low">low: 0</sl-badge>
-          </div>
         </div>
 
-        <!-- Controls -->
+        <!-- Per-stage cards -->
         <div class="section">
-          <h3 class="section-title">Controls</h3>
-          <div class="controls-row">
-            <sl-button id="pause-resume-btn" variant="primary" size="small">
-              <sl-icon slot="prefix" id="pause-resume-icon" name="pause-circle"></sl-icon>
-              <span id="pause-resume-label">Pause</span>
-            </sl-button>
-
-            <div class="concurrency-control">
-              <label for="concurrency-input">Max Concurrency:</label>
-              <sl-input id="concurrency-input" type="number" size="small" min="1" max="32" style="width:80px"></sl-input>
-              <sl-button id="concurrency-btn" size="small" variant="neutral">Apply</sl-button>
-            </div>
+          <h3 class="section-title">Stages</h3>
+          <div class="stage-grid" id="stage-grid">
+            <div class="empty-state">Loading stages...</div>
           </div>
         </div>
 
@@ -114,25 +106,13 @@ class PlAdminIndexer extends HTMLElement {
 
   connectedCallback() {
     this.shadowRoot.appendChild(this.constructor.template.content.cloneNode(true));
-    this.#setupEventListeners();
+    this.shadowRoot.getElementById('refresh-btn').addEventListener('click', () => this.#refresh());
     this.#refresh();
     this.#startPolling();
   }
 
   disconnectedCallback() {
     this.#stopPolling();
-  }
-
-  #setupEventListeners() {
-    this.shadowRoot.getElementById('refresh-btn').addEventListener('click', () => this.#refresh());
-
-    this.shadowRoot.getElementById('pause-resume-btn').addEventListener('click', () => this.#togglePauseResume());
-
-    this.shadowRoot.getElementById('concurrency-btn').addEventListener('click', () => this.#updateConcurrency());
-
-    this.shadowRoot.getElementById('concurrency-input').addEventListener('keyup', (e) => {
-      if (e.key === 'Enter') this.#updateConcurrency();
-    });
   }
 
   #startPolling() {
@@ -162,57 +142,78 @@ class PlAdminIndexer extends HTMLElement {
   #renderStatus() {
     const s = this.#status;
 
-    // State
+    // Overall state derived from the aggregate counters.
     const stateEl = this.shadowRoot.getElementById('state-value');
-    if (s.paused) {
-      stateEl.textContent = 'Paused';
-      stateEl.className = 'status-value state-paused';
-    } else if (s.processingCnt > 0) {
+    if ((s.processingCnt ?? 0) > 0) {
       stateEl.textContent = 'Running';
       stateEl.className = 'status-value state-running';
+    } else if ((s.pendingCnt ?? 0) > 0) {
+      stateEl.textContent = 'Waiting';
+      stateEl.className = 'status-value state-paused';
     } else {
       stateEl.textContent = 'Idle';
       stateEl.className = 'status-value state-idle';
     }
 
-    // Counters
     this.shadowRoot.getElementById('processing-value').textContent = s.processingCnt ?? '--';
     this.shadowRoot.getElementById('pending-value').textContent = s.pendingCnt ?? '--';
     this.shadowRoot.getElementById('completed-value').textContent = s.completedCnt ?? '--';
     this.shadowRoot.getElementById('failed-value').textContent = s.failedCnt ?? '--';
-    this.shadowRoot.getElementById('mode-value').textContent = s.isDynamic ? 'Dynamic' : 'Static';
 
-    const targetCard = this.shadowRoot.getElementById('target-concurrency-card');
-    if (s.isDynamic) {
-      targetCard.style.display = '';
-      this.shadowRoot.getElementById('target-concurrency-value').textContent = s.dynamicTargetConcurrency ?? '--';
-    } else {
-      targetCard.style.display = 'none';
+    this.#renderStages(s.stages || {});
+  }
+
+  #renderStages(stages) {
+    const grid = this.shadowRoot.getElementById('stage-grid');
+
+    // Preserve fixed data-flow order; append any unknown stages at the end.
+    const names = [
+      ...STAGE_ORDER.filter(n => stages[n]),
+      ...Object.keys(stages).filter(n => !STAGE_ORDER.includes(n)),
+    ];
+
+    if (names.length === 0) {
+      grid.innerHTML = '<div class="empty-state">No stages</div>';
+      return;
     }
 
-    // Queue breakdown
-    if (s.queueSizes) {
-      this.shadowRoot.getElementById('queue-high').textContent = `high: ${s.queueSizes.high}`;
-      this.shadowRoot.getElementById('queue-normal').textContent = `normal: ${s.queueSizes.normal}`;
-      this.shadowRoot.getElementById('queue-low').textContent = `low: ${s.queueSizes.low}`;
+    grid.innerHTML = '';
+    for (const name of names) {
+      grid.appendChild(this.#stageCard(name, stages[name]));
     }
+  }
 
-    // Concurrency input (shows maxConcurrency, which is the adjustable value)
-    const concInput = this.shadowRoot.getElementById('concurrency-input');
-    if (document.activeElement !== concInput && this.shadowRoot.activeElement !== concInput) {
-      concInput.value = s.maxConcurrency ?? '';
-    }
+  #stageCard(name, st) {
+    const card = document.createElement('div');
+    card.className = 'stage-card';
 
-    // Pause/Resume button
-    const icon = this.shadowRoot.getElementById('pause-resume-icon');
-    const label = this.shadowRoot.getElementById('pause-resume-label');
-    if (s.paused) {
-      icon.name = 'play-circle';
-      label.textContent = 'Resume';
-    } else {
-      icon.name = 'pause-circle';
-      label.textContent = 'Pause';
-    }
+    const { label, variant } = this.#stageState(st);
+
+    const label_ = STAGE_LABELS[name] || name;
+    card.innerHTML = // html
+      `
+      <div class="stage-head">
+        <span class="stage-name">${label_}</span>
+        <sl-badge variant="${variant}" pill>${label}</sl-badge>
+      </div>
+      <div class="stage-counters">
+        <span title="Active">▶ ${st.active ?? 0}</span>
+        <span title="Pending">⋯ ${st.pending ?? 0}</span>
+        <span title="Completed" class="${(st.completed ?? 0) > 0 ? 'completed' : ''}">✓ ${st.completed ?? 0}</span>
+        <span title="Failed" class="${(st.failed ?? 0) > 0 ? 'failed' : ''}">✕ ${st.failed ?? 0}</span>
+      </div>
+      <div class="stage-meta">concurrency ${st.maxConcurrency ?? '--'}</div>
+    `;
+    return card;
+  }
+
+  // stageState maps a stage snapshot to a display chip. Order of precedence:
+  // paused (admin) > gated (waiting on an upstream) > running > idle.
+  #stageState(st) {
+    if (st.paused) return { label: 'Paused', variant: 'warning' };
+    if (st.gatedClosed) return { label: 'Gated', variant: 'primary' };
+    if ((st.active ?? 0) > 0) return { label: 'Running', variant: 'success' };
+    return { label: 'Idle', variant: 'neutral' };
   }
 
   async #fetchErrors() {
@@ -251,36 +252,6 @@ class PlAdminIndexer extends HTMLElement {
     }
 
     container.appendChild(list);
-  }
-
-  async #togglePauseResume() {
-    try {
-      if (this.#status.paused) {
-        await resumeIndexer();
-      } else {
-        await pauseIndexer();
-      }
-      notify(this.#status.paused ? 'Indexer resumed' : 'Indexer paused', 'success');
-      await this.#fetchStatus();
-    } catch (err) {
-      notify('Failed to toggle indexer state', 'danger');
-    }
-  }
-
-  async #updateConcurrency() {
-    const input = this.shadowRoot.getElementById('concurrency-input');
-    const value = parseInt(input.value, 10);
-    if (!value || value < 1 || value > 32) {
-      notify('Concurrency must be between 1 and 32', 'warning');
-      return;
-    }
-    try {
-      await updateIndexerConcurrency(value);
-      notify(`Concurrency updated to ${value}`, 'success');
-      await this.#fetchStatus();
-    } catch (err) {
-      notify('Failed to update concurrency', 'danger');
-    }
   }
 }
 

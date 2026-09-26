@@ -85,40 +85,57 @@
   color: var(--text-secondary);
 }
 
-/* --- Queue Breakdown --- */
+/* --- Per-stage cards (dense) --- */
 
-.queue-breakdown {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-top: 0.75rem;
-  padding: 0.5rem 0;
+.stage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.6rem;
 }
 
-.queue-label {
+.stage-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  padding: 0.6rem 0.7rem;
+}
+
+.stage-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+
+.stage-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.stage-counters {
+  display: flex;
+  gap: 0.75rem;
   font-size: 0.8rem;
   color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
 }
 
-/* --- Controls --- */
-
-.controls-row {
-  display: flex;
-  align-items: center;
-  gap: 1.5rem;
-  flex-wrap: wrap;
+.stage-counters .completed {
+  color: var(--sl-color-success-600);
+  font-weight: 600;
 }
 
-.concurrency-control {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+.stage-counters .failed {
+  color: var(--sl-color-danger-600);
+  font-weight: 600;
 }
 
-.concurrency-control label {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  white-space: nowrap;
+.stage-meta {
+  margin-top: 0.35rem;
+  font-size: 0.7rem;
+  color: var(--text-muted);
 }
 
 /* --- Errors --- */

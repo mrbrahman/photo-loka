@@ -1,12 +1,14 @@
 package admin
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 
 	"photo-loka/internal/config"
+	"photo-loka/internal/pipeline"
 )
 
 // RegisterConfigRoutes registers config management routes on the given router group.
@@ -15,7 +17,11 @@ func RegisterConfigRoutes(rg *gin.RouterGroup) {
 	rg.PUT("/updateConfig", updateConfig)
 }
 
-// getConfig returns the current runtime configuration.
+// getConfig returns the current runtime configuration (flat scalar settings).
+// The pipeline config (pipelineConfig) is a separate JSON blob that is not
+// surfaced here yet -- there is no UI for editing it, and applying it without a
+// restart is not implemented. It can still be read/written via updateConfig
+// with key "pipelineConfig" when needed.
 // GET /api/admin/getConfig
 func getConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, config.Runtime)
@@ -52,7 +58,13 @@ func updateConfig(c *gin.Context) {
 		return
 	}
 
-	// Return the actual stored value (after type conversion) rather than the raw input
+	// Return the actual stored value. pipelineConfig lives outside RuntimeConfig,
+	// so echo back its stored JSON; everything else comes from RuntimeConfig.Get.
+	if body.Key == "pipelineConfig" {
+		stored, _ := pipeline.GetConfigJSON()
+		c.JSON(http.StatusOK, gin.H{"key": body.Key, "value": stored})
+		return
+	}
 	storedValue, _ := config.Runtime.Get(body.Key)
 	c.JSON(http.StatusOK, gin.H{
 		"key":   body.Key,
@@ -107,12 +119,15 @@ func dispatchConfigUpdate(key string, value interface{}) error {
 			return err
 		}
 		return rc.SetMaxConcurrency(n)
-	case "performFaceRecognition":
-		b, err := asBool(key, value)
+	case "pipelineConfig":
+		// The value is a JSON object (stages array). Re-marshal it to text and
+		// hand to the pipeline package to validate + persist. Takes effect on
+		// restart (static apply; dynamic re-wire is a later enhancement).
+		raw, err := json.Marshal(value)
 		if err != nil {
-			return err
+			return fmt.Errorf("config key %q: cannot serialize value: %w", key, err)
 		}
-		return rc.SetPerformFaceRecognition(b)
+		return pipeline.SetConfigJSON(string(raw))
 	default:
 		return fmt.Errorf("unknown config key: %q", key)
 	}

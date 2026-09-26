@@ -12,19 +12,16 @@ import (
 	"photo-loka/internal/frames"
 	"photo-loka/internal/geo"
 	"photo-loka/internal/jobs"
-	"photo-loka/internal/queue"
+	"photo-loka/internal/pipeline"
 	"photo-loka/internal/scheduler"
 )
 
 // Deps bundles the remaining stateful collaborators that startup/shutdown act
-// on. After the singleton folds only the three work queues still flow through
-// here (watchers, scheduled indexing, scheduler, rate limiter, and frames are
-// package-level and called directly).
-type Deps struct {
-	IndexQueue *queue.Queue
-	VideoQueue *queue.Queue
-	GeoQueue   *queue.Queue
-}
+// on. Indexing work now runs through per-stage queues owned by the pipeline
+// (including the geo-lookup stage, which reuses the geo queue), all stopped via
+// pipeline.P.StopAll. Nothing queue-shaped needs to flow through here anymore,
+// but the struct is kept as the startup/shutdown seam.
+type Deps struct{}
 
 // StartupActions runs the once-at-boot orchestration: start (or mark stopped)
 // intake watchers and scheduled indexing per runtime config, load frames and
@@ -68,7 +65,7 @@ func ShutdownCleanup(d Deps) {
 	jobs.StopAll()          // stop file watchers
 	jobs.StopAllScheduled() // stop scheduled intake cron jobs
 	geo.SaveRateLimiter()   // persist rate limit counters for next startup
-	d.IndexQueue.Stop()
-	d.VideoQueue.Stop()
-	d.GeoQueue.Stop()
+	if pipeline.P != nil {
+		pipeline.P.StopAll() // stop all per-stage queues (includes geo-lookup)
+	}
 }

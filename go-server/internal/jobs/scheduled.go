@@ -76,13 +76,10 @@ func ScheduleForCollection(col *collections.Collection) {
 
 		err := scheduler.AddJob(jobName, schedule, func() {
 			// Check if indexer is idle before starting intake indexing
-			status := indexing.IndexQueue().GetStatus()
-			if status.Pending+status.Active > 0 {
+			if indexing.IndexerBusy() {
 				siLogger().Debug("skipping scheduled intake - indexer busy",
 					"collection_id", collectionID,
 					"path", intakePath,
-					"pending", status.Pending,
-					"active", status.Active,
 				)
 				return
 			}
