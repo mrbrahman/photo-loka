@@ -2,6 +2,7 @@ import { notify } from '../utils.mjs';
 import {
   getIndexerStatus, getIndexerErrors,
   pauseStage, resumeStage, setStageConcurrency,
+  getPipelineConfig, validatePipelineConfig, applyPipelineConfig,
 } from '../api/admin-api.mjs';
 
 import sheet from "./styles/pl-admin-indexer.css" with { type: "css" };
@@ -56,30 +57,14 @@ class PlAdminIndexer extends HTMLElement {
           <sl-icon-button id="refresh-btn" name="arrow-clockwise" label="Refresh"></sl-icon-button>
         </div>
 
-        <!-- Aggregate summary -->
+        <!-- Pipeline config editor (raw). Loaded on open; validate/apply live. -->
         <div class="section">
-          <h3 class="section-title">Overall (since last restart)</h3>
-          <div class="status-grid status-row-counters">
-            <div class="status-card">
-              <div class="status-label">State</div>
-              <div class="status-value" id="state-value">--</div>
-            </div>
-            <div class="status-card">
-              <div class="status-label">Processing</div>
-              <div class="status-value" id="processing-value">--</div>
-            </div>
-            <div class="status-card">
-              <div class="status-label">Pending</div>
-              <div class="status-value" id="pending-value">--</div>
-            </div>
-            <div class="status-card">
-              <div class="status-label">Completed</div>
-              <div class="status-value" id="completed-value">--</div>
-            </div>
-            <div class="status-card">
-              <div class="status-label">Failed</div>
-              <div class="status-value" id="failed-value">--</div>
-            </div>
+          <h3 class="section-title">Pipeline config</h3>
+          <textarea id="config-text" class="config-text" rows="14" spellcheck="false" placeholder="Loading current config..."></textarea>
+          <div class="config-controls">
+            <sl-button id="config-load" size="small" variant="neutral">Reload</sl-button>
+            <sl-button id="config-validate" size="small" variant="neutral">Validate</sl-button>
+            <sl-button id="config-apply" size="small" variant="primary">Apply live</sl-button>
           </div>
         </div>
 
@@ -114,6 +99,14 @@ class PlAdminIndexer extends HTMLElement {
   connectedCallback() {
     this.shadowRoot.appendChild(this.constructor.template.content.cloneNode(true));
     this.shadowRoot.getElementById('refresh-btn').addEventListener('click', () => this.#refresh());
+
+    // Raw config editor (temporary testing tool).
+    const root = this.shadowRoot;
+    root.getElementById('config-load').addEventListener('click', () => this.#loadConfig());
+    root.getElementById('config-validate').addEventListener('click', () => this.#validateConfig());
+    root.getElementById('config-apply').addEventListener('click', () => this.#applyConfig());
+
+    this.#loadConfig(); // pre-load the current config into the editor
     this.#refresh();
     this.#startPolling();
   }
@@ -147,27 +140,9 @@ class PlAdminIndexer extends HTMLElement {
   }
 
   #renderStatus() {
-    const s = this.#status;
-
-    // Overall state derived from the aggregate counters.
-    const stateEl = this.shadowRoot.getElementById('state-value');
-    if ((s.processingCnt ?? 0) > 0) {
-      stateEl.textContent = 'Running';
-      stateEl.className = 'status-value state-running';
-    } else if ((s.pendingCnt ?? 0) > 0) {
-      stateEl.textContent = 'Waiting';
-      stateEl.className = 'status-value state-paused';
-    } else {
-      stateEl.textContent = 'Idle';
-      stateEl.className = 'status-value state-idle';
-    }
-
-    this.shadowRoot.getElementById('processing-value').textContent = s.processingCnt ?? '--';
-    this.shadowRoot.getElementById('pending-value').textContent = s.pendingCnt ?? '--';
-    this.shadowRoot.getElementById('completed-value').textContent = s.completedCnt ?? '--';
-    this.shadowRoot.getElementById('failed-value').textContent = s.failedCnt ?? '--';
-
-    this.#renderStages(s.stages || {});
+    // Only per-stage cards are shown now; the aggregate "Overall" panel was
+    // removed (per-stage numbers are what matter).
+    this.#renderStages(this.#status.stages || {});
   }
 
   #renderStages(stages) {
@@ -329,6 +304,51 @@ class PlAdminIndexer extends HTMLElement {
       notify(`Failed to set concurrency for ${name}`, 'danger');
       console.error(err);
     }
+  }
+
+  // --- Raw config editor (temporary testing tool) ---
+
+  #configText() {
+    return this.shadowRoot.getElementById('config-text');
+  }
+
+  async #loadConfig() {
+    try {
+      const cfg = await getPipelineConfig();
+      this.#configText().value = JSON.stringify(cfg, null, 2);
+      notify('Loaded current pipeline config', 'success');
+    } catch (err) {
+      notify(this.#errMsg(err, 'Failed to load config'), 'danger');
+    }
+  }
+
+  async #validateConfig() {
+    const text = this.#configText().value.trim();
+    if (!text) { notify('Config is empty', 'warning'); return; }
+    try {
+      await validatePipelineConfig(text);
+      notify('Config is valid', 'success');
+    } catch (err) {
+      notify(this.#errMsg(err, 'Config is invalid'), 'danger');
+    }
+  }
+
+  async #applyConfig() {
+    const text = this.#configText().value.trim();
+    if (!text) { notify('Config is empty', 'warning'); return; }
+    try {
+      await applyPipelineConfig(text);
+      notify('Config applied live', 'success');
+      await this.#fetchStatus(); // reflect the new gating/enable/concurrency
+    } catch (err) {
+      notify(this.#errMsg(err, 'Failed to apply config'), 'danger');
+    }
+  }
+
+  // errMsg extracts the server's error message (throwError rejects with the
+  // parsed JSON body: { error: { message } }), falling back to a default.
+  #errMsg(err, fallback) {
+    return err?.error?.message ? `${fallback}: ${err.error.message}` : fallback;
   }
 
   async #fetchErrors() {

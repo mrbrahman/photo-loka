@@ -102,9 +102,18 @@ func (p *Pipeline) routeDownstreams(stage *Stage, item *PipelineItem) []*Stage {
 }
 
 // enabledStage returns the named stage only if it exists and is enabled;
-// otherwise nil. Used by routing to skip disabled optional stages.
+// otherwise nil. Used by routing to skip disabled optional stages. The Enabled
+// read is guarded by the gate lock so a live Apply cannot race it. (The stage
+// set itself is fixed after construction, so the map lookup needs no lock.)
 func (p *Pipeline) enabledStage(name string) *Stage {
-	if s, ok := p.stages[name]; ok && s.Enabled {
+	s, ok := p.stages[name]
+	if !ok {
+		return nil
+	}
+	p.gateMu.RLock()
+	enabled := s.Enabled
+	p.gateMu.RUnlock()
+	if enabled {
 		return s
 	}
 	return nil

@@ -42,49 +42,6 @@
   gap: 0.5rem;
 }
 
-/* --- Status Grid --- */
-
-.status-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 0.75rem;
-  margin-bottom: 0.75rem;
-}
-
-.status-card {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  padding: 0.75rem;
-  text-align: center;
-}
-
-.status-label {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-muted);
-  margin-bottom: 0.25rem;
-}
-
-.status-value {
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.state-running {
-  color: var(--sl-color-success-600);
-}
-
-.state-paused {
-  color: var(--sl-color-warning-600);
-}
-
-.state-idle {
-  color: var(--text-secondary);
-}
-
 /* --- Per-stage cards (dense) --- */
 
 .stage-grid {
@@ -169,6 +126,34 @@
 
 .stage-controls sl-icon-button {
   font-size: 1.1rem;
+}
+
+/* --- Raw config editor (temporary) --- */
+
+.config-text {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: Consolas, var(--sl-font-mono);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  padding: 0.6rem 0.7rem;
+  resize: vertical;
+}
+
+.config-text:focus {
+  outline: none;
+  border-color: var(--sl-color-primary-500, #0284c7);
+}
+
+.config-controls {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
 }
 
 /* --- Errors --- */

@@ -232,6 +232,39 @@ export async function setStageConcurrency(name, n) {
   return await res.json();
 }
 
+// --- Pipeline config (whole-config get / validate / apply) ---
+
+// getPipelineConfig returns the current pipeline config JSON.
+export async function getPipelineConfig() {
+  let res = await authenticatedFetch('/api/admin/pipeline/config');
+  if (!res.ok) return throwError(res);
+  return await res.json();
+}
+
+// validatePipelineConfig checks a config without applying it. Resolves to the
+// server's {valid:true} on success; throws the error body on failure.
+export async function validatePipelineConfig(configText) {
+  let res = await authenticatedFetch('/api/admin/pipeline/config/validate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: configText,
+  });
+  if (!res.ok) return throwError(res);
+  return await res.json();
+}
+
+// applyPipelineConfig applies a whole config live (validate + apply + persist).
+// Returns the applied per-stage status.
+export async function applyPipelineConfig(configText) {
+  let res = await authenticatedFetch('/api/admin/pipeline/config', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: configText,
+  });
+  if (!res.ok) return throwError(res);
+  return await res.json();
+}
+
 // --- Dashboard ---
 
 export async function getDashboardStats() {

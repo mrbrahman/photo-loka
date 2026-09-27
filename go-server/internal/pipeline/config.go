@@ -221,19 +221,6 @@ func GetConfigJSON() (json.RawMessage, error) {
 	return json.RawMessage(raw), nil
 }
 
-// SetConfigJSON validates and persists a new pipeline config JSON to
-// runtime_config. It does NOT re-wire the running pipeline: config changes take
-// effect on restart (static apply; dynamic re-wire is a later enhancement).
-// Returns an error if the JSON is invalid or fails validation.
-func SetConfigJSON(raw string) error {
-	if _, err := ParsePipelineConfig(raw); err != nil {
-		return err
-	}
-	// Store the canonical, re-marshaled form so we persist validated JSON.
-	cfg, _ := ParsePipelineConfig(raw)
-	return persistConfig(cfg)
-}
-
 // persistConfig writes the (already-validated) config to the runtime_config
 // pipelineConfig row.
 func persistConfig(cfg PipelineConfig) error {

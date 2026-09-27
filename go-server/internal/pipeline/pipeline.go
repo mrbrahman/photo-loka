@@ -7,6 +7,7 @@ package pipeline
 
 import (
 	"log/slog"
+	"sync"
 
 	"photo-loka/internal/collections"
 	"photo-loka/internal/database"
@@ -31,6 +32,13 @@ const (
 type Pipeline struct {
 	stages map[string]*Stage
 	entry  *Stage
+
+	// gateMu guards the mutable, config-driven gate state that Apply rewrites at
+	// runtime: each Stage's GatedBy and Enabled, and the queue gate hooks set by
+	// wireGates. Hot-path readers (the CanDispatch predicate via upstreamBusy,
+	// and routing's Enabled checks) take RLock; Apply takes Lock. The stage set
+	// and data-flow Downstreams are fixed after construction and need no lock.
+	gateMu sync.RWMutex
 }
 
 // P is the package-level pipeline singleton, built by Init.
@@ -195,13 +203,30 @@ func (p *Pipeline) buildStages(funcs stageFuncs, cfg PipelineConfig, qf queueFac
 // wireGates installs each stage's CanDispatch predicate and each upstream's
 // onDrained kick. Safe to call once at startup.
 func (p *Pipeline) wireGates() {
+	// wireGates is called both at startup and on every live Apply, so it must be
+	// idempotent: first clear ALL hooks (so a stage that is no longer gated stops
+	// declining dispatch and no longer kicks), then set them for currently-gated
+	// stages. Callers hold p.gateMu for writing; the predicate/kick closures run
+	// later on dispatch goroutines and take p.gateMu.RLock themselves.
+	for _, s := range p.stages {
+		s.Queue.SetCanDispatch(nil)
+		s.Queue.SetOnDrained(nil)
+	}
+
 	// Build reverse index: upstream -> stages gated behind it, so an upstream's
 	// drained signal knows whom to kick.
 	dependents := make(map[*Stage][]*Stage)
 	for _, s := range p.stages {
 		stage := s
 		if len(stage.GatedBy) > 0 {
-			stage.Queue.SetCanDispatch(func() bool { return !stage.upstreamBusy() })
+			// The predicate reads GatedBy (via upstreamBusy) at dispatch time;
+			// take the read lock so a concurrent Apply cannot race the swap.
+			stage.Queue.SetCanDispatch(func() bool {
+				p.gateMu.RLock()
+				busy := stage.upstreamBusy()
+				p.gateMu.RUnlock()
+				return !busy
+			})
 			for _, up := range stage.GatedBy {
 				dependents[up] = append(dependents[up], stage)
 			}
@@ -214,6 +239,77 @@ func (p *Pipeline) wireGates() {
 				g.Queue.Kick()
 			}
 		})
+	}
+}
+
+// Apply re-applies a pipeline config to the RUNNING pipeline without a restart:
+// per-stage Enabled, concurrency, and the gate graph (GatedBy) are updated in
+// place, then the gate hooks are re-wired and every stage queue kicked so it
+// re-evaluates its gate immediately.
+//
+// Semantics (see design discussion):
+//   - Nothing running is killed; gating only affects what is *dispatched* next.
+//   - A newly-gated stage stops starting new tasks right away (its in-flight
+//     tasks finish); a newly-ungated stage may start immediately.
+//   - The config is validated first; on any validation error the running
+//     pipeline is left completely unchanged (atomic reject).
+//
+// It also persists the applied (canonical) config so it survives restart.
+func (p *Pipeline) Apply(cfg PipelineConfig) error {
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
+	p.applyLive(cfg)
+	if err := persistConfig(cfg); err != nil {
+		// The live state is already updated; report the persistence failure so
+		// the caller knows it will not survive a restart.
+		return err
+	}
+	plLogger().Info("pipeline config applied live")
+	return nil
+}
+
+// applyLive performs the in-place re-apply (enable, concurrency, gate graph,
+// re-wire, kick) without validation or persistence. cfg is assumed valid.
+// Separated from Apply so tests can exercise the live re-wire without a DB.
+func (p *Pipeline) applyLive(cfg PipelineConfig) {
+	byName := cfg.byName()
+
+	p.gateMu.Lock()
+	// Update enable flag and gate edges per stage. Concurrency is applied via
+	// the queue (its own lock); safe to call under gateMu (no lock inversion).
+	for name, s := range p.stages {
+		sc := byName[name]
+		s.Enabled = sc.enabled()
+		// Only resize the queue when concurrency actually changes: SetConcurrency
+		// replaces the semaphore, so calling it needlessly on every apply churns
+		// the dispatch path.
+		if n := sc.concurrency(); n != s.Queue.GetStatus().MaxConcurrency {
+			s.Queue.SetConcurrency(n)
+		}
+		// Rebuild GatedBy from scratch (a stage may have lost gates).
+		s.GatedBy = nil
+	}
+	for _, sc := range cfg.Stages {
+		if len(sc.GatedBy) == 0 {
+			continue
+		}
+		s := p.stages[sc.Name]
+		for _, up := range sc.GatedBy {
+			if u, ok := p.stages[up]; ok {
+				s.GatedBy = append(s.GatedBy, u)
+			}
+		}
+	}
+	// Re-point the gate hooks to match the new graph (idempotent; clears hooks
+	// on stages that are no longer gated).
+	p.wireGates()
+	p.gateMu.Unlock()
+
+	// Kick every stage so a stage that just became ungated (or whose gate is
+	// already open) re-evaluates and dispatches any pending work immediately.
+	for _, s := range p.stages {
+		s.Queue.Kick()
 	}
 }
 
@@ -249,16 +345,6 @@ func (p *Pipeline) StopAll() {
 	}
 }
 
-// setEntryConcurrency adjusts the entry (bring-to-collection) and thumbnail
-// stages' concurrency, backing the legacy "indexer concurrency" knob.
-func (p *Pipeline) setEntryConcurrency(n int) {
-	for _, name := range []string{StageBringToCollection, StageImageThumbnails, StageVideoThumbnail} {
-		if s, ok := p.stages[name]; ok {
-			s.Queue.SetConcurrency(n)
-		}
-	}
-}
-
 // StageStatus returns a status snapshot for one stage, or nil if the name is
 // unknown. This is the per-stage building block the eventual per-stage API and
 // the geo endpoints consume; legacyStatus aggregates over it.
@@ -269,6 +355,9 @@ func (p *Pipeline) StageStatus(name string) map[string]interface{} {
 	}
 	st := s.Queue.GetStatus()
 	high, normal, low := s.Queue.QueueSizes()
+	p.gateMu.RLock()
+	gatedClosed := s.upstreamBusy()
+	p.gateMu.RUnlock()
 	return map[string]interface{}{
 		"stage":          name,
 		"pending":        st.Pending,
@@ -277,7 +366,7 @@ func (p *Pipeline) StageStatus(name string) map[string]interface{} {
 		"failed":         st.Failed,
 		"paused":         st.IsPaused,
 		"maxConcurrency": st.MaxConcurrency,
-		"gatedClosed":    s.upstreamBusy(),
+		"gatedClosed":    gatedClosed,
 		"queueSizes":     map[string]int{"high": high, "normal": normal, "low": low},
 	}
 }

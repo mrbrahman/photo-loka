@@ -114,14 +114,22 @@ func dispatchConfigUpdate(key string, value interface{}) error {
 		}
 		return rc.SetVideoEncoder(s)
 	case "pipelineConfig":
-		// The value is a JSON object (stages array). Re-marshal it to text and
-		// hand to the pipeline package to validate + persist. Takes effect on
-		// restart (static apply; dynamic re-wire is a later enhancement).
+		// The value is a JSON object (stages array). Re-marshal it to text,
+		// parse+validate, and apply it LIVE to the running pipeline (which also
+		// persists it). Gating/enable changes take effect immediately; invalid
+		// config is rejected and the running pipeline is left unchanged.
 		raw, err := json.Marshal(value)
 		if err != nil {
 			return fmt.Errorf("config key %q: cannot serialize value: %w", key, err)
 		}
-		return pipeline.SetConfigJSON(string(raw))
+		cfg, err := pipeline.ParsePipelineConfig(string(raw))
+		if err != nil {
+			return err
+		}
+		if pipeline.P == nil {
+			return fmt.Errorf("pipeline not initialized")
+		}
+		return pipeline.P.Apply(cfg)
 	default:
 		return fmt.Errorf("unknown config key: %q", key)
 	}

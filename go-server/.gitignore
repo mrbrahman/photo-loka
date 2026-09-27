@@ -8,6 +8,7 @@ photo-loka
 
 # Environment
 .env
+token.txt
 
 # Runtime config (user-specific)
 runtime-config.json

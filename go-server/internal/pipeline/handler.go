@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"io"
 	"net/http"
 	"strconv"
 
@@ -19,6 +20,9 @@ import (
 func RegisterRoutes(rg *gin.RouterGroup) {
 	g := rg.Group("/pipeline")
 	g.GET("/status", getStatus)
+	g.GET("/config", getConfig)
+	g.PUT("/config", putConfig)
+	g.POST("/config/validate", validateConfig)
 	g.PUT("/stages/:name/concurrency/:n", setStageConcurrency)
 	g.PUT("/stages/:name/pause", pauseStage)
 	g.PUT("/stages/:name/resume", resumeStage)
@@ -46,6 +50,84 @@ func getStatus(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"stages": P.Status()})
+}
+
+// getConfig returns the current pipeline config JSON (concurrency/enable/gating).
+// GET /api/admin/pipeline/config
+func getConfig(c *gin.Context) {
+	raw, err := GetConfigJSON()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
+			"message": "failed to read pipeline config: " + err.Error(), "code": "CONFIG_READ_FAILED",
+		}})
+		return
+	}
+	c.Data(http.StatusOK, "application/json", raw)
+}
+
+// parseConfigBody reads the request body as pipeline config JSON, parses and
+// validates it, and returns it. On any problem (empty body, parse error, or
+// validation failure) it writes the appropriate 400 response and returns
+// ok=false. Shared by putConfig and validateConfig.
+func parseConfigBody(c *gin.Context) (PipelineConfig, bool) {
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
+			"message": "failed to read request body: " + err.Error(), "code": "BAD_BODY",
+		}})
+		return PipelineConfig{}, false
+	}
+	if len(body) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
+			"message": "empty body: send the full pipeline config JSON", "code": "EMPTY_BODY",
+		}})
+		return PipelineConfig{}, false
+	}
+	// ParsePipelineConfig both unmarshals and validates (unknown/missing stage,
+	// disabling a structural stage, unknown gatedBy, cyclic gate graph).
+	cfg, err := ParsePipelineConfig(string(body))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
+			"message": err.Error(), "code": "INVALID_CONFIG",
+		}})
+		return PipelineConfig{}, false
+	}
+	return cfg, true
+}
+
+// putConfig applies a whole new pipeline config to the running pipeline (live,
+// no restart) and persists it. The body is the full config JSON. Invalid config
+// (unknown/missing stage, disabling a structural stage, unknown gatedBy, or a
+// cyclic gate graph) is rejected and the running pipeline is left unchanged.
+// PUT /api/admin/pipeline/config
+func putConfig(c *gin.Context) {
+	if P == nil {
+		notReady(c)
+		return
+	}
+	cfg, ok := parseConfigBody(c)
+	if !ok {
+		return
+	}
+	if err := P.Apply(cfg); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
+			"message": "failed to apply config: " + err.Error(), "code": "APPLY_FAILED",
+		}})
+		return
+	}
+	// Echo back the applied per-stage status so the caller sees the effect.
+	c.JSON(http.StatusOK, gin.H{"stages": P.Status()})
+}
+
+// validateConfig checks a proposed pipeline config WITHOUT applying or
+// persisting it -- for a UI to validate before committing. Returns 200
+// {"valid": true} if it parses and validates, or 400 with the error otherwise.
+// POST /api/admin/pipeline/config/validate
+func validateConfig(c *gin.Context) {
+	if _, ok := parseConfigBody(c); !ok {
+		return // parseConfigBody already wrote the 400
+	}
+	c.JSON(http.StatusOK, gin.H{"valid": true})
 }
 
 // setStageConcurrency sets one stage's concurrency (live) and persists it to

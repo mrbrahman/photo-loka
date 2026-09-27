@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -33,6 +34,49 @@ func do(t *testing.T, r *gin.Engine, method, path string) *httptest.ResponseReco
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	return w
+}
+
+func doBody(t *testing.T, r *gin.Engine, method, path, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	return w
+}
+
+func TestHandler_ValidateConfig(t *testing.T) {
+	_, _ = setP(t)
+	r := newRouter()
+
+	// Valid config -> 200 {valid:true}.
+	valid, _ := json.Marshal(DefaultPipelineConfig())
+	w := doBody(t, r, http.MethodPost, "/api/admin/pipeline/config/validate", string(valid))
+	if w.Code != http.StatusOK {
+		t.Fatalf("valid config code = %d, want 200 (body=%s)", w.Code, w.Body.String())
+	}
+	var body struct {
+		Valid bool `json:"valid"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &body)
+	if !body.Valid {
+		t.Errorf("expected valid:true, got %s", w.Body.String())
+	}
+
+	// Cyclic gate graph -> 400.
+	cyclic := `{"stages":[
+		{"name":"bring-to-collection"},{"name":"geo-lookup"},
+		{"name":"generate-video-thumbnail"},{"name":"generate-image-thumbnails"},
+		{"name":"face-recognition","gatedBy":["image-encoding"]},
+		{"name":"image-encoding","gatedBy":["face-recognition"]},
+		{"name":"video-compression"}]}`
+	if w := doBody(t, r, http.MethodPost, "/api/admin/pipeline/config/validate", cyclic); w.Code != http.StatusBadRequest {
+		t.Errorf("cyclic config code = %d, want 400", w.Code)
+	}
+
+	// Empty body -> 400.
+	if w := doBody(t, r, http.MethodPost, "/api/admin/pipeline/config/validate", ""); w.Code != http.StatusBadRequest {
+		t.Errorf("empty body code = %d, want 400", w.Code)
+	}
 }
 
 func TestHandler_Status(t *testing.T) {

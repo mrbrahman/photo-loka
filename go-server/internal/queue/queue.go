@@ -104,16 +104,37 @@ func New(maxConcurrency int) *Queue {
 // SetCanDispatch installs an optional pre-dispatch predicate (gate hook). The
 // dispatch loop calls it before starting each task; if it returns false the
 // task is left pending and re-checked on the next notify. Pass nil to remove.
-// Wired once at startup by the orchestrator, so no locking is needed.
+// Guarded by q.mu so it can be re-pointed at runtime (dynamic gate re-wire)
+// without racing the dispatch loop's read.
 func (q *Queue) SetCanDispatch(fn func() bool) {
+	q.mu.Lock()
 	q.canDispatch = fn
+	q.mu.Unlock()
 }
 
 // SetOnDrained installs an optional callback fired on the busy->drained
 // transition (running+pending reaches zero after a task completes). Pass nil to
-// remove. Wired once at startup by the orchestrator.
+// remove. Guarded by q.mu (see SetCanDispatch).
 func (q *Queue) SetOnDrained(fn func()) {
+	q.mu.Lock()
 	q.onDrained = fn
+	q.mu.Unlock()
+}
+
+// getCanDispatch / getOnDrained read the hooks under the lock, so a concurrent
+// SetCanDispatch/SetOnDrained (live re-wire) cannot race the dispatch loop.
+func (q *Queue) getCanDispatch() func() bool {
+	q.mu.Lock()
+	fn := q.canDispatch
+	q.mu.Unlock()
+	return fn
+}
+
+func (q *Queue) getOnDrained() func() {
+	q.mu.Lock()
+	fn := q.onDrained
+	q.mu.Unlock()
+	return fn
 }
 
 // Kick nudges the dispatch loop to re-evaluate pending work (e.g. after a gated
@@ -268,8 +289,9 @@ func (q *Queue) drainQueue() {
 		// Respect the gate hook (Option A): if a gated upstream is busy, leave
 		// tasks pending and stop draining. We will be re-kicked via Kick() when
 		// the upstream drains (or on the next notify). Checked before dequeue so
-		// a task is not pulled out of the queue while the gate is closed.
-		if q.canDispatch != nil && !q.canDispatch() {
+		// a task is not pulled out of the queue while the gate is closed. Read
+		// under the lock so a live gate re-wire cannot race this.
+		if cd := q.getCanDispatch(); cd != nil && !cd() {
 			return
 		}
 
@@ -332,13 +354,16 @@ func (q *Queue) drainQueue() {
 				// On-drained signal: fire only on the busy->drained transition,
 				// i.e. this completion brought running to zero AND nothing is
 				// pending. This is the only moment a downstream gate can open,
-				// so it avoids waking gated stages on every completion.
-				if remaining == 0 && q.onDrained != nil {
-					q.mu.Lock()
-					pending := len(q.high) + len(q.normal) + len(q.low)
-					q.mu.Unlock()
-					if pending == 0 {
-						q.onDrained()
+				// so it avoids waking gated stages on every completion. The hook
+				// is read under the lock so a live gate re-wire cannot race it.
+				if remaining == 0 {
+					if od := q.getOnDrained(); od != nil {
+						q.mu.Lock()
+						pending := len(q.high) + len(q.normal) + len(q.low)
+						q.mu.Unlock()
+						if pending == 0 {
+							od()
+						}
 					}
 				}
 
