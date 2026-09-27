@@ -285,20 +285,41 @@ func (q *Queue) drainQueue() {
 			return
 		}
 
-		// Acquire semaphore slot (blocks if at max concurrency).
+		// Acquire a concurrency slot WITHOUT blocking. If the queue is at its
+		// limit, put the task back and stop draining; a task completion (which
+		// frees a slot and kicks q.notify) will re-drive the loop. Blocking here
+		// would be a bug: a task dequeued and parked on a full semaphore would
+		// later start even if the queue was paused in the meantime, breaking
+		// both the pause guarantee and the concurrency cap (rapid pause/resume
+		// could then run more tasks than maxConcurrency).
 		q.mu.Lock()
 		sem := q.sem
 		q.mu.Unlock()
 
 		select {
 		case sem <- struct{}{}:
-			// Got a slot, run the task.
-		case <-q.done:
-			// Queue stopping, put the task back.
-			q.mu.Lock()
-			q.high = append([]Task{task}, q.high...)
-			q.mu.Unlock()
+			// Got a slot.
+		default:
+			// At capacity: return the task and wait to be re-kicked.
+			q.requeueFront(task)
 			return
+		}
+
+		// Re-check pause/stop AFTER acquiring the slot but BEFORE launching, so a
+		// pause (or Stop) that landed while we were between the top-of-loop check
+		// and the acquire does not let this task start. Release the slot and
+		// requeue if so.
+		if q.isPaused.Load() {
+			<-sem
+			q.requeueFront(task)
+			return
+		}
+		select {
+		case <-q.done:
+			<-sem
+			q.requeueFront(task)
+			return
+		default:
 		}
 
 		q.active.Add(1)
@@ -338,6 +359,23 @@ func (q *Queue) drainQueue() {
 			}
 		}(task, sem)
 	}
+}
+
+// requeueFront returns a previously-dequeued task to the FRONT of its own
+// priority lane, so it is the next candidate on the following drain. Used when
+// a task was dequeued but cannot be started right now (at capacity, paused, or
+// stopping), to avoid losing it or reordering priorities.
+func (q *Queue) requeueFront(task Task) {
+	q.mu.Lock()
+	switch task.Priority {
+	case High:
+		q.high = append([]Task{task}, q.high...)
+	case Low:
+		q.low = append([]Task{task}, q.low...)
+	default:
+		q.normal = append([]Task{task}, q.normal...)
+	}
+	q.mu.Unlock()
 }
 
 // dequeue removes and returns the highest priority task available.

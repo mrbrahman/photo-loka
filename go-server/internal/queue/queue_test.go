@@ -268,3 +268,110 @@ func TestPriorityOrderWithGate(t *testing.T) {
 		}
 	}
 }
+
+// peakTracker records the maximum observed concurrent executions.
+type peakTracker struct {
+	mu   sync.Mutex
+	cur  int
+	peak int
+}
+
+func (p *peakTracker) enter() {
+	p.mu.Lock()
+	p.cur++
+	if p.cur > p.peak {
+		p.peak = p.cur
+	}
+	p.mu.Unlock()
+}
+
+func (p *peakTracker) leave() {
+	p.mu.Lock()
+	p.cur--
+	p.mu.Unlock()
+}
+
+func (p *peakTracker) peakVal() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.peak
+}
+
+// TestConcurrencyCapUnderPauseResume hammers pause/resume while many tasks are
+// queued at concurrency 1, and asserts the queue never runs more than one task
+// at a time. This reproduces the bug where a task dequeued and parked on a full
+// (blocking) semaphore would start through a pause, letting >maxConcurrency
+// tasks run after a rapid play/pause.
+func TestConcurrencyCapUnderPauseResume(t *testing.T) {
+	q := New(1)
+	defer q.Stop()
+
+	var pk peakTracker
+	var done atomic.Int32
+	const total = 40
+
+	for i := 0; i < total; i++ {
+		q.Enqueue(Task{Description: "t", Fn: func() error {
+			pk.enter()
+			// Small busy window so overlaps, if any, are observable.
+			time.Sleep(time.Millisecond)
+			pk.leave()
+			done.Add(1)
+			return nil
+		}})
+	}
+
+	// Rapidly toggle pause/resume while the queue works through the backlog.
+	toggleDone := make(chan struct{})
+	go func() {
+		for i := 0; i < 200; i++ {
+			q.Pause()
+			time.Sleep(200 * time.Microsecond)
+			q.Resume()
+			time.Sleep(200 * time.Microsecond)
+		}
+		close(toggleDone)
+	}()
+
+	<-toggleDone
+	// Ensure it is resumed so the backlog can finish.
+	q.Resume()
+	waitFor(t, "all tasks to finish", func() bool { return int(done.Load()) == total })
+
+	if got := pk.peakVal(); got > 1 {
+		t.Fatalf("peak concurrency = %d, want <= 1 (concurrency cap violated under pause/resume)", got)
+	}
+}
+
+// TestNoStartThroughPause targets the specific race deterministically: with a
+// task running (at capacity 1) and a second task pending, pausing must prevent
+// the pending task from starting even after the running one completes; only
+// after resume may it run.
+func TestNoStartThroughPause(t *testing.T) {
+	q := New(1)
+	defer q.Stop()
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	q.Enqueue(blockingTask(started, release)) // task A
+
+	var bRan atomic.Int32
+	q.Enqueue(Task{Description: "B", Fn: func() error { bRan.Add(1); return nil }}) // task B pending
+
+	<-started // A running, at capacity; B pending (or parked)
+
+	// Pause while A is in flight and B is waiting.
+	q.Pause()
+
+	// Let A complete. Under the bug, B (parked on the semaphore) would start
+	// despite the pause. It must not.
+	release <- struct{}{}
+	time.Sleep(50 * time.Millisecond)
+	if bRan.Load() != 0 {
+		t.Fatalf("task B started while paused (started through pause)")
+	}
+
+	// Resume -> B may now run.
+	q.Resume()
+	waitFor(t, "B to run after resume", func() bool { return bRan.Load() == 1 })
+}
