@@ -1,16 +1,21 @@
 import { notify } from '../utils.mjs';
-import { getIndexerStatus, getIndexerErrors } from '../api/admin-api.mjs';
+import {
+  getIndexerStatus, getIndexerErrors,
+  pauseStage, resumeStage, setStageConcurrency,
+} from '../api/admin-api.mjs';
 
 import sheet from "./styles/pl-admin-indexer.css" with { type: "css" };
 
-// Display-only view of the staged indexing pipeline. Everything is derived from
-// getIndexerStatus, which returns the four cross-stage aggregate counters plus a
-// per-stage `stages` map (pending, active, completed, failed, paused,
-// gatedClosed, maxConcurrency). Per-stage and global controls (pause/resume,
-// concurrency) are intentionally not wired here yet -- a later pass adds them.
+// View of the staged indexing pipeline. The display is driven by
+// getIndexerStatus (four cross-stage aggregate counters + a per-stage `stages`
+// map: pending, active, completed, failed, paused, gatedClosed, maxConcurrency).
+// Per-stage controls (pause/resume, concurrency) call the /pipeline endpoints.
 //
-// TODO: Replace polling with SSE for live updates (see prior plan); add per-stage
-// controls once the control UX is designed.
+// Rendering: stage cards are built ONCE and then patched in place on each poll
+// (fields only), so interactive controls -- a focused concurrency input, an
+// in-flight button -- are never torn out from under the user by a re-render.
+//
+// TODO: Replace polling with SSE for live updates (see prior plan).
 
 // Fixed data-flow order for displaying stage cards (matches the pipeline graph).
 const STAGE_ORDER = [
@@ -38,6 +43,8 @@ class PlAdminIndexer extends HTMLElement {
 
   #pollTimer = null;
   #status = {};
+  // stage name -> { card, refs } built once and patched in place.
+  #cards = new Map();
 
   static template = document.createElement('template');
   static {
@@ -174,37 +181,116 @@ class PlAdminIndexer extends HTMLElement {
 
     if (names.length === 0) {
       grid.innerHTML = '<div class="empty-state">No stages</div>';
+      this.#cards.clear();
       return;
     }
 
-    grid.innerHTML = '';
+    // Clear the initial "Loading..." placeholder once, on first real render.
+    if (this.#cards.size === 0) grid.innerHTML = '';
+
     for (const name of names) {
-      grid.appendChild(this.#stageCard(name, stages[name]));
+      let entry = this.#cards.get(name);
+      if (!entry) {
+        entry = this.#buildCard(name);
+        this.#cards.set(name, entry);
+        grid.appendChild(entry.card);
+      }
+      this.#patchCard(entry.refs, stages[name]);
     }
   }
 
-  #stageCard(name, st) {
+  // buildCard creates a stage card ONCE, wiring its controls to `name`. Returns
+  // the card element plus refs to the fields patched on each poll.
+  #buildCard(name) {
     const card = document.createElement('div');
     card.className = 'stage-card';
-
-    const { label, variant } = this.#stageState(st);
-
-    const label_ = STAGE_LABELS[name] || name;
     card.innerHTML = // html
       `
       <div class="stage-head">
-        <span class="stage-name">${label_}</span>
-        <sl-badge variant="${variant}" pill>${label}</sl-badge>
+        <span class="stage-name">${STAGE_LABELS[name] || name}</span>
+        <sl-badge class="stage-chip" pill>--</sl-badge>
       </div>
       <div class="stage-counters">
-        <span title="Active">▶ ${st.active ?? 0}</span>
-        <span title="Pending">⋯ ${st.pending ?? 0}</span>
-        <span title="Completed" class="${(st.completed ?? 0) > 0 ? 'completed' : ''}">✓ ${st.completed ?? 0}</span>
-        <span title="Failed" class="${(st.failed ?? 0) > 0 ? 'failed' : ''}">✕ ${st.failed ?? 0}</span>
+        <span title="Active" class="c-active">▶ 0</span>
+        <span title="Pending" class="c-pending">⋯ 0</span>
+        <span title="Completed" class="c-completed">✓ 0</span>
+        <span title="Failed" class="c-failed">✕ 0</span>
       </div>
-      <div class="stage-meta">concurrency ${st.maxConcurrency ?? '--'}</div>
+      <div class="stage-controls">
+        <sl-tooltip content="Pause">
+          <sl-icon-button class="pause-btn" name="pause-circle" label="Pause"></sl-icon-button>
+        </sl-tooltip>
+        <div class="conc-control">
+          <label>conc</label>
+          <sl-input class="conc-input" type="number" size="small" min="1" max="64" autocomplete="off"></sl-input>
+          <sl-icon-button class="conc-apply" name="check-lg" label="Apply concurrency"></sl-icon-button>
+        </div>
+      </div>
     `;
-    return card;
+
+    const refs = {
+      chip: card.querySelector('.stage-chip'),
+      active: card.querySelector('.c-active'),
+      pending: card.querySelector('.c-pending'),
+      completed: card.querySelector('.c-completed'),
+      failed: card.querySelector('.c-failed'),
+      pauseBtn: card.querySelector('.pause-btn'),
+      concInput: card.querySelector('.conc-input'),
+      concApply: card.querySelector('.conc-apply'),
+    };
+
+    // Pause/resume: the button's current intent is tracked via a data attribute
+    // set in patchCard (so we act on the latest known state, not a closure).
+    refs.pauseBtn.addEventListener('click', () => this.#togglePause(name, refs));
+
+    const applyConc = () => this.#applyConcurrency(name, refs);
+    refs.concApply.addEventListener('click', applyConc);
+    refs.concInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') applyConc(); });
+    // Mark the apply button "dirty" (unsaved) whenever the input diverges from
+    // the last-saved server value; cleared once the change is saved (patchCard).
+    refs.concInput.addEventListener('sl-input', () => this.#updateConcDirty(refs));
+
+    return { card, refs };
+  }
+
+  // updateConcDirty toggles the apply button's dirty styling based on whether
+  // the input value differs from the saved server value (stored on the input's
+  // data-saved attribute by patchCard).
+  #updateConcDirty(refs) {
+    const saved = refs.concInput.dataset.saved ?? '';
+    const dirty = String(refs.concInput.value) !== String(saved);
+    refs.concApply.classList.toggle('dirty', dirty);
+  }
+
+  // patchCard updates only the mutable fields of an existing card.
+  #patchCard(refs, st) {
+    const { label, variant } = this.#stageState(st);
+    refs.chip.textContent = label;
+    refs.chip.setAttribute('variant', variant);
+
+    refs.active.textContent = `▶ ${st.active ?? 0}`;
+    refs.pending.textContent = `⋯ ${st.pending ?? 0}`;
+    refs.completed.textContent = `✓ ${st.completed ?? 0}`;
+    refs.completed.classList.toggle('completed', (st.completed ?? 0) > 0);
+    refs.failed.textContent = `✕ ${st.failed ?? 0}`;
+    refs.failed.classList.toggle('failed', (st.failed ?? 0) > 0);
+
+    // Pause/resume button reflects current paused state.
+    const paused = !!st.paused;
+    refs.pauseBtn.name = paused ? 'play-circle' : 'pause-circle';
+    refs.pauseBtn.label = paused ? 'Resume' : 'Pause';
+    refs.pauseBtn.dataset.paused = paused ? '1' : '0';
+
+    // Record the authoritative server value so the dirty check compares against
+    // it. Sync the visible input only when the user is not editing (avoids
+    // clobbering what they are typing); then refresh the apply button's dirty
+    // styling (clears it once a save makes input == saved).
+    const serverVal = st.maxConcurrency ?? '';
+    refs.concInput.dataset.saved = String(serverVal);
+    if (this.shadowRoot.activeElement !== refs.concInput) {
+      refs.concInput.value = serverVal;
+    }
+    this.#updateConcDirty(refs);
   }
 
   // stageState maps a stage snapshot to a display chip. Order of precedence:
@@ -214,6 +300,35 @@ class PlAdminIndexer extends HTMLElement {
     if (st.gatedClosed) return { label: 'Gated', variant: 'primary' };
     if ((st.active ?? 0) > 0) return { label: 'Running', variant: 'success' };
     return { label: 'Idle', variant: 'neutral' };
+  }
+
+  async #togglePause(name, refs) {
+    const paused = refs.pauseBtn.dataset.paused === '1';
+    try {
+      const st = paused ? await resumeStage(name) : await pauseStage(name);
+      this.#patchCard(refs, st); // immediate authoritative update
+      notify(`${STAGE_LABELS[name] || name} ${paused ? 'resumed' : 'paused'}`, 'success');
+    } catch (err) {
+      notify(`Failed to ${paused ? 'resume' : 'pause'} ${name}`, 'danger');
+      console.error(err);
+    }
+  }
+
+  async #applyConcurrency(name, refs) {
+    const n = parseInt(refs.concInput.value, 10);
+    if (!n || n < 1) {
+      notify('Concurrency must be a positive integer', 'warning');
+      return;
+    }
+    try {
+      const st = await setStageConcurrency(name, n);
+      this.#patchCard(refs, st);
+      refs.concInput.blur(); // release focus so future polls can sync
+      notify(`${STAGE_LABELS[name] || name} concurrency set to ${n}`, 'success');
+    } catch (err) {
+      notify(`Failed to set concurrency for ${name}`, 'danger');
+      console.error(err);
+    }
   }
 
   async #fetchErrors() {

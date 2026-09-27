@@ -213,6 +213,30 @@ export async function updateIndexerConcurrency(value) {
   if (!res.ok) return throwError(res);
 }
 
+// --- Pipeline (per-stage controls) ---
+
+// pauseStage / resumeStage / setStageConcurrency each return the updated
+// single-stage status snapshot (same shape as an entry in getIndexerStatus's
+// `stages` map).
+
+export async function pauseStage(name) {
+  let res = await authenticatedFetch(`/api/admin/pipeline/stages/${encodeURIComponent(name)}/pause`, { method: 'PUT' });
+  if (!res.ok) return throwError(res);
+  return await res.json();
+}
+
+export async function resumeStage(name) {
+  let res = await authenticatedFetch(`/api/admin/pipeline/stages/${encodeURIComponent(name)}/resume`, { method: 'PUT' });
+  if (!res.ok) return throwError(res);
+  return await res.json();
+}
+
+export async function setStageConcurrency(name, n) {
+  let res = await authenticatedFetch(`/api/admin/pipeline/stages/${encodeURIComponent(name)}/concurrency/${n}`, { method: 'PUT' });
+  if (!res.ok) return throwError(res);
+  return await res.json();
+}
+
 // --- Dashboard ---
 
 export async function getDashboardStats() {

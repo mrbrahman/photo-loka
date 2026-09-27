@@ -132,10 +132,43 @@
   font-weight: 600;
 }
 
-.stage-meta {
-  margin-top: 0.35rem;
+/* --- Per-stage controls --- */
+
+.stage-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border-primary);
+}
+
+.conc-control {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.conc-control label {
   font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   color: var(--text-muted);
+}
+
+.conc-control .conc-input {
+  width: 4rem;
+}
+
+/* Apply button turns amber while the input has an unsaved change; reverts to
+   default once the new value is saved. */
+.conc-apply.dirty {
+  color: var(--sl-color-warning-600);
+}
+
+.stage-controls sl-icon-button {
+  font-size: 1.1rem;
 }
 
 /* --- Errors --- */
