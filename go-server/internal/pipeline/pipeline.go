@@ -54,7 +54,6 @@ func Init() *Pipeline {
 	indexing.PipelinePause = p.PauseAll
 	indexing.PipelineResume = p.ResumeAll
 	indexing.PipelineErrors = p.aggregateErrors
-	indexing.PipelineSetConcurrency = p.setEntryConcurrency
 	indexing.PipelineBusy = p.Busy
 
 	// Wire geo's reverse-geo-encoding endpoints to the geo-lookup stage using

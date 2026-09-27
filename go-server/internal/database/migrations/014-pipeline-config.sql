@@ -33,3 +33,7 @@ INSERT INTO runtime_config (key, value) VALUES
 -- performFaceRecognition is superseded by the pipeline config's
 -- face-recognition.enabled flag. Remove the now-unused scalar.
 DELETE FROM runtime_config WHERE key = 'performFaceRecognition';
+
+-- maxConcurrency is superseded by per-stage concurrency in the pipeline config
+-- (set via /pipeline/stages/:name/concurrency). Remove the now-unused scalar.
+DELETE FROM runtime_config WHERE key = 'maxConcurrency';

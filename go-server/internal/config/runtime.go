@@ -26,7 +26,6 @@ type RuntimeConfig struct {
 	GeonamesHourlyLimit             int    `json:"geonamesHourlyLimit"`
 	GeonamesDailyLimit              int    `json:"geonamesDailyLimit"`
 	VideoEncoder                    string `json:"videoEncoder"`
-	MaxConcurrency                  int    `json:"maxConcurrency"`
 }
 
 // Runtime is the process-wide runtime config singleton. It is set by
@@ -96,7 +95,6 @@ func LoadRuntimeConfig(db *sql.DB) (*RuntimeConfig, error) {
 	getInt("geonamesHourlyLimit", &rc.GeonamesHourlyLimit)
 	getInt("geonamesDailyLimit", &rc.GeonamesDailyLimit)
 	getStr("videoEncoder", &rc.VideoEncoder)
-	getInt("maxConcurrency", &rc.MaxConcurrency)
 
 	if perr != nil {
 		return nil, perr
@@ -166,12 +164,6 @@ func (rc *RuntimeConfig) SetVideoEncoder(v string) error {
 	return setField(rc, "videoEncoder", &rc.VideoEncoder, v)
 }
 
-func (rc *RuntimeConfig) SetMaxConcurrency(v int) error {
-	rc.mu.Lock()
-	defer rc.mu.Unlock()
-	return setField(rc, "maxConcurrency", &rc.MaxConcurrency, v)
-}
-
 // Get retrieves the current in-memory value of a config field by its JSON key
 // name. Used by the admin handler to echo the stored value back after an update.
 func (rc *RuntimeConfig) Get(key string) (interface{}, error) {
@@ -191,8 +183,6 @@ func (rc *RuntimeConfig) Get(key string) (interface{}, error) {
 		return rc.GeonamesDailyLimit, nil
 	case "videoEncoder":
 		return rc.VideoEncoder, nil
-	case "maxConcurrency":
-		return rc.MaxConcurrency, nil
 	default:
 		return nil, fmt.Errorf("unknown config key: %q", key)
 	}

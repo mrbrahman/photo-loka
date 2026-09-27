@@ -208,11 +208,6 @@ export async function resumeIndexer() {
   if (!res.ok) return throwError(res);
 }
 
-export async function updateIndexerConcurrency(value) {
-  let res = await authenticatedFetch(`/api/admin/updateIndexerConcurrency/${value}`, { method: 'PUT' });
-  if (!res.ok) return throwError(res);
-}
-
 // --- Pipeline (per-stage controls) ---
 
 // pauseStage / resumeStage / setStageConcurrency each return the updated

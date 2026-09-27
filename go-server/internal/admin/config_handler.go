@@ -113,12 +113,6 @@ func dispatchConfigUpdate(key string, value interface{}) error {
 			return err
 		}
 		return rc.SetVideoEncoder(s)
-	case "maxConcurrency":
-		n, err := asInt(key, value)
-		if err != nil {
-			return err
-		}
-		return rc.SetMaxConcurrency(n)
 	case "pipelineConfig":
 		// The value is a JSON object (stages array). Re-marshal it to text and
 		// hand to the pipeline package to validate + persist. Takes effect on

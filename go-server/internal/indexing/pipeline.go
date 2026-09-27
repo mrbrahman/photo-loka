@@ -43,9 +43,6 @@ var (
 	PipelineResume func()
 	// PipelineErrors aggregates recent errors across all stages.
 	PipelineErrors func() interface{}
-	// PipelineSetConcurrency sets the entry-stage concurrency (legacy
-	// "indexer concurrency" knob).
-	PipelineSetConcurrency func(n int)
 )
 
 // submit hands one file to the pipeline entry stage. No-op with a warning if

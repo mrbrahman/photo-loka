@@ -5,8 +5,6 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-
-	"photo-loka/internal/config"
 )
 
 // RegisterRoutes registers all indexer-related admin routes. The indexing
@@ -19,7 +17,6 @@ func RegisterRoutes(rg *gin.RouterGroup) {
 	rg.PUT("/pauseIndexer", pauseIndexer)
 	rg.PUT("/resumeIndexer", resumeIndexer)
 	rg.GET("/getIndexerErrors", getIndexerErrors)
-	rg.PUT("/updateIndexerConcurrency/:concurrency", updateIndexerConcurrency)
 	rg.POST("/refreshMetadataForCollection/:collection_id", refreshMetadataForCollection)
 	rg.POST("/refreshMetadataForItem/:uuid", refreshMetadataForItem)
 }
@@ -161,35 +158,6 @@ func getIndexerErrors(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, PipelineErrors())
-}
-
-// updateIndexerConcurrency changes the entry-stage (bring-to-collection) concurrency.
-// PUT /updateIndexerConcurrency/:concurrency
-func updateIndexerConcurrency(c *gin.Context) {
-	concurrencyStr := c.Param("concurrency")
-	concurrency, err := strconv.Atoi(concurrencyStr)
-	if err != nil || concurrency < 1 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
-			"message": "invalid concurrency value, must be a positive integer",
-			"code":    "INVALID_PARAM",
-		}})
-		return
-	}
-
-	if PipelineSetConcurrency != nil {
-		PipelineSetConcurrency(concurrency)
-	}
-
-	// Persist to runtime config so it survives restart
-	if err := config.Runtime.SetMaxConcurrency(concurrency); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
-			"message": "concurrency updated but failed to persist: " + err.Error(),
-			"code":    "PERSIST_ERROR",
-		}})
-		return
-	}
-
-	c.Status(http.StatusOK)
 }
 
 // refreshMetadataForCollection re-extracts metadata for all files in a collection.

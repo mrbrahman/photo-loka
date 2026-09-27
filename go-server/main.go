@@ -188,8 +188,8 @@ func runServe() {
 
 	// Build the indexing pipeline. The pipeline owns and creates all per-stage
 	// work queues (including the single-worker geo-lookup queue) and wires the
-	// indexing package's Submit/admin hooks. Per-stage concurrency is derived
-	// from CPU count and the persisted maxConcurrency override.
+	// indexing package's Submit/admin hooks. Per-stage concurrency comes from
+	// the pipeline config (runtime_config 'pipelineConfig'), defaulting to 1.
 	pipeline.Init()
 
 	// Scheduler (package-level cron runner)
