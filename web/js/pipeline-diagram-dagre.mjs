@@ -2,13 +2,33 @@
 //
 // Scope: this draws ONLY the resource-gating graph (edges "A blocks B", where
 // stage B's `gatedBy` lists A). The fixed data-flow between stages is not drawn
-// here (it is hardcoded in the server and not user-editable). See
-// go-server/docs/pipeline-dag-design.md for the gate-vs-dataflow distinction.
+// here (it is not user-editable): this editor only manipulates the gating graph
+// plus per-stage concurrency/enabled.
 //
 // It is a plain class (NOT a custom element, no shadow DOM): construct with a
 // container element and an { onChange } callback. The model is the pipeline
 // config JSON:
 //   { stages: [{ name, concurrency, enabled, gatedBy: [] }] }
+//
+// Why a class and not a plain ES module (singleton with module-level state)?
+// This widget is single-use today (one diagram, in Admin > Indexer), so a
+// module-level-state singleton *could* work. It is deliberately a class anyway,
+// for reasons specific to a stateful DOM widget:
+//   - Lifecycle / teardown. The instance owns live DOM (the <svg> and its d3
+//     selections) AND a document-level 'keydown' listener. The host component
+//     creates it in connectedCallback and tears it down in disconnectedCallback
+//     via destroy(). If this were a module singleton, that state would persist
+//     across mount/unmount cycles (SPA navigation away and back), leaking the
+//     stale keydown listener and reusing detached selections that point at the
+//     previous mount's SVG. An instance scopes all of that, and destroy() makes
+//     the cleanup explicit and self-contained -- create -> use -> destroy.
+//   - Not single by nature. Nothing prevents a second diagram later (a compare
+//     or preview view). It is single by current usage, not structurally, so a
+//     class keeps that door open without a rewrite.
+//   - Consistency. Stateful UI in web/js/components is class-based; the plain
+//     web/js/*.mjs helpers (utils, router) are stateless function bags, which
+//     this is not.
+// TLDR: the destroy()-driven mount/unmount lifecycle is the deciding factor.
 //
 // Editing:
 //   - click one stage node then another to create a gate (upstream -> gated);
@@ -16,8 +36,8 @@
 //   - Escape or a click on empty space cancels a pending selection.
 //   - edit a node's concurrency inline (contenteditable badge).
 // Cycles, self-gates, and duplicate edges are rejected client-side (mirroring
-// the server's validation) before an edit is committed; the server re-validates
-// on Apply regardless.
+// the server-side validation) before an edit is committed; they are
+// re-validated on Apply regardless.
 //
 // Layout is done by dagre (rankdir LR). Edges animate on add/remove/relayout
 // via d3-selection + d3-transition. A no-transition fallback renders the final
@@ -26,7 +46,7 @@
 import dagre from '@dagrejs/dagre';
 import { select } from 'd3-selection';
 import 'd3-transition'; // extends the d3 selection prototype with .transition()
-import { showConfirmDialog } from '../utils.mjs';
+import { showConfirmDialog } from './utils.mjs';
 
 // ---- constants ------------------------------------------------------------
 

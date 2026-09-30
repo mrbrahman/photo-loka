@@ -5,7 +5,7 @@ import {
   getPipelineConfig, validatePipelineConfig, applyPipelineConfig,
 } from '../api/admin-api.mjs';
 
-import { PipelineDiagramDagre } from './pl-pipeline-diagram-dagre.mjs';
+import { PipelineDiagramDagre } from '../pipeline-diagram-dagre.mjs';
 
 import sheet from "./styles/pl-admin-indexer.css" with { type: "css" };
 
