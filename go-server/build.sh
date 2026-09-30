@@ -45,10 +45,13 @@ if [ "$FORCE_EMBED" = "1" ] || git describe --tags --exact-match HEAD &>/dev/nul
     # Specifiers that must NOT be bundled:
     #  - shoelace/*, navigo, cronstrue, leaflet-css : resolved at runtime via the
     #    import map in index.html/frame.html (esbuild does not read HTML import maps)
+    #  - @dagrejs/dagre, d3-selection, d3-transition : likewise import-map specifiers
+    #    (esm.sh) for the pipeline gate-graph editor; keep external so the runtime
+    #    import map resolves them (and d3-transition shares one d3-selection instance)
     #  - *.css : component styles are CSS module scripts (import ... with {type:"css"}).
     #    Keeping them external preserves the browser's parse-once/dedupe behavior and
     #    leaves the import statements pointing at separate minified .css files.
-    ESBUILD_EXTERNALS="--external:shoelace/* --external:navigo --external:cronstrue --external:leaflet-css --external:*.css"
+    ESBUILD_EXTERNALS="--external:shoelace/* --external:navigo --external:cronstrue --external:leaflet-css --external:@dagrejs/dagre --external:d3-selection --external:d3-transition --external:*.css"
 
     # JS module entrypoints -> .mjs so the emitted files match the <script src="js/*.mjs">
     # references in index.html (main.mjs) and frame.html (frame.mjs). The service

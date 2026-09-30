@@ -5,6 +5,8 @@ import {
   getPipelineConfig, validatePipelineConfig, applyPipelineConfig,
 } from '../api/admin-api.mjs';
 
+import { PipelineDiagramDagre } from './pl-pipeline-diagram-dagre.mjs';
+
 import sheet from "./styles/pl-admin-indexer.css" with { type: "css" };
 
 // View of the staged indexing pipeline. The display is driven by
@@ -46,6 +48,16 @@ class PlAdminIndexer extends HTMLElement {
   #status = {};
   // stage name -> { card, refs } built once and patched in place.
   #cards = new Map();
+  // Interactive gate-graph editor instance (seeded from getPipelineConfig).
+  #dag = null;
+  // Latest model held by the diagram (updated via its onChange), applied on Apply.
+  #dagModel = null;
+  // Whether the diagram has been seeded yet. It is lazily seeded on first expand
+  // of the collapsible section (a collapsed container has no usable layout).
+  #dagSeeded = false;
+
+  // localStorage key for the Pipeline gates expand/collapse state (per device).
+  static PIPELINE_OPEN_KEY = 'pl:indexer:pipelineGatesOpen';
 
   static template = document.createElement('template');
   static {
@@ -57,9 +69,33 @@ class PlAdminIndexer extends HTMLElement {
           <sl-icon-button id="refresh-btn" name="arrow-clockwise" label="Refresh"></sl-icon-button>
         </div>
 
-        <!-- Pipeline config editor (raw). Loaded on open; validate/apply live. -->
+        <!-- Gate-graph editor (primary). Edits the resource-gating graph and
+             per-stage concurrency; Apply validates + applies live. Collapsible;
+             open/closed state persists per-device in localStorage. The diagram
+             is lazily seeded on first expand (a collapsed, display:none
+             container has no usable layout for the SVG). -->
+        <sl-details id="gates-details" class="section gates-details">
+          <span slot="summary" class="section-title gates-summary">Pipeline gates</span>
+          <p class="section-hint">
+            Click one stage then another to add a gate (upstream blocks the
+            gated stage). Click an edge or its lock to remove it. Use the power
+            icon to enable/disable an optional stage (required stages have none).
+            Edit a stage's concurrency inline. Changes apply only when you press Apply.
+          </p>
+          <div id="dag-container" class="dag-container"></div>
+          <div class="config-controls">
+            <sl-button id="dag-reset" size="small" variant="neutral">Reset</sl-button>
+            <sl-button id="dag-apply" size="small" variant="primary">Apply live</sl-button>
+          </div>
+        </sl-details>
+
+        <!-- Pipeline config editor (raw) -- TEMPORARILY DISABLED. The diagram
+             above is now the primary editor; this raw textarea escape hatch is
+             commented out and will be removed in a subsequent iteration once the
+             diagram is fully trusted. Re-enable by uncommenting this block and
+             the corresponding wiring in connectedCallback + #applyDiagram.
         <div class="section">
-          <h3 class="section-title">Pipeline config</h3>
+          <h3 class="section-title">Pipeline config (raw)</h3>
           <textarea id="config-text" class="config-text" rows="14" spellcheck="false" placeholder="Loading current config..."></textarea>
           <div class="config-controls">
             <sl-button id="config-load" size="small" variant="neutral">Reload</sl-button>
@@ -67,6 +103,7 @@ class PlAdminIndexer extends HTMLElement {
             <sl-button id="config-apply" size="small" variant="primary">Apply live</sl-button>
           </div>
         </div>
+        -->
 
         <!-- Per-stage cards -->
         <div class="section">
@@ -100,19 +137,44 @@ class PlAdminIndexer extends HTMLElement {
     this.shadowRoot.appendChild(this.constructor.template.content.cloneNode(true));
     this.shadowRoot.getElementById('refresh-btn').addEventListener('click', () => this.#refresh());
 
-    // Raw config editor (temporary testing tool).
+    // Raw config editor (temporary testing tool) -- DISABLED along with its
+    // template section; re-enable both together.
     const root = this.shadowRoot;
-    root.getElementById('config-load').addEventListener('click', () => this.#loadConfig());
-    root.getElementById('config-validate').addEventListener('click', () => this.#validateConfig());
-    root.getElementById('config-apply').addEventListener('click', () => this.#applyConfig());
+    // root.getElementById('config-load').addEventListener('click', () => this.#loadConfig());
+    // root.getElementById('config-validate').addEventListener('click', () => this.#validateConfig());
+    // root.getElementById('config-apply').addEventListener('click', () => this.#applyConfig());
 
-    this.#loadConfig(); // pre-load the current config into the editor
+    // Interactive gate-graph editor.
+    root.getElementById('dag-reset').addEventListener('click', () => this.#seedDiagram());
+    root.getElementById('dag-apply').addEventListener('click', () => this.#applyDiagram());
+    this.#initDiagram();
+
+    // Collapsible Pipeline gates section: restore persisted open/closed state,
+    // persist on toggle, and lazily seed the diagram on first expand (a
+    // collapsed, display:none container has no usable layout for the SVG).
+    const details = root.getElementById('gates-details');
+    const startOpen = this.#loadGatesOpen();
+    details.open = startOpen;
+    details.addEventListener('sl-show', (e) => {
+      if (e.target !== details) return; // ignore bubbled events from nested sl-* components
+      this.#persistGatesOpen(true);
+      this.#ensureDiagramSeeded();
+    });
+    details.addEventListener('sl-hide', (e) => {
+      if (e.target !== details) return;
+      this.#persistGatesOpen(false);
+    });
+    // If it starts open, sl-show does not fire on its own, so seed now.
+    if (startOpen) this.#ensureDiagramSeeded();
+
+    // this.#loadConfig(); // pre-load the current config into the raw editor (disabled)
     this.#refresh();
     this.#startPolling();
   }
 
   disconnectedCallback() {
     this.#stopPolling();
+    if (this.#dag) { this.#dag.destroy(); this.#dag = null; }
   }
 
   #startPolling() {
@@ -142,7 +204,11 @@ class PlAdminIndexer extends HTMLElement {
   #renderStatus() {
     // Only per-stage cards are shown now; the aggregate "Overall" panel was
     // removed (per-stage numbers are what matter).
-    this.#renderStages(this.#status.stages || {});
+    const stages = this.#status.stages || {};
+    this.#renderStages(stages);
+    // Feed live gating/paused/active state into the diagram for highlighting
+    // (only once seeded -- while the section is collapsed there is nothing to style).
+    if (this.#dag && this.#dagSeeded) this.#dag.setRuntimeState(stages);
   }
 
   #renderStages(stages) {
@@ -303,6 +369,72 @@ class PlAdminIndexer extends HTMLElement {
     } catch (err) {
       notify(`Failed to set concurrency for ${name}`, 'danger');
       console.error(err);
+    }
+  }
+
+  // --- Interactive gate-graph editor ---
+
+  // loadGatesOpen reads the persisted expand/collapse state. Defaults to
+  // collapsed (false) when nothing is stored. Wrapped in try/catch (private
+  // mode / disabled storage), mirroring pl-gallery's layout-mode persistence.
+  #loadGatesOpen() {
+    try {
+      return localStorage.getItem(this.constructor.PIPELINE_OPEN_KEY) === '1';
+    } catch (e) { /* ignore */ return false; }
+  }
+
+  #persistGatesOpen(open) {
+    try {
+      localStorage.setItem(this.constructor.PIPELINE_OPEN_KEY, open ? '1' : '0');
+    } catch (e) { /* ignore */ }
+  }
+
+  // ensureDiagramSeeded seeds the diagram once, on first expand. Subsequent
+  // expands are no-ops (the diagram keeps its state); use Reset to reload.
+  #ensureDiagramSeeded() {
+    if (this.#dagSeeded) return;
+    this.#seedDiagram();
+  }
+
+  #initDiagram() {
+    const container = this.shadowRoot.getElementById('dag-container');
+    this.#dag = new PipelineDiagramDagre(container, {
+      onChange: ({ model, error }) => {
+        if (error) { notify(error, 'warning'); return; }
+        if (model) this.#dagModel = model; // hold; apply only on Apply click
+      },
+    });
+  }
+
+  // seedDiagram loads the current config into the diagram. Runs in its own
+  // try/catch (independent of the raw config fetch) so a diagram failure never
+  // blocks the rest of the indexer view.
+  async #seedDiagram() {
+    if (!this.#dag) return;
+    try {
+      const cfg = await getPipelineConfig();
+      this.#dag.setModel(cfg);
+      this.#dagModel = this.#dag.getModel();
+      this.#dagSeeded = true;
+    } catch (err) {
+      console.error('Diagram seed failed:', err);
+      notify(this.#errMsg(err, 'Failed to load pipeline diagram'), 'danger');
+    }
+  }
+
+  // applyDiagram serializes the diagram's model and applies it live (server
+  // re-validates). On success, reseed both the diagram and the raw editor so
+  // they reflect the persisted config.
+  async #applyDiagram() {
+    if (!this.#dag) return;
+    const model = this.#dagModel || this.#dag.getModel();
+    try {
+      await applyPipelineConfig(JSON.stringify(model));
+      notify('Pipeline gates applied live', 'success');
+      await this.#fetchStatus();     // reflect new gating/enable/concurrency
+      // (raw editor sync removed: the raw textarea is temporarily disabled)
+    } catch (err) {
+      notify(this.#errMsg(err, 'Failed to apply pipeline gates'), 'danger');
     }
   }
 

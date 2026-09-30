@@ -183,3 +183,167 @@
 .error-item:last-child {
   border-bottom: none;
 }
+
+/* --- Interactive gate-graph editor --- */
+
+/* Collapsible Pipeline gates section. The summary reuses the section-title
+   look but without the standalone-heading border/margins (sl-details draws its
+   own summary row). */
+.gates-details {
+  margin-bottom: 1.5rem;
+}
+
+.gates-details::part(base) {
+  background: transparent;
+  border: none;
+}
+
+.gates-details::part(header) {
+  padding: 0 0 0.4rem 0;
+}
+
+.gates-details::part(content) {
+  padding: 0.75rem 0 0 0;
+}
+
+.gates-summary {
+  border-bottom: none;
+  margin: 0;
+  padding: 0;
+}
+
+.section-hint {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  margin: 0 0 0.6rem 0;
+  line-height: 1.4;
+}
+
+.dag-container {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  padding: 0.5rem;
+  overflow-x: auto;
+}
+
+/* The SVG sizes itself to the dagre graph (viewBox 1u = 1px) and stays
+   responsive without scaling the fonts. */
+.dag-container svg.pl-dag {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+/* Nodes */
+.pl-dag-node { cursor: pointer; }
+
+.pl-dag-node-rect {
+  fill: var(--bg-elevated, var(--bg-surface));
+  stroke: var(--border-primary);
+  stroke-width: 1.5;
+  transition: stroke 0.15s ease, fill 0.15s ease;
+}
+
+.pl-dag-node-label {
+  font-family: Lato, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  fill: var(--text-primary);
+  pointer-events: none;
+}
+
+.pl-dag-conc {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  font-family: Lato, sans-serif;
+  font-size: 11px;
+  color: var(--text-muted);
+  height: 100%;
+}
+
+.pl-dag-conc-label {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pl-dag-conc-value {
+  min-width: 1.4em;
+  padding: 0 0.3em;
+  text-align: center;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  cursor: text;
+}
+
+.pl-dag-conc-value:focus {
+  outline: none;
+  border-color: var(--sl-color-primary-500, #0284c7);
+}
+
+/* A pending source node (first click, awaiting the target). */
+.pl-dag-node.pl-dag-pending .pl-dag-node-rect {
+  stroke: var(--sl-color-primary-500, #0284c7);
+  stroke-width: 2.5;
+}
+
+/* Disabled stage (enabled:false) rendered dimmer. */
+.pl-dag-node.pl-dag-disabled { opacity: 0.55; }
+
+/* Enable/disable toggle glyph (optional stages only; structural stages omit it). */
+.pl-dag-power {
+  font-size: 14px;
+  cursor: pointer;
+  fill: var(--sl-color-success-600, #16a34a);
+  opacity: 0.85;
+}
+.pl-dag-power:hover { opacity: 1; }
+/* "off" = stage disabled: show the power glyph muted/red so the toggle reads as
+   "click to turn back on". The whole node is also dimmed via pl-dag-disabled,
+   so lift this glyph back to full opacity to keep it legible/clickable. */
+.pl-dag-node.pl-dag-disabled .pl-dag-power { opacity: 1; }
+.pl-dag-power.off { fill: var(--sl-color-danger-600, #dc2626); }
+
+/* Runtime highlighting from the status poll. */
+.pl-dag-node.pl-dag-gated .pl-dag-node-rect {
+  stroke: var(--sl-color-primary-500, #0284c7);
+  fill: var(--sl-color-primary-50, rgba(2, 132, 199, 0.08));
+}
+.pl-dag-node.pl-dag-active .pl-dag-node-rect {
+  stroke: var(--sl-color-success-500, #16a34a);
+}
+.pl-dag-node.pl-dag-paused .pl-dag-node-rect {
+  stroke: var(--sl-color-warning-500, #d97706);
+  stroke-dasharray: 4 3;
+}
+
+/* Edges: dotted smoothed curves with an arrowhead at the gated end. */
+.pl-dag-edge { cursor: pointer; }
+
+.pl-dag-edge-line {
+  stroke: var(--text-muted);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 4;
+}
+
+.pl-dag-edge-hit {
+  stroke: transparent;
+  stroke-width: 14;
+}
+
+.pl-dag-edge:hover .pl-dag-edge-line {
+  stroke: var(--sl-color-danger-500, #dc2626);
+}
+
+.pl-dag-arrowhead { fill: var(--text-muted); }
+
+.pl-dag-edge-lock {
+  font-size: 12px;
+  opacity: 0.85;
+}
+.pl-dag-edge:hover .pl-dag-edge-lock { opacity: 1; }
