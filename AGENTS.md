@@ -68,6 +68,18 @@ Rules going forward:
 - **No non-ASCII characters in code** - Use only ASCII in source files (comments, strings, identifiers). Use plain dashes (`-`) instead of em-dashes, straight quotes instead of curly quotes, etc.
 - **Preserve existing comments** - When rewriting on refactoring code, do not remove comments that are still relevant (TODOs, explanation of quirks, workaround notes, commented-out code with rationale). Only remove a comment if the code it describes no longer exists or the concern is fully resolved
 
+## Frontend conventions
+
+- **Confirmation dialogs** - When a web change needs a confirm/cancel (or any
+  yes/no) dialog, use the shared `showConfirmDialog` helper in
+  `web/js/utils.mjs`. Do NOT hand-roll a new `sl-dialog` or use the native
+  `window.confirm`. Signature:
+  `showConfirmDialog(title, message, btn1Text = 'OK', btn2Text = 'Cancel')`.
+  It appends an `sl-dialog` to `document.body`, and returns a Promise resolving
+  to `1` (primary/btn1 clicked), `2` (btn2 clicked), or `false` (dismissed
+  without a button). `message` is inserted as HTML, so never pass unsanitized
+  user input into it.
+
 ## Commit message format
 
 - The user always commits manually. Do NOT run `git commit` (or `git add`/`git push`) unless explicitly asked. Prepare and describe the changes; leave the actual commit to the user.
