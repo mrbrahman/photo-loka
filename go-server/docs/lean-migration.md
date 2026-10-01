@@ -2,8 +2,8 @@
 
 Goal: remove boilerplate "class" (`New*` + struct + method-receiver) code that
 was added by following Go conventions to the letter. This is a single-dev
-project with no unit tests (except `utils/exifdate_test.go`) and no appetite for
-convention-only boilerplate. Reduce to:
+project with a focused (and growing) unit-test suite rather than blanket
+coverage, and no appetite for convention-only boilerplate. Reduce to:
 
 1. `db` and `config` as global/singleton resources (not threaded through
    constructors).

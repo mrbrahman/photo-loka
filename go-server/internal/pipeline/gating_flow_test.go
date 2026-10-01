@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"testing"
+	"time"
 )
 
 // fakePipeline builds a pipeline with the given config where every stage uses a
@@ -104,31 +105,34 @@ func TestWireGates_DrainedKicksDependents(t *testing.T) {
 		StageVideoCompression: fakes[StageVideoCompression].kickCount(),
 	}
 
-	// Simulate image-thumbnails draining.
+	// Simulate image-thumbnails draining. Delivery is async (subscriber
+	// goroutine), so poll for the kicks.
 	fakes[StageImageThumbnails].fireDrained()
 
 	for _, name := range []string{StageFaceRecognition, StageImageEncoding, StageVideoCompression} {
-		if got := fakes[name].kickCount(); got != before[name]+1 {
-			t.Errorf("%s should have been kicked once on image-thumbnails drain (before=%d after=%d)",
-				name, before[name], got)
-		}
+		want := before[name] + 1
+		waitFor(t, name+" kicked on image-thumbnails drain", func() bool {
+			return fakes[name].kickCount() == want
+		})
 	}
 
 	// A stage NOT gated behind image-thumbnails (e.g. geo-lookup) is not kicked.
 	geoKicks := fakes[StageGeoLookup].kickCount()
 	fakes[StageImageThumbnails].fireDrained()
+	// Give the subscriber a moment; geo-lookup must remain unkicked.
+	time.Sleep(20 * time.Millisecond)
 	if fakes[StageGeoLookup].kickCount() != geoKicks {
 		t.Error("geo-lookup should not be kicked by image-thumbnails drain (not gated behind it)")
 	}
 }
 
 // TestWireGates_UngatedHasNoPredicate verifies stages with no gatedBy get no
-// CanDispatch predicate installed (they are never gated closed).
+// gate registered (they are never gated closed).
 func TestWireGates_UngatedHasNoPredicate(t *testing.T) {
 	_, fakes := fakePipeline(t, DefaultPipelineConfig())
 	for _, name := range []string{StageBringToCollection, StageGeoLookup, StageVideoThumbnail, StageImageThumbnails} {
-		if fakes[name].canDispatch != nil {
-			t.Errorf("%s is ungated and should have no CanDispatch predicate", name)
+		if fakes[name].gated() {
+			t.Errorf("%s is ungated and should have no gate registered", name)
 		}
 	}
 }

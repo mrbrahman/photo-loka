@@ -35,14 +35,14 @@ func blockingTask(started chan<- struct{}, release <-chan struct{}) Task {
 	}
 }
 
-// TestCanDispatchGatesDispatch: a false CanDispatch keeps tasks pending and
-// unstarted; flipping it true + Kick dispatches them.
-func TestCanDispatchGatesDispatch(t *testing.T) {
+// TestGateBlocksDispatch: a closed gate keeps tasks pending and unstarted;
+// opening it + Kick dispatches them. (Replaces the old SetCanDispatch test.)
+func TestGateBlocksDispatch(t *testing.T) {
 	q := New(1)
 	defer q.Stop()
 
 	var gateOpen atomic.Bool // starts closed
-	q.SetCanDispatch(func() bool { return gateOpen.Load() })
+	q.RegisterGate("test", func() bool { return gateOpen.Load() })
 
 	var ran atomic.Int32
 	q.Enqueue(Task{Description: "gated", Fn: func() error {
@@ -59,56 +59,84 @@ func TestCanDispatchGatesDispatch(t *testing.T) {
 	if got := q.GetStatus().Active; got != 0 {
 		t.Fatalf("active = %d while gate closed, want 0", got)
 	}
+	// The block reason reflects the closed gate's name while work is pending.
+	if got := q.GetStatus().BlockReason; got != "test" {
+		t.Fatalf("block reason = %q while gate closed, want %q", got, "test")
+	}
 
 	// Open the gate and kick: the task should now run.
 	gateOpen.Store(true)
 	q.Kick()
 	waitFor(t, "task to run after gate opens", func() bool { return ran.Load() == 1 })
+	// Once dispatched, the block reason clears.
+	waitFor(t, "block reason to clear", func() bool { return q.GetStatus().BlockReason == "" })
 }
 
-// TestOnDrainedFiresOnceWhenEmptied: onDrained fires when a running task
-// completes and leaves the queue empty (running+pending == 0), and does not
-// fire while a task is still in flight.
-func TestOnDrainedFiresOnBusyToDrainedOnly(t *testing.T) {
+// drainedCounter subscribes to a queue and counts busy->drained transitions
+// seen on the event stream: an event whose snapshot has Active==0 && Pending==0
+// that follows a non-drained state. This is the event-stream equivalent of the
+// old onDrained callback (which fired exactly on that transition). Used so the
+// migrated tests assert the same guarantee the callback provided.
+type drainedCounter struct {
+	count atomic.Int32
+}
+
+func watchDrained(q *Queue) *drainedCounter {
+	dc := &drainedCounter{}
+	ch := q.Subscribe()
+	go func() {
+		wasDrained := true // an empty queue starts drained; first real work un-drains it
+		for ev := range ch {
+			nowDrained := ev.Status.Active == 0 && ev.Status.Pending == 0
+			if nowDrained && !wasDrained {
+				dc.count.Add(1)
+			}
+			wasDrained = nowDrained
+		}
+	}()
+	return dc
+}
+
+func (dc *drainedCounter) val() int32 { return dc.count.Load() }
+
+// TestDrainedEventOnBusyToDrainedOnly: a drained transition appears on the event
+// stream when a running task completes and leaves the queue empty, and not while
+// a task is still in flight. (Replaces the old SetOnDrained test.)
+func TestDrainedEventOnBusyToDrainedOnly(t *testing.T) {
 	q := New(1)
 	defer q.Stop()
 
-	var drained atomic.Int32
-	q.SetOnDrained(func() { drained.Add(1) })
+	dc := watchDrained(q)
 
 	started := make(chan struct{})
 	release := make(chan struct{})
 	q.Enqueue(blockingTask(started, release))
 
 	<-started // task running
-	// While the task runs, the queue is busy: onDrained must not have fired.
+	// While the task runs, the queue is busy: no drained transition yet.
 	time.Sleep(20 * time.Millisecond)
-	if drained.Load() != 0 {
-		t.Fatalf("onDrained fired while a task was running (count=%d)", drained.Load())
+	if dc.val() != 0 {
+		t.Fatalf("drained transition seen while a task was running (count=%d)", dc.val())
 	}
 
-	// Complete the task -> queue empties -> exactly one drained signal.
+	// Complete the task -> queue empties -> exactly one drained transition.
 	release <- struct{}{}
-	waitFor(t, "onDrained to fire", func() bool { return drained.Load() == 1 })
+	waitFor(t, "drained transition to appear", func() bool { return dc.val() == 1 })
 
 	time.Sleep(20 * time.Millisecond)
-	if got := drained.Load(); got != 1 {
-		t.Fatalf("onDrained fired %d times, want exactly 1", got)
+	if got := dc.val(); got != 1 {
+		t.Fatalf("drained transition seen %d times, want exactly 1", got)
 	}
 }
 
-// TestOnDrainedNotFiredWhileWorkRemains: with a genuinely pending task (enqueued
+// TestDrainedNotSeenWhileWorkRemains: with a genuinely pending task (enqueued
 // but the queue paused so it is not dequeued), completing an earlier task does
-// not drain. This exercises the "running+pending > 0 blocks drain" rule without
-// hitting the dequeued-but-blocked accounting window (a task dequeued and parked
-// on the semaphore is intentionally not counted; that transient is benign for
-// gating since it only triggers an extra re-check kick).
-func TestOnDrainedNotFiredWhileWorkRemains(t *testing.T) {
+// not produce a drained transition (pending > 0).
+func TestDrainedNotSeenWhileWorkRemains(t *testing.T) {
 	q := New(1)
 	defer q.Stop()
 
-	var drained atomic.Int32
-	q.SetOnDrained(func() { drained.Add(1) })
+	dc := watchDrained(q)
 
 	started := make(chan struct{})
 	release := make(chan struct{})
@@ -125,34 +153,53 @@ func TestOnDrainedNotFiredWhileWorkRemains(t *testing.T) {
 	// Finish task1. running->0 but pending==1 -> NOT drained.
 	release <- struct{}{}
 	time.Sleep(30 * time.Millisecond)
-	if drained.Load() != 0 {
-		t.Fatalf("onDrained fired while task2 pending (count=%d)", drained.Load())
+	if dc.val() != 0 {
+		t.Fatalf("drained transition seen while task2 pending (count=%d)", dc.val())
 	}
 	if task2Ran.Load() != 0 {
 		t.Fatalf("task2 ran while paused")
 	}
 
-	// Resume: task2 runs, then the queue drains -> exactly one signal.
+	// Resume: task2 runs, then the queue drains -> exactly one transition.
 	q.Resume()
 	waitFor(t, "task2 to run", func() bool { return task2Ran.Load() == 1 })
-	waitFor(t, "onDrained after task2", func() bool { return drained.Load() == 1 })
+	waitFor(t, "drained after task2", func() bool { return dc.val() == 1 })
 }
 
-// TestTwoQueueGate wires B gated behind A (B.CanDispatch = !A.busy) and A's
-// drain kicks B. B must not start while A has running-or-pending work, and must
-// start once A is fully drained.
+// gateBehind wires queue b to be gated behind queue a: b registers a "resource"
+// gate that is open only when a is fully drained, and a subscriber kicks b on
+// a's busy->drained transition. This mirrors how the pipeline orchestrator wires
+// a gated stage behind its upstream using the new RegisterGate + event-stream
+// API (replacing the old SetCanDispatch/SetOnDrained pair).
+func gateBehind(b, a *Queue) {
+	aBusy := func() bool {
+		st := a.GetStatus()
+		return st.Active > 0 || st.Pending > 0
+	}
+	b.RegisterGate("resource", func() bool { return !aBusy() })
+	ch := a.Subscribe()
+	go func() {
+		wasDrained := true
+		for ev := range ch {
+			nowDrained := ev.Status.Active == 0 && ev.Status.Pending == 0
+			if nowDrained && !wasDrained {
+				b.Kick()
+			}
+			wasDrained = nowDrained
+		}
+	}()
+}
+
+// TestTwoQueueGate wires B gated behind A and A's drain kicks B. B must not
+// start while A has running-or-pending work, and must start once A is fully
+// drained.
 func TestTwoQueueGate(t *testing.T) {
 	a := New(1)
 	b := New(1)
 	defer a.Stop()
 	defer b.Stop()
 
-	aBusy := func() bool {
-		st := a.GetStatus()
-		return st.Active > 0 || st.Pending > 0
-	}
-	b.SetCanDispatch(func() bool { return !aBusy() })
-	a.SetOnDrained(func() { b.Kick() })
+	gateBehind(b, a)
 
 	aStarted := make(chan struct{})
 	aRelease := make(chan struct{})
@@ -169,7 +216,7 @@ func TestTwoQueueGate(t *testing.T) {
 	}
 	waitFor(t, "B pending", func() bool { return b.GetStatus().Pending == 1 })
 
-	// Drain A. Its onDrained kicks B, whose gate is now open.
+	// Drain A. Its drained event kicks B, whose gate is now open.
 	aRelease <- struct{}{}
 	waitFor(t, "B to run after A drains", func() bool { return bRan.Load() == 1 })
 }
@@ -183,12 +230,7 @@ func TestGateOneDirectionalInFlightNotKilled(t *testing.T) {
 	defer a.Stop()
 	defer b.Stop()
 
-	aBusy := func() bool {
-		st := a.GetStatus()
-		return st.Active > 0 || st.Pending > 0
-	}
-	b.SetCanDispatch(func() bool { return !aBusy() })
-	a.SetOnDrained(func() { b.Kick() })
+	gateBehind(b, a)
 
 	// A is empty, so B may start. Start a blocking B task.
 	bStarted := make(chan struct{})
@@ -231,7 +273,7 @@ func TestPriorityOrderWithGate(t *testing.T) {
 	// Gate closed initially so we can stage all three before any runs, making
 	// the ordering deterministic regardless of enqueue timing.
 	var open atomic.Bool
-	q.SetCanDispatch(func() bool { return open.Load() })
+	q.RegisterGate("test", func() bool { return open.Load() })
 
 	var mu sync.Mutex
 	var order []string

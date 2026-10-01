@@ -30,9 +30,14 @@ Do not conflate "here's how I'd do it" with "let me do it now". The user wants t
 
 The Go backend (`go-server/`) deliberately avoids the "class for everything"
 pattern (a struct + `New*` constructor + method receivers) where there is no
-genuine object. This is a single-process, single-developer app with no unit
-tests, so the indirection that struct-based dependency injection buys is not
-worth the boilerplate.
+genuine object. This is a single-process, single-developer app, so blanket
+struct-based dependency injection is not worth the boilerplate: its indirection
+earns its keep only where there is real per-instance state or a genuine test
+seam. There is a growing unit-test suite (e.g. `internal/queue`,
+`internal/pipeline`, `internal/utils`), with integration tests planned; where a
+test needs to substitute a collaborator, introduce a narrow, purpose-built seam
+(as the pipeline does with its injectable queue factory and `Queue` interface)
+rather than threading dependencies through constructors everywhere.
 
 Rules going forward:
 

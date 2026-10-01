@@ -3,6 +3,7 @@ package pipeline
 import (
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"photo-loka/internal/collections"
 	"photo-loka/internal/media"
@@ -54,12 +55,12 @@ func TestApplyLive_AddGate(t *testing.T) {
 		t.Error("geo-lookup should open once bring-to-collection drains")
 	}
 
-	// And bring-to-collection's drain now kicks geo-lookup.
+	// And bring-to-collection's drain now kicks geo-lookup (async subscriber).
 	before := fakes[StageGeoLookup].kickCount()
 	fakes[StageBringToCollection].fireDrained()
-	if fakes[StageGeoLookup].kickCount() != before+1 {
-		t.Error("bring-to-collection drain should kick the newly-gated geo-lookup")
-	}
+	waitFor(t, "bring-to-collection drain kicks newly-gated geo-lookup", func() bool {
+		return fakes[StageGeoLookup].kickCount() == before+1
+	})
 }
 
 // TestApplyLive_RemoveGate: starting from the default (gated) config, applying
@@ -81,10 +82,12 @@ func TestApplyLive_RemoveGate(t *testing.T) {
 	if !fakes[StageFaceRecognition].dispatchAllowed() {
 		t.Error("face-recognition should be ungated after applying a no-gate config")
 	}
-	// image-thumbnails no longer has an onDrained hook wired (nothing gated
-	// behind it), so firing it kicks nothing.
+	// image-thumbnails no longer has a drained subscriber kicking anything
+	// gated behind it (the ungated re-wire tore down the old subscriber), so
+	// firing it kicks nothing.
 	before := fakes[StageFaceRecognition].kickCount()
 	fakes[StageImageThumbnails].fireDrained()
+	time.Sleep(20 * time.Millisecond)
 	if fakes[StageFaceRecognition].kickCount() != before {
 		t.Error("after ungating, image-thumbnails drain should not kick face-recognition")
 	}

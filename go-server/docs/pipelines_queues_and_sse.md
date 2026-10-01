@@ -25,7 +25,7 @@ Key insight (resolves a subtle trap): the queue pulls gate state at evaluation t
 
 ## Invariants carried over (from pipeline-dag-design.md)
 
-Gate is evaluated at dispatch time, not enqueue time (closes the race where the condition changes the instant a task starts). "Busy" = running OR pending; a resource gate opens only when all gating upstreams are fully drained (both zero). The re-check fires on the busy->drained transition, not on every completion (in the new model, the orchestrator reacting to the drained event). Gating never touches the paused flag; pause is reserved for explicit admin control, and paused && allGatesOpen are independent.
+Gate is evaluated at dispatch time, not enqueue time (closes the race where the condition changes the instant a task starts). "Busy" = running OR pending; a resource gate opens only when all gating upstreams are fully drained (both zero). The re-check fires on the busy->drained transition, not on every completion (in the new model, the orchestrator reacting to the drained event). Gating never touches the paused flag; pause is reserved for explicit admin control, and !paused && allGatesOpen are independent.
 
 ## Geo redesign (ponder this part most)
 

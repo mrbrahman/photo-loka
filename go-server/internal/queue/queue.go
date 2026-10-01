@@ -19,8 +19,21 @@ const (
 // maxErrors is the maximum number of recent errors to retain.
 const maxErrors = 100
 
+// eventBuffer is the per-subscriber channel buffer size. Events carry a full
+// snapshot and sends are drop-oldest, so a small buffer suffices: a slow
+// subscriber simply sees the latest state, never a stall.
+const eventBuffer = 16
+
 // TaskFn is a function executed by the queue.
 type TaskFn func() error
+
+// gate is a named dispatch condition. isOpen is evaluated at dispatch time; the
+// queue does not interpret the name -- it is reported as the block reason when
+// this is the first gate found closed. Owners register gates via RegisterGate.
+type gate struct {
+	name   string
+	isOpen func() bool
+}
 
 // Task represents a unit of work with a priority level.
 type Task struct {
@@ -37,6 +50,23 @@ type Status struct {
 	Failed         int64 `json:"failed"`
 	IsPaused       bool  `json:"is_paused"`
 	MaxConcurrency int   `json:"max_concurrency"`
+
+	// BlockReason is the name of the first closed gate seen at the last dispatch
+	// attempt, or "" when the queue is not gate-blocked (all gates open, or no
+	// gates, or there was no work to dispatch). It is a dispatch-time fact: an
+	// idle queue with no pending work reports "" even if a gate would be closed,
+	// because gate state is only meaningful when there is work to dispatch.
+	BlockReason string `json:"block_reason"`
+}
+
+// Event is a snapshot of queue state emitted on every dispatch-cycle
+// transition (enqueue, start, completion, pause, resume, concurrency change,
+// and gate block/clear seen during a dispatch attempt). It carries a full
+// Status snapshot, so a subscriber that drops intermediate events still
+// converges on the latest truth. Subscribers are the pipeline orchestrator
+// (kicks stages gated behind a drained upstream) and the SSE broadcaster.
+type Event struct {
+	Status Status
 }
 
 // Error records a failed task execution.
@@ -63,20 +93,32 @@ type Queue struct {
 	errors   []Error
 	errorsMu sync.Mutex
 
-	// canDispatch is an optional pre-dispatch predicate (gate hook). When set,
-	// the dispatch loop only starts a task if it returns true, in addition to
-	// the !isPaused check. Used by the pipeline orchestrator to gate a stage
-	// behind its busy upstreams (Option A in docs/pipeline-dag-design.md).
-	// Gating never touches the paused flag; a gated-closed queue is simply
+	// gates is the ordered set of named dispatch conditions registered by their
+	// owners (the queue does not know what any gate means). Dispatch requires
+	// every gate open, evaluated as a short-circuit AND at dispatch time; the
+	// first gate that returns false is the block reason. Order is preserved
+	// (append order) so the block reason is deterministic. Guarded by q.mu so
+	// gates can be re-registered at runtime (dynamic re-wire on config Apply)
+	// without racing the dispatch loop's read.
+	//
+	// Gating never touches the paused flag; a gate-blocked queue is simply
 	// declining to dispatch, not paused.
-	canDispatch func() bool
+	gates []gate
 
-	// onDrained is an optional callback fired on the busy->drained transition:
-	// the instant a task completion brings running+pending to zero. The
-	// orchestrator uses it to kick stages gated behind this queue exactly when
-	// this queue empties (not on every completion). See design doc "Drained
-	// re-check".
-	onDrained func()
+	// blockReason is the name of the first closed gate seen at the last dispatch
+	// attempt, or "" when not blocked. Updated inside the dispatch loop under
+	// q.mu and surfaced via GetStatus / events. See Status.BlockReason.
+	blockReason string
+
+	// subscribers receive an Event snapshot on every dispatch-cycle transition.
+	// Each send is non-blocking (drop-oldest): a slow subscriber never stalls
+	// dispatch. Guarded by q.mu. Replaces the old onDrained callback -- the
+	// orchestrator now watches the stream for an upstream's drained transition.
+	subscribers []chan Event
+
+	// gates replaces the old canDispatch predicate (SetCanDispatch); subscribers
+	// replace the old onDrained callback (SetOnDrained). See the design doc
+	// "Queue Gates, Events, and Live Status".
 
 	notify chan struct{}
 	done   chan struct{}
@@ -101,40 +143,94 @@ func New(maxConcurrency int) *Queue {
 	return q
 }
 
-// SetCanDispatch installs an optional pre-dispatch predicate (gate hook). The
-// dispatch loop calls it before starting each task; if it returns false the
-// task is left pending and re-checked on the next notify. Pass nil to remove.
-// Guarded by q.mu so it can be re-pointed at runtime (dynamic gate re-wire)
-// without racing the dispatch loop's read.
-func (q *Queue) SetCanDispatch(fn func() bool) {
+// RegisterGate adds a named dispatch condition. The dispatch loop evaluates all
+// gates as a short-circuit AND before starting each task; the first gate whose
+// isOpen returns false blocks dispatch and becomes the block reason. Gates are
+// evaluated in registration order, so the block reason is deterministic.
+// Guarded by q.mu so gates can be (re)registered at runtime without racing the
+// dispatch loop. Owners call Kick when a gate's condition may have changed.
+func (q *Queue) RegisterGate(name string, isOpen func() bool) {
 	q.mu.Lock()
-	q.canDispatch = fn
+	q.gates = append(q.gates, gate{name: name, isOpen: isOpen})
 	q.mu.Unlock()
 }
 
-// SetOnDrained installs an optional callback fired on the busy->drained
-// transition (running+pending reaches zero after a task completes). Pass nil to
-// remove. Guarded by q.mu (see SetCanDispatch).
-func (q *Queue) SetOnDrained(fn func()) {
+// ClearGates removes all registered gates. Used for live re-wire on config
+// Apply: clear, then re-register the gates for the new graph. A queue with no
+// gates dispatches whenever !paused and a slot is free.
+func (q *Queue) ClearGates() {
 	q.mu.Lock()
-	q.onDrained = fn
+	q.gates = nil
+	q.blockReason = ""
 	q.mu.Unlock()
 }
 
-// getCanDispatch / getOnDrained read the hooks under the lock, so a concurrent
-// SetCanDispatch/SetOnDrained (live re-wire) cannot race the dispatch loop.
-func (q *Queue) getCanDispatch() func() bool {
+// Subscribe returns a channel that receives an Event snapshot on every
+// dispatch-cycle transition. The channel is buffered and sends are
+// non-blocking (drop-oldest): a slow consumer never stalls the queue, and
+// because each Event carries a full snapshot, dropping intermediates is safe.
+// Subscribers are not unsubscribed individually; they are released when the
+// queue is stopped. (The pipeline rebuilds its subscriptions by replacing the
+// queue set on the rare config Apply; see the orchestrator.)
+func (q *Queue) Subscribe() <-chan Event {
+	ch := make(chan Event, eventBuffer)
 	q.mu.Lock()
-	fn := q.canDispatch
+	q.subscribers = append(q.subscribers, ch)
 	q.mu.Unlock()
-	return fn
+	return ch
 }
 
-func (q *Queue) getOnDrained() func() {
+// evalGates returns the name of the first closed gate (block reason), or "" if
+// every gate is open. Caller must NOT hold q.mu: gate isOpen funcs may call
+// back into queue methods (e.g. an upstream's GetStatus) and must not deadlock.
+// It snapshots the gate slice under the lock, then evaluates outside it.
+func (q *Queue) evalGates() string {
 	q.mu.Lock()
-	fn := q.onDrained
+	gates := q.gates
 	q.mu.Unlock()
-	return fn
+	for _, g := range gates {
+		if !g.isOpen() {
+			return g.name
+		}
+	}
+	return ""
+}
+
+// setBlockReason records the current block reason under the lock and reports
+// whether it changed (so the dispatch loop can emit an event only on a real
+// block/clear transition, not on every attempt).
+func (q *Queue) setBlockReason(reason string) (changed bool) {
+	q.mu.Lock()
+	changed = q.blockReason != reason
+	q.blockReason = reason
+	q.mu.Unlock()
+	return changed
+}
+
+// emit sends the current status snapshot to all subscribers, non-blocking
+// (drop-oldest). Called on every dispatch-cycle transition.
+func (q *Queue) emit() {
+	status := q.GetStatus()
+	q.mu.Lock()
+	subs := q.subscribers
+	q.mu.Unlock()
+	for _, ch := range subs {
+		// Non-blocking send with drop-oldest: if the buffer is full, discard the
+		// oldest queued event and enqueue the newest, so a slow subscriber always
+		// converges on the latest snapshot without stalling the queue.
+		select {
+		case ch <- Event{Status: status}:
+		default:
+			select {
+			case <-ch:
+			default:
+			}
+			select {
+			case ch <- Event{Status: status}:
+			default:
+			}
+		}
+	}
 }
 
 // Kick nudges the dispatch loop to re-evaluate pending work (e.g. after a gated
@@ -164,6 +260,7 @@ func (q *Queue) Enqueue(task Task) {
 	case q.notify <- struct{}{}:
 	default:
 	}
+	q.emit()
 }
 
 // EnqueueMany adds multiple tasks to the queue in bulk.
@@ -185,6 +282,7 @@ func (q *Queue) EnqueueMany(tasks []Task) {
 	case q.notify <- struct{}{}:
 	default:
 	}
+	q.emit()
 }
 
 // Pause stops the queue from dispatching new tasks. Already running tasks
@@ -192,6 +290,7 @@ func (q *Queue) EnqueueMany(tasks []Task) {
 func (q *Queue) Pause() {
 	q.isPaused.Store(true)
 	q.logger.Info("queue paused")
+	q.emit()
 }
 
 // Resume allows the queue to dispatch tasks again.
@@ -204,6 +303,7 @@ func (q *Queue) Resume() {
 	case q.notify <- struct{}{}:
 	default:
 	}
+	q.emit()
 }
 
 // SetConcurrency changes the maximum number of concurrent tasks.
@@ -225,12 +325,14 @@ func (q *Queue) SetConcurrency(n int) {
 	case q.notify <- struct{}{}:
 	default:
 	}
+	q.emit()
 }
 
 // GetStatus returns the current queue status.
 func (q *Queue) GetStatus() Status {
 	q.mu.Lock()
 	pending := len(q.high) + len(q.normal) + len(q.low)
+	blockReason := q.blockReason
 	q.mu.Unlock()
 
 	return Status{
@@ -240,6 +342,7 @@ func (q *Queue) GetStatus() Status {
 		Failed:         q.failed.Load(),
 		IsPaused:       q.isPaused.Load(),
 		MaxConcurrency: q.maxConcurrency,
+		BlockReason:    blockReason,
 	}
 }
 
@@ -286,13 +389,32 @@ func (q *Queue) drainQueue() {
 			return
 		}
 
-		// Respect the gate hook (Option A): if a gated upstream is busy, leave
-		// tasks pending and stop draining. We will be re-kicked via Kick() when
-		// the upstream drains (or on the next notify). Checked before dequeue so
-		// a task is not pulled out of the queue while the gate is closed. Read
-		// under the lock so a live gate re-wire cannot race this.
-		if cd := q.getCanDispatch(); cd != nil && !cd() {
-			return
+		// Evaluate gates: if any gate is closed, leave tasks pending and stop
+		// draining. We will be re-kicked via Kick() when a gate owner's condition
+		// may have changed (or on the next notify). Checked before dequeue so a
+		// task is not pulled out of the queue while blocked. The first closed
+		// gate is the block reason; record it and emit an event only on a
+		// block/clear transition (not on every attempt).
+		//
+		// The block reason is only meaningful when there is work to dispatch, so
+		// only evaluate (and only report a reason) when something is pending; an
+		// empty queue is just "idle" with block reason "". evalGates must run
+		// without q.mu held (a gate's isOpen may call back into queue methods).
+		q.mu.Lock()
+		hasPending := len(q.high)+len(q.normal)+len(q.low) > 0
+		q.mu.Unlock()
+		if hasPending {
+			if reason := q.evalGates(); reason != "" {
+				if q.setBlockReason(reason) {
+					q.emit()
+				}
+				return
+			}
+			// All gates open: clear any prior block reason (emit on the clearing
+			// transition so subscribers see the unblock).
+			if q.setBlockReason("") {
+				q.emit()
+			}
 		}
 
 		// Check if stopped.
@@ -345,27 +467,22 @@ func (q *Queue) drainQueue() {
 		}
 
 		q.active.Add(1)
+		q.emit() // task started: counters changed
 
 		go func(t Task, s chan struct{}) {
 			defer func() {
 				<-s
-				remaining := q.active.Add(-1)
+				q.active.Add(-1)
 
-				// On-drained signal: fire only on the busy->drained transition,
-				// i.e. this completion brought running to zero AND nothing is
-				// pending. This is the only moment a downstream gate can open,
-				// so it avoids waking gated stages on every completion. The hook
-				// is read under the lock so a live gate re-wire cannot race it.
-				if remaining == 0 {
-					if od := q.getOnDrained(); od != nil {
-						q.mu.Lock()
-						pending := len(q.high) + len(q.normal) + len(q.low)
-						q.mu.Unlock()
-						if pending == 0 {
-							od()
-						}
-					}
-				}
+				// Emit a completion event. Subscribers (the orchestrator, the SSE
+				// broadcaster) read the full snapshot and act on it: the
+				// orchestrator kicks stages gated behind this queue when it sees
+				// the busy->drained transition (Active==0 && Pending==0). We emit
+				// on every completion rather than only on the drained edge; the
+				// snapshot is cheap, subscribers coalesce, and the orchestrator's
+				// drained check is idempotent (an extra kick just re-evaluates a
+				// gate). This replaces the old onDrained callback.
+				q.emit()
 
 				// Kick the dispatch loop in case more tasks are pending.
 				select {

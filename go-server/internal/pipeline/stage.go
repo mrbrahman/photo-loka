@@ -20,8 +20,9 @@ type Queue interface {
 	Pause()
 	Resume()
 	Stop()
-	SetCanDispatch(fn func() bool)
-	SetOnDrained(fn func())
+	RegisterGate(name string, isOpen func() bool)
+	ClearGates()
+	Subscribe() <-chan queue.Event
 	Kick()
 }
 
@@ -55,9 +56,9 @@ type Stage struct {
 type StageFn func(uuid string, hint *StageHint) error
 
 // upstreamBusy reports whether any stage in GatedBy is busy (running OR
-// pending). The gate is closed while this is true: the queue's CanDispatch
-// predicate (set to !upstreamBusy) declines to start tasks until all gating
-// upstreams are fully drained.
+// pending). The gate is closed while this is true: the queue's "resource" gate
+// (registered with isOpen = !upstreamBusy) declines to start tasks until all
+// gating upstreams are fully drained.
 func (s *Stage) upstreamBusy() bool {
 	for _, up := range s.GatedBy {
 		st := up.Queue.GetStatus()
