@@ -12,6 +12,7 @@ import (
 // /pipeline on the given (admin) router group:
 //
 //	GET  /pipeline/status                          - per-stage status snapshot
+//	GET  /pipeline/events                          - live per-stage status (SSE)
 //	PUT  /pipeline/stages/:name/concurrency/:n     - set a stage's concurrency
 //	PUT  /pipeline/stages/:name/pause              - pause a stage
 //	PUT  /pipeline/stages/:name/resume             - resume a stage
@@ -20,6 +21,7 @@ import (
 func RegisterRoutes(rg *gin.RouterGroup) {
 	g := rg.Group("/pipeline")
 	g.GET("/status", getStatus)
+	g.GET("/events", events)
 	g.GET("/config", getConfig)
 	g.PUT("/config", putConfig)
 	g.POST("/config/validate", validateConfig)

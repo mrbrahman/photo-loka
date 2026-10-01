@@ -186,6 +186,19 @@ export async function setIntakeStatus(collectionId, intakeIndex, status) {
 
 // --- Indexer ---
 
+// openPipelineEvents opens the per-stage live status SSE stream and returns the
+// EventSource. The queue is the emitter: each message is a JSON
+// { name, status: { pending, active, completed, failed, is_paused,
+// max_concurrency, block_reason } } for one stage, pushed on every
+// dispatch-cycle transition. On connect the server sends one snapshot per
+// stage, so a freshly-opened page renders immediately; the stream is otherwise
+// silent while the pipeline is idle. EventSource cannot set an Authorization
+// header, so this authenticates via the refreshToken cookie (same-origin,
+// sent automatically) which the server's auth middleware accepts.
+export function openPipelineEvents() {
+  return new EventSource('/api/admin/pipeline/events');
+}
+
 export async function getIndexerStatus() {
   let res = await authenticatedFetch('/api/admin/getIndexerStatus');
   if (!res.ok) return throwError(res);

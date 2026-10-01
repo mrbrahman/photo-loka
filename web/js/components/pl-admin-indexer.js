@@ -1,24 +1,29 @@
 import { notify } from '../utils.mjs';
 import {
-  getIndexerStatus, getIndexerErrors,
+  getIndexerErrors,
   pauseStage, resumeStage, setStageConcurrency,
   getPipelineConfig, validatePipelineConfig, applyPipelineConfig,
+  openPipelineEvents,
 } from '../api/admin-api.mjs';
 
 import { PipelineDiagramDagre } from '../pipeline-diagram-dagre.mjs';
 
 import sheet from "./styles/pl-admin-indexer.css" with { type: "css" };
 
-// View of the staged indexing pipeline. The display is driven by
-// getIndexerStatus (four cross-stage aggregate counters + a per-stage `stages`
-// map: pending, active, completed, failed, paused, gatedClosed, maxConcurrency).
-// Per-stage controls (pause/resume, concurrency) call the /pipeline endpoints.
+// View of the staged indexing pipeline. Live status is driven by the pipeline
+// SSE stream (openPipelineEvents), NOT by polling getIndexerStatus: each queue
+// is the emitter and pushes a per-stage snapshot { name, status: { pending,
+// active, completed, failed, is_paused, max_concurrency, block_reason } } on
+// every transition. The server sends one snapshot per stage on connect (so the
+// page renders immediately) and is otherwise silent while idle. Per-stage
+// controls (pause/resume, concurrency) call the /pipeline endpoints and return
+// an authoritative snapshot that is patched in immediately.
 //
-// Rendering: stage cards are built ONCE and then patched in place on each poll
-// (fields only), so interactive controls -- a focused concurrency input, an
-// in-flight button -- are never torn out from under the user by a re-render.
-//
-// TODO: Replace polling with SSE for live updates (see prior plan).
+// Rendering: stage cards are built ONCE and then patched in place as events
+// arrive (fields only), so interactive controls -- a focused concurrency input,
+// an in-flight button -- are never torn out from under the user by a
+// re-render. Incoming events are coalesced and flushed once per animation frame
+// so a burst under load does not thrash layout (the server does no throttling).
 
 // Fixed data-flow order for displaying stage cards (matches the pipeline graph).
 const STAGE_ORDER = [
@@ -44,7 +49,13 @@ const STAGE_LABELS = {
 
 class PlAdminIndexer extends HTMLElement {
 
-  #pollTimer = null;
+  // Live status via SSE (replaces the old 1.5s poll of getIndexerStatus).
+  #events = null;
+  // Pending per-stage snapshots received since the last animation-frame flush,
+  // keyed by stage name (latest wins). Flushed in #flushEvents via rAF so a
+  // burst of events coalesces into one DOM update pass.
+  #pending = new Map();
+  #rafId = null;
   #status = {};
   // stage name -> { card, refs } built once and patched in place.
   #cards = new Map();
@@ -168,47 +179,101 @@ class PlAdminIndexer extends HTMLElement {
     if (startOpen) this.#ensureDiagramSeeded();
 
     // this.#loadConfig(); // pre-load the current config into the raw editor (disabled)
-    this.#refresh();
-    this.#startPolling();
+    // Live status comes from SSE (connect snapshot renders the stages
+    // immediately). Errors are a separate endpoint with no live stream, so
+    // fetch them once on load and again on manual refresh.
+    this.#fetchErrors();
+    this.#openEvents();
   }
 
   disconnectedCallback() {
-    this.#stopPolling();
+    this.#closeEvents();
     if (this.#dag) { this.#dag.destroy(); this.#dag = null; }
   }
 
-  #startPolling() {
-    this.#pollTimer = setInterval(() => this.#fetchStatus(), 1500);
+  // openEvents subscribes to the pipeline SSE stream. Each message is a
+  // per-stage snapshot { name, status }; we buffer it and flush on the next
+  // animation frame (coalescing bursts). The browser auto-reconnects on a
+  // dropped connection; onerror just logs (a reconnect re-sends the per-stage
+  // connect snapshot, resyncing the view).
+  #openEvents() {
+    if (this.#events) return;
+    const es = openPipelineEvents();
+    es.onmessage = (e) => this.#onEvent(e);
+    es.onerror = () => {
+      // EventSource reconnects automatically; nothing to do but note it. A
+      // persistent auth failure (missing/expired refreshToken cookie) will keep
+      // erroring -- the user can hit Refresh, which also re-fetches errors.
+      console.warn('Pipeline SSE error; browser will attempt to reconnect');
+    };
+    this.#events = es;
   }
 
-  #stopPolling() {
-    if (this.#pollTimer) {
-      clearInterval(this.#pollTimer);
-      this.#pollTimer = null;
-    }
+  #closeEvents() {
+    if (this.#events) { this.#events.close(); this.#events = null; }
+    if (this.#rafId != null) { cancelAnimationFrame(this.#rafId); this.#rafId = null; }
+    this.#pending.clear();
   }
 
-  async #refresh() {
-    await Promise.all([this.#fetchStatus(), this.#fetchErrors()]);
-  }
-
-  async #fetchStatus() {
+  // onEvent parses one SSE message and buffers the stage snapshot for the next
+  // frame flush. Malformed payloads are ignored (defensive; the stream is
+  // trusted but we never want a bad frame to throw in the handler).
+  #onEvent(e) {
+    let msg;
     try {
-      this.#status = await getIndexerStatus();
-      this.#renderStatus();
-    } catch (err) {
-      console.error('Indexer status fetch failed:', err);
+      msg = JSON.parse(e.data);
+    } catch {
+      return;
+    }
+    if (!msg || !msg.name) return;
+    this.#pending.set(msg.name, this.#normalizeStatus(msg.status || {}));
+    if (this.#rafId == null) {
+      this.#rafId = requestAnimationFrame(() => this.#flushEvents());
     }
   }
 
-  #renderStatus() {
-    // Only per-stage cards are shown now; the aggregate "Overall" panel was
-    // removed (per-stage numbers are what matter).
-    const stages = this.#status.stages || {};
+  // normalizeStatus maps the queue's native event status (snake_case, with a
+  // block_reason gate name) into the per-stage snapshot shape the renderer and
+  // diagram expect (the same shape the /pipeline control endpoints return):
+  // paused, maxConcurrency, and a derived gatedClosed. gatedClosed is true when
+  // the queue is blocked by the resource gate -- the queue only reports a block
+  // reason when it actually has pending work, so an idle stage reads as idle
+  // (not gated), which is the intended behavior.
+  #normalizeStatus(s) {
+    return {
+      pending: s.pending ?? 0,
+      active: s.active ?? 0,
+      completed: s.completed ?? 0,
+      failed: s.failed ?? 0,
+      paused: !!s.is_paused,
+      maxConcurrency: s.max_concurrency ?? 0,
+      gatedClosed: s.block_reason === 'resource',
+      blockReason: s.block_reason ?? '',
+    };
+  }
+
+  // flushEvents applies all buffered stage snapshots in one pass, then clears
+  // the buffer. Merges into #status.stages so the full map stays current for
+  // the diagram's runtime-state highlighting.
+  #flushEvents() {
+    this.#rafId = null;
+    if (this.#pending.size === 0) return;
+    const stages = this.#status.stages || (this.#status.stages = {});
+    for (const [name, st] of this.#pending) {
+      stages[name] = st;
+    }
+    this.#pending.clear();
     this.#renderStages(stages);
-    // Feed live gating/paused/active state into the diagram for highlighting
-    // (only once seeded -- while the section is collapsed there is nothing to style).
     if (this.#dag && this.#dagSeeded) this.#dag.setRuntimeState(stages);
+  }
+
+  // refresh (manual button): re-fetch errors (no live stream for those) and
+  // force a fresh SSE connect so the server re-sends the per-stage snapshot,
+  // resyncing status without a separate status poll.
+  #refresh() {
+    this.#fetchErrors();
+    this.#closeEvents();
+    this.#openEvents();
   }
 
   #renderStages(stages) {
@@ -431,7 +496,11 @@ class PlAdminIndexer extends HTMLElement {
     try {
       await applyPipelineConfig(JSON.stringify(model));
       notify('Pipeline gates applied live', 'success');
-      await this.#fetchStatus();     // reflect new gating/enable/concurrency
+      // Reconnect the SSE stream so the server re-sends a fresh per-stage
+      // snapshot reflecting the new gating/enable/concurrency (a config change
+      // may not itself produce queue events if nothing is pending).
+      this.#closeEvents();
+      this.#openEvents();
       // (raw editor sync removed: the raw textarea is temporarily disabled)
     } catch (err) {
       notify(this.#errMsg(err, 'Failed to apply pipeline gates'), 'danger');
@@ -471,7 +540,9 @@ class PlAdminIndexer extends HTMLElement {
     try {
       await applyPipelineConfig(text);
       notify('Config applied live', 'success');
-      await this.#fetchStatus(); // reflect the new gating/enable/concurrency
+      // Reconnect SSE to re-pull the per-stage snapshot (see #applyDiagram).
+      this.#closeEvents();
+      this.#openEvents();
     } catch (err) {
       notify(this.#errMsg(err, 'Failed to apply config'), 'danger');
     }

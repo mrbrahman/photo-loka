@@ -136,12 +136,13 @@ func realStageFuncs() stageFuncs {
 	}
 }
 
-// queueFactory creates a Queue for a stage at the given concurrency. Production
-// uses realQueueFactory (a *queue.Queue); tests inject fakes.
-type queueFactory func(concurrency int) Queue
+// queueFactory creates a Queue for a stage with the given name and concurrency.
+// Production uses realQueueFactory (a *queue.Queue); tests inject fakes. The
+// name is carried on the queue's events so the SSE layer can identify the stage.
+type queueFactory func(name string, concurrency int) Queue
 
-// realQueueFactory builds a real work queue.
-func realQueueFactory(concurrency int) Queue { return queue.New(concurrency) }
+// realQueueFactory builds a real work queue named for its stage.
+func realQueueFactory(name string, concurrency int) Queue { return queue.New(name, concurrency) }
 
 // newPipeline builds the stage graph from the given config with real queues and
 // wires gates. It does NOT inject the indexing/geo hooks (those need a real DB);
@@ -171,7 +172,7 @@ func (p *Pipeline) buildStages(funcs stageFuncs, cfg PipelineConfig, qf queueFac
 		s := &Stage{
 			Name:    name,
 			Fn:      fn,
-			Queue:   qf(sc.concurrency()),
+			Queue:   qf(name, sc.concurrency()),
 			Enabled: sc.enabled(),
 		}
 		p.stages[name] = s

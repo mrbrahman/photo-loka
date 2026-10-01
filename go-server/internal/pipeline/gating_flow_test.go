@@ -12,11 +12,12 @@ func fakePipeline(t *testing.T, cfg PipelineConfig) (*Pipeline, map[string]*fake
 	t.Helper()
 	fakes := map[string]*fakeQueue{}
 	// The factory is called once per stage, in buildStages creation order. We
-	// cannot see the name here, so we capture each fake and match it to its
-	// stage afterwards via p.stages.
+	// The factory now receives the stage name, so each fake records it directly;
+	// we still match fakes to stages via p.stages afterward.
 	var created []*fakeQueue
-	qf := func(concurrency int) Queue {
+	qf := func(name string, concurrency int) Queue {
 		f := newFakeQueue()
+		f.name = name
 		f.maxConc = concurrency
 		created = append(created, f)
 		return f

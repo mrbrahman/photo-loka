@@ -38,7 +38,7 @@ func blockingTask(started chan<- struct{}, release <-chan struct{}) Task {
 // TestGateBlocksDispatch: a closed gate keeps tasks pending and unstarted;
 // opening it + Kick dispatches them. (Replaces the old SetCanDispatch test.)
 func TestGateBlocksDispatch(t *testing.T) {
-	q := New(1)
+	q := New("test", 1)
 	defer q.Stop()
 
 	var gateOpen atomic.Bool // starts closed
@@ -103,7 +103,7 @@ func (dc *drainedCounter) val() int32 { return dc.count.Load() }
 // stream when a running task completes and leaves the queue empty, and not while
 // a task is still in flight. (Replaces the old SetOnDrained test.)
 func TestDrainedEventOnBusyToDrainedOnly(t *testing.T) {
-	q := New(1)
+	q := New("test", 1)
 	defer q.Stop()
 
 	dc := watchDrained(q)
@@ -133,7 +133,7 @@ func TestDrainedEventOnBusyToDrainedOnly(t *testing.T) {
 // but the queue paused so it is not dequeued), completing an earlier task does
 // not produce a drained transition (pending > 0).
 func TestDrainedNotSeenWhileWorkRemains(t *testing.T) {
-	q := New(1)
+	q := New("test", 1)
 	defer q.Stop()
 
 	dc := watchDrained(q)
@@ -194,8 +194,8 @@ func gateBehind(b, a *Queue) {
 // start while A has running-or-pending work, and must start once A is fully
 // drained.
 func TestTwoQueueGate(t *testing.T) {
-	a := New(1)
-	b := New(1)
+	a := New("a", 1)
+	b := New("b", 1)
 	defer a.Stop()
 	defer b.Stop()
 
@@ -225,8 +225,8 @@ func TestTwoQueueGate(t *testing.T) {
 // arriving on A does not kill B's in-flight task; but no NEW B task starts
 // until A drains again.
 func TestGateOneDirectionalInFlightNotKilled(t *testing.T) {
-	a := New(1)
-	b := New(1)
+	a := New("a", 1)
+	b := New("b", 1)
 	defer a.Stop()
 	defer b.Stop()
 
@@ -267,7 +267,7 @@ func TestGateOneDirectionalInFlightNotKilled(t *testing.T) {
 // TestPriorityOrderWithGate is a regression check that adding the gate predicate
 // did not break priority ordering: High runs before Normal before Low.
 func TestPriorityOrderWithGate(t *testing.T) {
-	q := New(1) // single worker so completion order == dispatch order
+	q := New("test", 1) // single worker so completion order == dispatch order
 	defer q.Stop()
 
 	// Gate closed initially so we can stage all three before any runs, making
@@ -345,7 +345,7 @@ func (p *peakTracker) peakVal() int {
 // (blocking) semaphore would start through a pause, letting >maxConcurrency
 // tasks run after a rapid play/pause.
 func TestConcurrencyCapUnderPauseResume(t *testing.T) {
-	q := New(1)
+	q := New("test", 1)
 	defer q.Stop()
 
 	var pk peakTracker
@@ -390,7 +390,7 @@ func TestConcurrencyCapUnderPauseResume(t *testing.T) {
 // the pending task from starting even after the running one completes; only
 // after resume may it run.
 func TestNoStartThroughPause(t *testing.T) {
-	q := New(1)
+	q := New("test", 1)
 	defer q.Stop()
 
 	started := make(chan struct{})

@@ -61,12 +61,15 @@ type Status struct {
 
 // Event is a snapshot of queue state emitted on every dispatch-cycle
 // transition (enqueue, start, completion, pause, resume, concurrency change,
-// and gate block/clear seen during a dispatch attempt). It carries a full
-// Status snapshot, so a subscriber that drops intermediate events still
+// and gate block/clear seen during a dispatch attempt). It carries the queue's
+// opaque name (set at construction, so an event is self-identifying -- the SSE
+// layer can forward it to the browser without a separate stage lookup) plus a
+// full Status snapshot, so a subscriber that drops intermediate events still
 // converges on the latest truth. Subscribers are the pipeline orchestrator
 // (kicks stages gated behind a drained upstream) and the SSE broadcaster.
 type Event struct {
-	Status Status
+	Name   string `json:"name"`
+	Status Status `json:"status"`
 }
 
 // Error records a failed task execution.
@@ -123,12 +126,20 @@ type Queue struct {
 	notify chan struct{}
 	done   chan struct{}
 	logger *slog.Logger
+
+	// name is an opaque identifier set at construction (e.g. the pipeline stage
+	// name). The queue never interprets it; it is carried on every Event so a
+	// subscriber (notably the SSE layer) can tell which queue the event is from
+	// without a separate lookup.
+	name string
 }
 
-// New creates a new Queue with the given maximum concurrency and starts
-// the background dispatch goroutine.
-func New(maxConcurrency int) *Queue {
+// New creates a new Queue with the given opaque name and maximum concurrency
+// and starts the background dispatch goroutine. The name identifies the queue
+// on its events (see Event.Name); pass the pipeline stage name.
+func New(name string, maxConcurrency int) *Queue {
 	q := &Queue{
+		name:           name,
 		sem:            make(chan struct{}, maxConcurrency),
 		maxConcurrency: maxConcurrency,
 		notify:         make(chan struct{}, 1),
@@ -137,7 +148,7 @@ func New(maxConcurrency int) *Queue {
 		// tint handler. Queue is a genuine class (multiple live instances), so it
 		// stays a struct field. Only becomes unsafe if New were ever called at
 		// package-var init time (before main) -- see docs/logger-init-order-bug.md.
-		logger: slog.Default().With("component", "queue"),
+		logger: slog.Default().With("component", "queue", "queue", name),
 	}
 	go q.dispatch()
 	return q
@@ -213,25 +224,30 @@ func (q *Queue) emit() {
 	status := q.GetStatus()
 	q.mu.Lock()
 	subs := q.subscribers
+	name := q.name
 	q.mu.Unlock()
+	ev := Event{Name: name, Status: status}
 	for _, ch := range subs {
 		// Non-blocking send with drop-oldest: if the buffer is full, discard the
 		// oldest queued event and enqueue the newest, so a slow subscriber always
 		// converges on the latest snapshot without stalling the queue.
 		select {
-		case ch <- Event{Status: status}:
+		case ch <- ev:
 		default:
 			select {
 			case <-ch:
 			default:
 			}
 			select {
-			case ch <- Event{Status: status}:
+			case ch <- ev:
 			default:
 			}
 		}
 	}
 }
+
+// Name returns the queue's opaque identifier (set at construction).
+func (q *Queue) Name() string { return q.name }
 
 // Kick nudges the dispatch loop to re-evaluate pending work (e.g. after a gated
 // upstream drains). Non-blocking.

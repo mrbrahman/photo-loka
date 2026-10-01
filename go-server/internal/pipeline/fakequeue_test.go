@@ -13,6 +13,7 @@ import (
 // the real queue's dispatch timing (which is covered by queue_test.go).
 type fakeQueue struct {
 	mu      sync.Mutex
+	name    string
 	active  int
 	pending int
 
@@ -87,6 +88,24 @@ func (f *fakeQueue) gated() bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return len(f.gates) > 0
+}
+
+// emit pushes a name-tagged status snapshot to all subscribers, mirroring the
+// real queue's emit so tests can drive the SSE event path. Non-blocking.
+func (f *fakeQueue) emit() {
+	f.mu.Lock()
+	subs := append([]chan queue.Event(nil), f.subscribers...)
+	ev := queue.Event{
+		Name:   f.name,
+		Status: queue.Status{Active: f.active, Pending: f.pending, MaxConcurrency: f.maxConc, IsPaused: f.paused},
+	}
+	f.mu.Unlock()
+	for _, ch := range subs {
+		select {
+		case ch <- ev:
+		default:
+		}
+	}
 }
 
 // --- Queue interface ---
