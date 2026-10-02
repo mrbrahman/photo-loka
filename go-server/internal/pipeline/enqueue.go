@@ -66,7 +66,7 @@ func (p *Pipeline) routeDownstreams(n *node, item *PipelineItem) []*node {
 	case StageBringToCollection:
 		var out []*node
 		if item.hasGPS() {
-			if s := p.enabledNode(StageGeoLookup); s != nil {
+			if s := p.enabledNode(StageGeoCache); s != nil {
 				out = append(out, s)
 			}
 		}
@@ -86,6 +86,26 @@ func (p *Pipeline) routeDownstreams(n *node, item *PipelineItem) []*node {
 			}
 		}
 		return out
+
+	case StageGeoCache:
+		// Route to the address API phase only on a US cache miss (output-driven,
+		// like the media-type branch): geo-cache set GeoNeedsAPI on the item.
+		if item.GeoNeedsAPI {
+			if s := p.enabledNode(StageGeoAddr); s != nil {
+				return []*node{s}
+			}
+		}
+		return nil
+
+	case StageGeoAddr:
+		// Route to the city API phase only when the address lookup reported an
+		// empty placename (GeoNeedsCity), carrying the parsed address.
+		if item.GeoNeedsCity {
+			if s := p.enabledNode(StageGeoCity); s != nil {
+				return []*node{s}
+			}
+		}
+		return nil
 
 	case StageVideoThumbnail:
 		if s := p.enabledNode(StageImageThumbnails); s != nil {

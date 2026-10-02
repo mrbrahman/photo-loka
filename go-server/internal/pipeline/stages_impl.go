@@ -37,12 +37,92 @@ func stageBringToCollection(_ string, h *StageHint) error {
 	return nil
 }
 
-// stageGeoLookup resolves geo for a uuid. FinalizeGeo self-hydrates GPS/country
-// from the DB when not supplied, so a bare uuid works. The geonames rate limit
-// is enforced inside FinalizeGeo and the geo stage's queue runs single-worker,
-// preserving today's behavior.
-func stageGeoLookup(uuid string, _ *StageHint) error {
-	return geo.FinalizeGeo(uuid, nil, nil, nil)
+// geoBudgetReserve consumes one geonames request unit, returning false when
+// over budget. It is wired by newPipelineWithQueues to the geo rate gater's
+// atomic Reserve. The geo API stage functions call it immediately before their
+// geonames request so the consume happens exactly once per real call (the
+// "rate" gate's IsOpen is a pure read and may be evaluated many times per
+// dispatch attempt, so it cannot be the thing that consumes). A nil value
+// (unwired, e.g. a stage fn used in isolation) means "no budget enforcement".
+var geoBudgetReserve func() bool
+
+// stageGeoCache runs the local (no-API) geo phase for a uuid: GPS/country
+// derivation, non-US resolve, and US DB cache (exact/proximity). All terminal
+// except a US cache miss, which sets GeoNeedsAPI + GeoLat/GeoLng on the hint so
+// the pipeline routes to geo-lookup-addr. geo.ResolveLocal self-hydrates from
+// the DB, so a bare uuid works (standalone).
+func stageGeoCache(uuid string, h *StageHint) error {
+	needsAPI, lat, lng, err := geo.ResolveLocal(uuid, nil, nil, nil)
+	if err != nil {
+		return err
+	}
+	if h != nil {
+		h.GeoNeedsAPI = needsAPI
+		h.GeoLat = lat
+		h.GeoLng = lng
+	}
+	return nil
+}
+
+// stageGeoAddr runs the geonames findNearestAddress phase (rate-gated). It
+// consumes one budget unit (geoBudgetReserve) before the call; if the budget
+// was just exhausted it returns an error so the item is retried after the
+// rollover (the queue's "rate" gate normally prevents dispatch while over
+// budget, so this is the rare last-unit race). On a result that needs a city
+// lookup it sets GeoNeedsCity + GeoParsedAddr on the hint so the pipeline routes
+// to geo-lookup-city (no final write here, 2b); otherwise geo.LookupAddress
+// writes the final address itself.
+func stageGeoAddr(uuid string, h *StageHint) error {
+	lat, lng, ok := geoAPICoords(uuid, h)
+	if !ok {
+		// Nothing to do (resolved locally or no GPS); not an error.
+		return nil
+	}
+	if geoBudgetReserve != nil && !geoBudgetReserve() {
+		return fmt.Errorf("geonames budget exhausted for %s (address lookup); will retry after rollover", uuid)
+	}
+	needsCity, parsed, err := geo.LookupAddress(uuid, lat, lng)
+	if err != nil {
+		return err
+	}
+	if h != nil {
+		h.GeoNeedsCity = needsCity
+		h.GeoParsedAddr = parsed
+	}
+	return nil
+}
+
+// stageGeoCity runs the geonames postalCodeLookup phase (rate-gated, terminal):
+// it writes the final address using the parsed address carried from stageGeoAddr.
+// It consumes one budget unit before the call. Standalone callers must supply
+// the parsed address via the hint.
+func stageGeoCity(uuid string, h *StageHint) error {
+	if h == nil || h.GeoParsedAddr == "" {
+		return fmt.Errorf("geo-lookup-city requires a parsed address (run geo-lookup-addr first)")
+	}
+	if geoBudgetReserve != nil && !geoBudgetReserve() {
+		return fmt.Errorf("geonames budget exhausted for %s (city lookup); will retry after rollover", uuid)
+	}
+	return geo.LookupCity(uuid, h.GeoParsedAddr)
+}
+
+// geoAPICoords returns the coordinates for the address lookup. In the
+// orchestrated flow the hint carries them (set by stageGeoCache). For a
+// standalone call with no hint, it re-runs the local phase to recover the
+// cache-miss coordinates; if that resolves locally (no API needed) it returns
+// ok=false.
+func geoAPICoords(uuid string, h *StageHint) (lat, lng float64, ok bool) {
+	if h != nil && h.GeoNeedsAPI {
+		return h.GeoLat, h.GeoLng, true
+	}
+	if h != nil && (h.GeoLat != 0 || h.GeoLng != 0) {
+		return h.GeoLat, h.GeoLng, true
+	}
+	needsAPI, lat, lng, err := geo.ResolveLocal(uuid, nil, nil, nil)
+	if err != nil || !needsAPI {
+		return 0, 0, false
+	}
+	return lat, lng, true
 }
 
 // stageVideoThumbnail extracts the first-frame JPEG for a video. Standalone:

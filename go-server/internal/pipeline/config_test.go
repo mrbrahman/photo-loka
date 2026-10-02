@@ -27,7 +27,7 @@ func TestDefaultConfigGateGraph(t *testing.T) {
 		}
 	}
 	// Light stages ungated.
-	for _, s := range []string{StageBringToCollection, StageGeoLookup, StageVideoThumbnail, StageImageThumbnails} {
+	for _, s := range []string{StageBringToCollection, StageGeoCache, StageVideoThumbnail, StageImageThumbnails} {
 		if len(byName[s].GatedBy) != 0 {
 			t.Errorf("%s should be ungated, got %v", s, byName[s].GatedBy)
 		}
@@ -95,7 +95,7 @@ func TestValidate_RejectsMissingStage(t *testing.T) {
 
 func TestValidate_RejectsDuplicateStage(t *testing.T) {
 	cfg := DefaultPipelineConfig()
-	cfg.Stages = append(cfg.Stages, StageConfig{Name: StageGeoLookup})
+	cfg.Stages = append(cfg.Stages, StageConfig{Name: StageGeoCache})
 	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "more than once") {
 		t.Fatalf("expected duplicate-stage error, got %v", err)
 	}
@@ -110,7 +110,7 @@ func TestBuildStages_AppliesConfig(t *testing.T) {
 		case StageFaceRecognition:
 			n := 3
 			cfg.Stages[i].Concurrency = &n
-		case StageGeoLookup:
+		case StageGeoCache:
 			f := false
 			cfg.Stages[i].Enabled = &f
 		}
@@ -126,7 +126,7 @@ func TestBuildStages_AppliesConfig(t *testing.T) {
 	if ups := p.resource.gatedBy[StageFaceRecognition]; len(ups) != 1 || ups[0] != StageImageThumbnails {
 		t.Errorf("face-recognition gatedBy not resolved in resource gater: %+v", ups)
 	}
-	if p.stages[StageGeoLookup].Enabled {
+	if p.stages[StageGeoCache].Enabled {
 		t.Errorf("geo-lookup should be disabled")
 	}
 	if !p.stages[StageBringToCollection].Enabled {

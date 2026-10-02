@@ -7,12 +7,14 @@ import (
 	"photo-loka/internal/database"
 )
 
-// TestMigration014SeedsValidConfig runs the real migrations against a fresh temp
-// DB and asserts the seeded pipelineConfig row parses, validates, and carries
-// the expected default gate graph, that image-encoding is enabled, and that
-// performFaceRecognition was removed. Guards against a broken seed JSON (which
-// would otherwise fall back to the default silently at startup).
-func TestMigration014SeedsValidConfig(t *testing.T) {
+// TestMigrationsSeedValidPipelineConfig runs the real migrations against a fresh
+// temp DB and asserts the seeded+migrated pipelineConfig row parses, validates
+// (strictly: exactly the fixed stage set), and carries the expected default
+// gate graph. Because validation requires every allStages entry exactly once, a
+// successful parse already proves migration 015 produced the geo chain
+// (geo-cache/geo-lookup-addr/geo-lookup-city) and renamed the old geo-lookup;
+// we assert those explicitly too. Guards against a broken seed/migration.
+func TestMigrationsSeedValidPipelineConfig(t *testing.T) {
 	dbFile := filepath.Join(t.TempDir(), "test.sqlite")
 	if err := database.Open(dbFile); err != nil {
 		t.Fatalf("opening db / running migrations: %v", err)
@@ -28,9 +30,20 @@ func TestMigration014SeedsValidConfig(t *testing.T) {
 
 	cfg, err := ParsePipelineConfig(raw)
 	if err != nil {
-		t.Fatalf("seeded pipelineConfig failed to parse/validate: %v", err)
+		t.Fatalf("seeded+migrated pipelineConfig failed to parse/validate: %v", err)
 	}
 	byName := cfg.byName()
+
+	// Migration 015: geo chain present, old geo-lookup gone.
+	for _, name := range []string{StageGeoCache, StageGeoAddr, StageGeoCity} {
+		if _, ok := byName[name]; !ok {
+			t.Errorf("migrated config missing geo stage %q", name)
+		}
+	}
+	if _, ok := byName["geo-lookup"]; ok {
+		t.Errorf("migrated config should no longer contain the old geo-lookup stage")
+	}
+
 	if got := byName[StageVideoCompression].GatedBy; !equal(got,
 		[]string{StageImageThumbnails, StageFaceRecognition, StageImageEncoding}) {
 		t.Errorf("seeded video-compression gatedBy = %v", got)

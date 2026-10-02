@@ -13,7 +13,7 @@ func TestStatus_CoversAllStages(t *testing.T) {
 		}
 	}
 	// Each snapshot has the expected keys.
-	snap, _ := st[StageGeoLookup].(map[string]interface{})
+	snap, _ := st[StageGeoCache].(map[string]interface{})
 	for _, key := range []string{"stage", "pending", "active", "paused", "maxConcurrency", "gatedClosed"} {
 		if _, ok := snap[key]; !ok {
 			t.Errorf("stage status missing key %q", key)
@@ -58,7 +58,7 @@ func TestPauseResumeStage(t *testing.T) {
 
 func TestHasStage(t *testing.T) {
 	p, _ := fakePipeline(t, DefaultPipelineConfig())
-	if !p.HasStage(StageGeoLookup) {
+	if !p.HasStage(StageGeoCache) {
 		t.Error("HasStage should be true for a known stage")
 	}
 	if p.HasStage("mystery") {

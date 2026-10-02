@@ -118,11 +118,11 @@ func TestWireGates_DrainedKicksDependents(t *testing.T) {
 	}
 
 	// A stage NOT gated behind image-thumbnails (e.g. geo-lookup) is not kicked.
-	geoKicks := fakes[StageGeoLookup].kickCount()
+	geoKicks := fakes[StageGeoCache].kickCount()
 	fakes[StageImageThumbnails].fireDrained()
 	// Give the subscriber a moment; geo-lookup must remain unkicked.
 	time.Sleep(20 * time.Millisecond)
-	if fakes[StageGeoLookup].kickCount() != geoKicks {
+	if fakes[StageGeoCache].kickCount() != geoKicks {
 		t.Error("geo-lookup should not be kicked by image-thumbnails drain (not gated behind it)")
 	}
 }
@@ -131,7 +131,7 @@ func TestWireGates_DrainedKicksDependents(t *testing.T) {
 // gate registered (they are never gated closed).
 func TestWireGates_UngatedHasNoPredicate(t *testing.T) {
 	_, fakes := fakePipeline(t, DefaultPipelineConfig())
-	for _, name := range []string{StageBringToCollection, StageGeoLookup, StageVideoThumbnail, StageImageThumbnails} {
+	for _, name := range []string{StageBringToCollection, StageGeoCache, StageVideoThumbnail, StageImageThumbnails} {
 		if fakes[name].gated() {
 			t.Errorf("%s is ungated and should have no gate registered", name)
 		}

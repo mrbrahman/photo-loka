@@ -26,6 +26,19 @@ type PipelineItem struct {
 	// Populated by generate-image-thumbnails (or the video-frame path). Handed
 	// to the ML stages so they skip a second file load.
 	MLBuf *media.MLBuffer
+
+	// Geo routing signals, set by the geo stages so the pipeline can route the
+	// geo chain on stage output (mirroring how Mediatype/hasGPS drive routing):
+	//   - geo-cache sets GeoNeedsAPI + GeoLat/GeoLng on a US cache miss, so the
+	//     pipeline routes to geo-lookup-addr.
+	//   - geo-lookup-addr sets GeoNeedsCity + GeoParsedAddr (the parsed address
+	//     as JSON) when a city lookup is needed, so the pipeline routes to
+	//     geo-lookup-city.
+	GeoNeedsAPI   bool
+	GeoLat        float64
+	GeoLng        float64
+	GeoNeedsCity  bool
+	GeoParsedAddr string
 }
 
 // hint builds a StageHint snapshot from the item's current state, to hand to a
@@ -66,6 +79,13 @@ func (it *PipelineItem) absorb(h *StageHint) {
 	if h.MLBuf != nil {
 		it.MLBuf = h.MLBuf
 	}
+	// Geo routing signals are stage outputs the router consults; copy them
+	// unconditionally (they are only meaningful for the geo chain).
+	it.GeoNeedsAPI = h.GeoNeedsAPI
+	it.GeoLat = h.GeoLat
+	it.GeoLng = h.GeoLng
+	it.GeoNeedsCity = h.GeoNeedsCity
+	it.GeoParsedAddr = h.GeoParsedAddr
 }
 
 // clone returns a shallow copy of the item. Pointer fields (ExifData, MLBuf,
@@ -113,4 +133,12 @@ type StageHint struct {
 	ExifData  *media.ExifData
 
 	MLBuf *media.MLBuffer
+
+	// Geo routing signals written by the geo stage fns (read by the pipeline's
+	// router after each geo stage; see PipelineItem).
+	GeoNeedsAPI   bool
+	GeoLat        float64
+	GeoLng        float64
+	GeoNeedsCity  bool
+	GeoParsedAddr string
 }

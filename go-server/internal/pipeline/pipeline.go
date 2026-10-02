@@ -13,16 +13,24 @@ import (
 	"sync"
 
 	"photo-loka/internal/collections"
+	"photo-loka/internal/config"
 	"photo-loka/internal/database"
 	"photo-loka/internal/geo"
 	"photo-loka/internal/indexing"
 	"photo-loka/internal/queue"
 )
 
-// Stage name constants (also the config keys in a later phase).
+// Stage name constants (also the config keys and the queue names).
 const (
 	StageBringToCollection = "bring-to-collection"
-	StageGeoLookup         = "geo-lookup"
+	// Geo is a three-queue chain: geo-cache does the local phase (GPS derive,
+	// non-US resolve, US exact/proximity cache); on a US cache miss it routes to
+	// geo-lookup-addr (geonames findNearestAddress); if that needs a city it
+	// routes to geo-lookup-city (geonames postalCodeLookup). The two API queues
+	// are rate-gated by the geo rate gater.
+	StageGeoCache          = "geo-cache"
+	StageGeoAddr           = "geo-lookup-addr"
+	StageGeoCity           = "geo-lookup-city"
 	StageVideoThumbnail    = "generate-video-thumbnail"
 	StageImageThumbnails   = "generate-image-thumbnails"
 	StageFaceRecognition   = "face-recognition"
@@ -53,6 +61,10 @@ type Pipeline struct {
 	// resource is the resource-scheduling gater (kept as a typed reference for
 	// the live Apply re-wire, which rebuilds its GatedBy model).
 	resource *resourceGater
+	// geoRate is the geonames rate-limiting gater (typed reference so the geo
+	// stage functions can Reserve a budget unit before each API call, and so
+	// StopAll can tear down its rollover timer + persist counters).
+	geoRate *geoRateGater
 }
 
 // P is the package-level pipeline singleton, built by Init.
@@ -78,14 +90,14 @@ func Init() *Pipeline {
 	indexing.PipelineErrors = p.aggregateErrors
 	indexing.PipelineBusy = p.Busy
 
-	// Wire geo's reverse-geo-encoding endpoints to the geo-lookup stage using
-	// the generic per-stage mechanism (EnqueueStage/StageStatus). Same pattern
-	// the future per-stage API will use for every stage.
+	// Wire geo's reverse-geo-encoding endpoints to the head of the geo chain
+	// (the geo-cache stage); the chain routes onward to the API stages as
+	// needed. Same generic per-stage mechanism (EnqueueStage/StageStatus).
 	geo.EnqueueLookup = func(uuid string) {
-		_ = p.EnqueueStage(StageGeoLookup, uuid, nil, queue.Normal)
+		p.submitStage(StageGeoCache, uuid)
 	}
 	geo.LookupStatus = func() map[string]interface{} {
-		return p.StageStatus(StageGeoLookup)
+		return p.StageStatus(StageGeoCache)
 	}
 
 	P = p
@@ -118,7 +130,9 @@ func loadConfig() PipelineConfig {
 // (DB, libvips, ffmpeg, ML service).
 type stageFuncs struct {
 	bringToCollection StageFn
-	geoLookup         StageFn
+	geoCache          StageFn
+	geoAddr           StageFn
+	geoCity           StageFn
 	videoThumbnail    StageFn
 	imageThumbnails   StageFn
 	faceRecognition   StageFn
@@ -130,7 +144,9 @@ type stageFuncs struct {
 func realStageFuncs() stageFuncs {
 	return stageFuncs{
 		bringToCollection: stageBringToCollection,
-		geoLookup:         stageGeoLookup,
+		geoCache:          stageGeoCache,
+		geoAddr:           stageGeoAddr,
+		geoCity:           stageGeoCity,
 		videoThumbnail:    stageVideoThumbnail,
 		imageThumbnails:   stageImageThumbnails,
 		faceRecognition:   stageFaceRecognition,
@@ -161,9 +177,21 @@ func newPipelineWithQueues(funcs stageFuncs, cfg PipelineConfig, qf queueFactory
 	p := &Pipeline{stages: make(map[string]*node)}
 	p.buildNodes(funcs, cfg, qf)
 	// Resource gating is a Gater over the queues; build it from the config's
-	// gatedBy edges and the pipeline's queue-busy lookup, then attach.
+	// gatedBy edges and the pipeline's queue-busy lookup. The geo rate gater
+	// governs the two geo API queues via geo's budget check + rollover kick.
 	p.resource = newResourceGater(gatedByMap(cfg), p.queueBusy)
-	p.gaters = []Gater{p.resource}
+	// Rate-state file lives under DataDir; tolerate a nil Startup (tests), in
+	// which case the empty path disables persistence.
+	dataDir := ""
+	if config.Startup != nil {
+		dataDir = config.Startup.DataDir
+	}
+	p.geoRate = newGeoRateGater([]string{StageGeoAddr, StageGeoCity}, dataDir)
+	p.gaters = []Gater{p.resource, p.geoRate}
+	// The geo API stage functions consume a budget unit via this indirection
+	// (they are plain StageFns, built before the gater exists). Wired here to
+	// the gater's atomic Reserve.
+	geoBudgetReserve = p.geoRate.Reserve
 	p.wireGates()
 	return p
 }
@@ -223,7 +251,9 @@ func (p *Pipeline) buildNodes(funcs stageFuncs, cfg PipelineConfig, qf queueFact
 	}
 
 	// Create all nodes (concurrency + enable applied from config).
-	newNode(StageGeoLookup, funcs.geoLookup)
+	newNode(StageGeoCache, funcs.geoCache)
+	newNode(StageGeoAddr, funcs.geoAddr)
+	newNode(StageGeoCity, funcs.geoCity)
 	newNode(StageFaceRecognition, funcs.faceRecognition)
 	newNode(StageImageEncoding, funcs.imageEncoding)
 	newNode(StageVideoCompression, funcs.videoCompression)
@@ -339,6 +369,7 @@ func (p *Pipeline) ResumeAll() {
 // gater (e.g. the resource gater's drained-event subscribers).
 func (p *Pipeline) StopAll() {
 	p.resource.Stop()
+	p.geoRate.Stop()
 	for _, s := range p.stages {
 		s.Queue.Stop()
 	}
@@ -481,6 +512,19 @@ func (p *Pipeline) submitEntry(collection *collections.Collection, sourceFile, e
 		InPlace:      inPlace,
 	}
 	p.enqueueItem(p.entry, item, queue.Normal)
+}
+
+// submitStage enqueues a single uuid at the named stage through the ROUTED path
+// (enqueueItem), so the stage's downstreams are forwarded as usual. Unlike
+// EnqueueStage (the standalone bypass, no forwarding), this is used by the geo
+// reverse-geo endpoints to enter the geo chain at geo-cache and let it route on
+// to the API stages on a cache miss. Unknown stage names are a no-op.
+func (p *Pipeline) submitStage(name, uuid string) {
+	n, ok := p.stages[name]
+	if !ok {
+		return
+	}
+	p.enqueueItem(n, &PipelineItem{UUID: uuid}, queue.Normal)
 }
 
 // submitRefresh is the indexing.SubmitRefresh hook: enqueue a metadata-only

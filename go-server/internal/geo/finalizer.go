@@ -10,21 +10,30 @@ import (
 	"strings"
 
 	"photo-loka/internal/config"
-	"photo-loka/internal/queue"
 )
 
-// Geo resolution is package-level (single instance). geoLogger is the
-// finalizer's logger; the geonames username is read from config.Startup.
+// Geo resolution is split into phases run by three pipeline queues (geo-cache,
+// geo-lookup-addr, geo-lookup-city). The LOCAL phase (ResolveLocal) does GPS
+// derivation, non-US resolution, and US DB cache lookups -- all terminal except
+// a US cache miss, which signals the pipeline to route to the API phases. The
+// API phases (LookupAddress, LookupCity) are rate-gated by the geo rate gater
+// and are the only ones that call geonames. geoLogger is the finalizer's
+// logger; the geonames username is read from config.Startup.
 func geoLogger() *slog.Logger { return slog.Default().With("component", "geo-finalizer") }
 
-// FinalizeGeo is the main entry point for geo resolution.
-// It derives missing fields from DB if needed, then routes to US vs non-US processing.
-func FinalizeGeo(uuid string, gpsLat, gpsLng *float64, countryCode *string) error {
+// ResolveLocal runs the local (no-API) phase of geo resolution for a uuid:
+// derive GPS/country from the DB when not supplied, then resolve non-US items
+// from exiftool data or US items from the DB cache (exact then proximity). All
+// of those are terminal (it writes the final address and returns needsAPI
+// false). Only a US cache MISS returns needsAPI true with the lat/lng the
+// pipeline then routes to the geo-lookup-addr queue. This is the former
+// FinalizeGeo minus the geonames handoff.
+func ResolveLocal(uuid string, gpsLat, gpsLng *float64, countryCode *string) (needsAPI bool, lat, lng float64, err error) {
 	// If we don't have GPS or country info, try to get it from DB
 	if gpsLat == nil || gpsLng == nil || countryCode == nil {
-		ctx, err := GetGeoContext(uuid)
-		if err != nil {
-			return fmt.Errorf("failed to get geo context for %s: %w", uuid, err)
+		ctx, cerr := GetGeoContext(uuid)
+		if cerr != nil {
+			return false, 0, 0, fmt.Errorf("failed to get geo context for %s: %w", uuid, cerr)
 		}
 		if gpsLat == nil {
 			gpsLat = ctx.GPSLat
@@ -40,26 +49,24 @@ func FinalizeGeo(uuid string, gpsLat, gpsLng *float64, countryCode *string) erro
 	// No GPS coordinates - nothing we can do
 	if gpsLat == nil || gpsLng == nil {
 		geoLogger().Debug("no GPS coordinates, skipping", "uuid", uuid)
-		return UpdateGeoStatus(uuid, "NO_GPS")
+		return false, 0, 0, UpdateGeoStatus(uuid, "NO_GPS")
 	}
 
-	// Route based on country
-	var err error
-	var resolveMethod string
-	if countryCode != nil && *countryCode == "US" {
-		resolveMethod = "US"
-		err = finalizeUS(uuid, *gpsLat, *gpsLng)
-	} else {
-		resolveMethod = "non-US"
-		err = finalizeNonUS(uuid)
+	// Non-US: resolve from exiftool data (terminal, no API).
+	if countryCode == nil || *countryCode != "US" {
+		return false, 0, 0, finalizeNonUS(uuid)
 	}
 
-	if err != nil {
-		return err
+	// US: try the DB cache (exact then proximity). A hit is terminal; a miss
+	// signals the pipeline to route to the API phase with these coordinates.
+	resolved, rerr := resolveUSFromCache(uuid, *gpsLat, *gpsLng)
+	if rerr != nil {
+		return false, 0, 0, rerr
 	}
-
-	geoLogger().Info("geo finalized", "uuid", uuid, "method", resolveMethod)
-	return nil
+	if resolved {
+		return false, 0, 0, nil
+	}
+	return true, *gpsLat, *gpsLng, nil
 }
 
 // finalizeNonUS reads exiftool geo data from DB and builds address fields.
@@ -119,13 +126,15 @@ func finalizeNonUS(uuid string) error {
 	return UpdateGeoFields(uuid, fields)
 }
 
-// finalizeUS attempts geo resolution for US addresses.
-// Priority: exact match -> proximity match -> geonames API lookup.
-func finalizeUS(uuid string, lat, lng float64) error {
+// resolveUSFromCache tries the US DB cache: exact coordinate match, then
+// proximity match (within 10m). On a hit it writes the final address and
+// returns resolved=true. On a miss it returns resolved=false (no API call --
+// the pipeline routes to the API phase). No geonames calls happen here.
+func resolveUSFromCache(uuid string, lat, lng float64) (resolved bool, err error) {
 	// Try exact coordinate match first
 	match, err := FindExactGeoMatch(lat, lng)
 	if err != nil {
-		return fmt.Errorf("exact geo match failed for %s: %w", uuid, err)
+		return false, fmt.Errorf("exact geo match failed for %s: %w", uuid, err)
 	}
 	if match != nil {
 		matchedUUID := match.UUID
@@ -138,13 +147,13 @@ func finalizeUS(uuid string, lat, lng float64) error {
 			GeoStatus:      "FOUND_DB_EXACT_MATCH",
 			GeoMatchedUUID: &matchedUUID,
 		}
-		return UpdateGeoFields(uuid, fields)
+		return true, UpdateGeoFields(uuid, fields)
 	}
 
 	// Try proximity match (within 10m)
 	match, err = FindProximityGeoMatch(lat, lng)
 	if err != nil {
-		return fmt.Errorf("proximity geo match failed for %s: %w", uuid, err)
+		return false, fmt.Errorf("proximity geo match failed for %s: %w", uuid, err)
 	}
 	if match != nil {
 		matchedUUID := match.UUID
@@ -157,49 +166,25 @@ func finalizeUS(uuid string, lat, lng float64) error {
 			GeoStatus:      "FOUND_DB_PROXIMITY_MATCH",
 			GeoMatchedUUID: &matchedUUID,
 		}
-		return UpdateGeoFields(uuid, fields)
+		return true, UpdateGeoFields(uuid, fields)
 	}
 
-	// Fall back to geonames API: hand off to the internal, rate-gated
-	// address-API queue. The item's final address stays blank until that queue
-	// (and possibly the city queue) completes; if the rate gate is closed the
-	// item simply waits there until the rollover timer lifts it.
-	return enqueueAddressLookup(uuid, lat, lng)
+	// Cache miss: the caller (pipeline) routes to the geonames API phase.
+	return false, nil
 }
 
-// enqueueAddressLookup places a findNearestAddress task on the internal
-// address-API queue (concurrency 1, rate-gated). Separated so finalizeUS stays
-// a pure local-phase decision: on a cache miss it just hands the item off.
-func enqueueAddressLookup(uuid string, lat, lng float64) error {
-	if addressQueue == nil {
-		return fmt.Errorf("geo address queue not initialized (geo.Init not called)")
-	}
-	addressQueue.Enqueue(queue.Task{
-		Priority:    queue.Normal,
-		Description: "geo-address:" + uuid,
-		Fn:          func() error { return addressLookupTask(uuid, lat, lng) },
-	})
-	return nil
-}
-
-// addressLookupTask is the body of an address-API queue task: it calls geonames
-// findNearestAddress, writes the geo_lookups cache row (seeding the cache for
-// nearby items), parses the result, and then EITHER writes the final address
-// (terminal, when no city lookup is needed) OR hands the parsed address off to
-// the city-API queue WITHOUT writing (2b: only the terminal step writes the
-// item's final address).
+// LookupAddress is the geo-lookup-addr phase: it calls geonames
+// findNearestAddress for a US cache miss, writes the geo_lookups cache row
+// (seeding the cache for nearby items), parses the result, and EITHER writes
+// the final address (terminal, needsCity=false) OR returns needsCity=true with
+// the parsed address serialized as JSON (parsedAddr) so the pipeline can route
+// to the geo-lookup-city phase WITHOUT a final write here (2b).
 //
-// The "rate" gate on this queue keeps the task from dispatching while over
-// budget; the atomic rateReserve here is the actual budget consumption and
-// guards the (rare) race where the gate was open at dispatch but the budget was
-// just exhausted by the sibling city queue. If the reserve is denied the task
-// returns an error so the queue records it; the item is retried on the next
-// explicit enqueue (counters reset hourly). It is NOT marked RATE_LIMITED.
-func addressLookupTask(uuid string, lat, lng float64) error {
-	if !rateReserve() {
-		return fmt.Errorf("geonames budget exhausted for %s (address lookup); will retry after rollover", uuid)
-	}
-
+// Rate limiting is NOT geo's concern: the caller (the geo-lookup-addr stage
+// function) reserves a budget unit via the geo rate gater before invoking this,
+// and the queue's "rate" gate holds dispatch while over budget. geo just makes
+// the call.
+func LookupAddress(uuid string, lat, lng float64) (needsCity bool, parsedAddr string, err error) {
 	apiURL := fmt.Sprintf(
 		"http://api.geonames.org/findNearestAddressJSON?lat=%f&lng=%f&username=%s",
 		lat, lng, url.QueryEscape(config.Startup.GeonamesUsername),
@@ -207,19 +192,17 @@ func addressLookupTask(uuid string, lat, lng float64) error {
 
 	resp, err := http.Get(apiURL)
 	if err != nil {
-		return fmt.Errorf("geonames API call failed for %s: %w", uuid, err)
+		return false, "", fmt.Errorf("geonames API call failed for %s: %w", uuid, err)
 	}
 	defer resp.Body.Close()
 
-	SaveRateLimiter()
-
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("failed to read geonames response for %s: %w", uuid, err)
+		return false, "", fmt.Errorf("failed to read geonames response for %s: %w", uuid, err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("geonames API returned status %d for %s", resp.StatusCode, uuid)
+		return false, "", fmt.Errorf("geonames API returned status %d for %s", resp.StatusCode, uuid)
 	}
 
 	responseStr := string(body)
@@ -235,50 +218,44 @@ func addressLookupTask(uuid string, lat, lng float64) error {
 	// Parse the response
 	var result map[string]interface{}
 	if err := json.Unmarshal(body, &result); err != nil {
-		return fmt.Errorf("failed to parse geonames response for %s: %w", uuid, err)
+		return false, "", fmt.Errorf("failed to parse geonames response for %s: %w", uuid, err)
 	}
 
 	// Extract address from response
 	address, ok := result["address"].(map[string]interface{})
 	if !ok {
-		return UpdateGeoStatus(uuid, "NO_ADDRESS_FOUND")
+		return false, "", UpdateGeoStatus(uuid, "NO_ADDRESS_FOUND")
 	}
 
 	// Decide whether a city lookup is needed: geonames findNearestAddress
 	// sometimes returns an empty placename. When it does AND a postal code is
-	// present, resolving the city needs a second API call -- hand off to the
-	// city queue (2b: do not write the final address here). Otherwise this is
-	// the terminal step and we write the final address now.
+	// present, resolving the city needs a second API call -- signal the pipeline
+	// to route to the city phase (2b: do not write the final address here),
+	// carrying the parsed address as JSON. Otherwise this is terminal.
 	placename, _ := address["placename"].(string)
 	postalcode, _ := address["postalcode"].(string)
 	if placename == "" && postalcode != "" {
-		return enqueueCityLookup(uuid, address)
+		enc, merr := json.Marshal(address)
+		if merr != nil {
+			return false, "", fmt.Errorf("marshaling parsed address for %s: %w", uuid, merr)
+		}
+		return true, string(enc), nil
 	}
 
 	// placename present (or no postal code to resolve from): terminal write.
-	return writeFinalAddress(uuid, address, placename, "FOUND_VIA_API", nil)
+	return false, "", writeFinalAddress(uuid, address, placename, "FOUND_VIA_API", nil)
 }
 
-// enqueueCityLookup hands the parsed address to the city-API queue. The parsed
-// address object is carried forward in the closure (2b): the final address is
-// written only by the terminal city task, not here.
-func enqueueCityLookup(uuid string, address map[string]interface{}) error {
-	if cityQueue == nil {
-		return fmt.Errorf("geo city queue not initialized (geo.Init not called)")
+// LookupCity is the geo-lookup-city phase (rate-gated, terminal): it takes the
+// JSON-serialized parsed address from LookupAddress, resolves the city from the
+// postal code (DB cache first, then geonames postalCodeLookup behind the atomic
+// reserve) and writes the final address.
+func LookupCity(uuid, parsedAddr string) error {
+	var address map[string]interface{}
+	if err := json.Unmarshal([]byte(parsedAddr), &address); err != nil {
+		return fmt.Errorf("parsing carried address for %s: %w", uuid, err)
 	}
-	cityQueue.Enqueue(queue.Task{
-		Priority:    queue.Normal,
-		Description: "geo-city:" + uuid,
-		Fn:          func() error { return cityLookupTask(uuid, address) },
-	})
-	return nil
-}
 
-// cityLookupTask is the body of a city-API queue task (terminal): it resolves
-// the city from the postal code (DB cache first, then geonames postalCodeLookup
-// behind the atomic reserve) and writes the final address. It receives the
-// already-parsed address from the address task.
-func cityLookupTask(uuid string, address map[string]interface{}) error {
 	postalcode, _ := address["postalcode"].(string)
 	countryCode := "US"
 	if cc, ok := address["countryCode"].(string); ok && cc != "" {
@@ -359,13 +336,12 @@ func writeFinalAddress(uuid string, address map[string]interface{}, cityStr, sta
 	return UpdateGeoFields(uuid, fields)
 }
 
-// resolveCity attempts to find a city name from a postal code. It first checks
-// the DB cache, then calls the geonames postalCodeLookup API behind the atomic
-// rateReserve. It no longer does its own rate GATE check (the city-API queue's
-// "rate" gate handles that at dispatch); the reserve here is the budget
-// consumption and guards the last-unit race between the two queues. On an
-// exhausted budget it returns "" (no city) so the caller falls back to the
-// county, rather than retrying mid-task.
+// resolveCity finds a city name from a postal code: DB cache first, then the
+// geonames postalCodeLookup API on a miss. Rate limiting is the caller's
+// concern (the geo-lookup-city stage function reserved a budget unit via the
+// gater before invoking LookupCity). On a postal DB-cache hit no API call is
+// made and the reserved unit goes unused -- safe, since we only ever reserve
+// >= calls made and so never exceed geonames' hard limit. geo stays pure.
 func resolveCity(uuid, postalcode, country string) (string, error) {
 	// Check cache first
 	responseJSON, err := FindPostalCodeMatch(postalcode, country)
@@ -375,14 +351,6 @@ func resolveCity(uuid, postalcode, country string) (string, error) {
 
 	if responseJSON != "" {
 		return extractCityFromPostalResponse(responseJSON)
-	}
-
-	// Consume one budget unit for the postalCodeLookup call. If denied (the
-	// sibling address queue took the last unit between this task's gate check
-	// and here), skip the city call and let the caller use the county fallback.
-	if !rateReserve() {
-		geoLogger().Warn("geonames budget exhausted before city lookup; using county fallback", "uuid", uuid)
-		return "", nil
 	}
 
 	apiURL := fmt.Sprintf(
@@ -395,8 +363,6 @@ func resolveCity(uuid, postalcode, country string) (string, error) {
 		return "", fmt.Errorf("postal code lookup failed: %w", err)
 	}
 	defer resp.Body.Close()
-
-	SaveRateLimiter()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

@@ -31,7 +31,9 @@ type StageConfig struct {
 // valid config.
 var allStages = []string{
 	StageBringToCollection,
-	StageGeoLookup,
+	StageGeoCache,
+	StageGeoAddr,
+	StageGeoCity,
 	StageVideoThumbnail,
 	StageImageThumbnails,
 	StageFaceRecognition,
@@ -75,7 +77,9 @@ func DefaultPipelineConfig() PipelineConfig {
 	return PipelineConfig{
 		Stages: []StageConfig{
 			{Name: StageBringToCollection, Concurrency: c()},
-			{Name: StageGeoLookup, Concurrency: c(), Enabled: en()},
+			{Name: StageGeoCache, Concurrency: c(), Enabled: en()},
+			{Name: StageGeoAddr, Concurrency: c(), Enabled: en()},
+			{Name: StageGeoCity, Concurrency: c(), Enabled: en()},
 			{Name: StageVideoThumbnail, Concurrency: c()},
 			{Name: StageImageThumbnails, Concurrency: c()},
 			{Name: StageFaceRecognition, Concurrency: c(), Enabled: en(),

@@ -124,6 +124,7 @@ func runMigrations() error {
 		{version: 12, filename: "migrations/012-capture-time-columns.sql"},
 		{version: 13, filename: "migrations/013-runtime-config.sql"},
 		{version: 14, filename: "migrations/014-pipeline-config.sql"},
+		{version: 15, filename: "migrations/015-geo-stage-split.sql"},
 	}
 
 	for _, m := range migrations {

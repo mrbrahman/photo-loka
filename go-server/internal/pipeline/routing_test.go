@@ -18,7 +18,9 @@ func nopFuncs() stageFuncs {
 	nop := func(string, *StageHint) error { return nil }
 	return stageFuncs{
 		bringToCollection: nop,
-		geoLookup:         nop,
+		geoCache:          nop,
+		geoAddr:           nop,
+		geoCity:           nop,
 		videoThumbnail:    nop,
 		imageThumbnails:   nop,
 		faceRecognition:   nop,
@@ -123,11 +125,11 @@ func TestRouteDownstreams_BringToCollection(t *testing.T) {
 		item *PipelineItem
 		want []string
 	}{
-		{"image+gps", imageItem(true), []string{StageImageThumbnails, StageGeoLookup}},
+		{"image+gps", imageItem(true), []string{StageImageThumbnails, StageGeoCache}},
 		{"image,no-gps", imageItem(false), []string{StageImageThumbnails}},
-		{"video+gps+compress", videoItem(true, true), []string{StageVideoThumbnail, StageGeoLookup, StageVideoCompression}},
+		{"video+gps+compress", videoItem(true, true), []string{StageVideoThumbnail, StageGeoCache, StageVideoCompression}},
 		{"video,no-gps,compress", videoItem(false, true), []string{StageVideoThumbnail, StageVideoCompression}},
-		{"video+gps,no-compress", videoItem(true, false), []string{StageVideoThumbnail, StageGeoLookup}},
+		{"video+gps,no-compress", videoItem(true, false), []string{StageVideoThumbnail, StageGeoCache}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -144,7 +146,7 @@ func TestRouteDownstreams_BringToCollection(t *testing.T) {
 func TestRouteDownstreams_DisabledOptionalStagesSkipped(t *testing.T) {
 	// Disable geo-lookup and video-compression: an image with GPS routes only to
 	// thumbnails; a video with compression routes only to video-thumbnail.
-	p := testPipeline(t, nopFuncs(), configWithDisabled(StageGeoLookup, StageVideoCompression))
+	p := testPipeline(t, nopFuncs(), configWithDisabled(StageGeoCache, StageVideoCompression))
 	entry := p.stages[StageBringToCollection]
 
 	if got := names(p.routeDownstreams(entry, imageItem(true))); !equal(got, []string{StageImageThumbnails}) {
@@ -156,6 +158,40 @@ func TestRouteDownstreams_DisabledOptionalStagesSkipped(t *testing.T) {
 	// geo also disabled, so only the video-thumbnail branch remains.
 	if !equal(got, want) {
 		t.Errorf("video with geo+compression disabled = %v, want %v", got, want)
+	}
+}
+
+// TestRouteDownstreams_GeoChain verifies the geo chain routes on stage output
+// (like the media-type branch): geo-cache -> geo-lookup-addr only when the
+// local phase reported a US cache miss (GeoNeedsAPI), and geo-lookup-addr ->
+// geo-lookup-city only when the address lookup reported an empty placename
+// (GeoNeedsCity). Terminal otherwise.
+func TestRouteDownstreams_GeoChain(t *testing.T) {
+	p := testPipeline(t, nopFuncs(), DefaultPipelineConfig())
+	cache := p.stages[StageGeoCache]
+	addr := p.stages[StageGeoAddr]
+
+	// geo-cache: no API needed (resolved locally) -> terminal.
+	if got := names(p.routeDownstreams(cache, &PipelineItem{})); len(got) != 0 {
+		t.Errorf("geo-cache with GeoNeedsAPI=false should be terminal, got %v", got)
+	}
+	// geo-cache: US cache miss -> geo-lookup-addr.
+	if got := names(p.routeDownstreams(cache, &PipelineItem{GeoNeedsAPI: true})); !equal(got, []string{StageGeoAddr}) {
+		t.Errorf("geo-cache with GeoNeedsAPI=true = %v, want [geo-lookup-addr]", got)
+	}
+
+	// geo-lookup-addr: no city needed -> terminal.
+	if got := names(p.routeDownstreams(addr, &PipelineItem{})); len(got) != 0 {
+		t.Errorf("geo-lookup-addr with GeoNeedsCity=false should be terminal, got %v", got)
+	}
+	// geo-lookup-addr: empty placename -> geo-lookup-city.
+	if got := names(p.routeDownstreams(addr, &PipelineItem{GeoNeedsCity: true})); !equal(got, []string{StageGeoCity}) {
+		t.Errorf("geo-lookup-addr with GeoNeedsCity=true = %v, want [geo-lookup-city]", got)
+	}
+
+	// geo-lookup-city is terminal regardless.
+	if got := names(p.routeDownstreams(p.stages[StageGeoCity], &PipelineItem{GeoNeedsCity: true})); len(got) != 0 {
+		t.Errorf("geo-lookup-city should be terminal, got %v", got)
 	}
 }
 
@@ -257,11 +293,11 @@ func TestFlow_ImageItem(t *testing.T) {
 		h.ExifData = &media.ExifData{Mediatype: "image", GPSLat: ptrF(1), GPSLng: ptrF(2)}
 		return nil
 	}
-	funcs.geoLookup = func(uuid string, _ *StageHint) error {
+	funcs.geoCache = func(uuid string, _ *StageHint) error {
 		if uuid != "u1" {
 			t.Errorf("geo got uuid %q, want u1", uuid)
 		}
-		rec.mark(StageGeoLookup)
+		rec.mark(StageGeoCache)
 		return nil
 	}
 	funcs.imageThumbnails = func(uuid string, h *StageHint) error {
@@ -290,7 +326,7 @@ func TestFlow_ImageItem(t *testing.T) {
 	// Let any erroneous extra stages surface.
 	time.Sleep(20 * time.Millisecond)
 
-	for _, want := range []string{StageBringToCollection, StageGeoLookup, StageImageThumbnails, StageFaceRecognition} {
+	for _, want := range []string{StageBringToCollection, StageGeoCache, StageImageThumbnails, StageFaceRecognition} {
 		if !rec.ran(want) {
 			t.Errorf("expected stage %q to run", want)
 		}
@@ -318,7 +354,7 @@ func TestFlow_VideoItem(t *testing.T) {
 	funcs.videoThumbnail = func(_ string, _ *StageHint) error { rec.mark(StageVideoThumbnail); return nil }
 	funcs.videoCompression = func(_ string, _ *StageHint) error { rec.mark(StageVideoCompression); return nil }
 	funcs.imageThumbnails = func(_ string, _ *StageHint) error { rec.mark(StageImageThumbnails); return nil }
-	funcs.geoLookup = func(_ string, _ *StageHint) error { rec.mark(StageGeoLookup); return nil }
+	funcs.geoCache = func(_ string, _ *StageHint) error { rec.mark(StageGeoCache); return nil }
 
 	col := &collections.Collection{CompressVideos: ptrI(1)}
 	p := testPipeline(t, funcs, ungatedConfig())
@@ -333,7 +369,7 @@ func TestFlow_VideoItem(t *testing.T) {
 			t.Errorf("expected stage %q to run", want)
 		}
 	}
-	if rec.ran(StageGeoLookup) {
+	if rec.ran(StageGeoCache) {
 		t.Errorf("geo-lookup ran for a video with no GPS")
 	}
 }

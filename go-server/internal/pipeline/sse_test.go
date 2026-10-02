@@ -83,13 +83,13 @@ func TestSSE_StreamsLiveQueueEvent(t *testing.T) {
 	// Drive an event on one stage's queue: fireDrained emits a busy then a
 	// drained snapshot to subscribers, each tagged with that stage's name via
 	// the fake's Subscribe (the fake carries name set by the factory).
-	fakes[StageGeoLookup].setBusy(2, 3)
-	fakes[StageGeoLookup].emit()
+	fakes[StageGeoCache].setBusy(2, 3)
+	fakes[StageGeoCache].emit()
 
 	select {
 	case ev := <-merged:
-		if ev.Name != StageGeoLookup {
-			t.Fatalf("event name = %q, want %q", ev.Name, StageGeoLookup)
+		if ev.Name != StageGeoCache {
+			t.Fatalf("event name = %q, want %q", ev.Name, StageGeoCache)
 		}
 		if ev.Status.Active != 2 || ev.Status.Pending != 3 {
 			t.Fatalf("event status active/pending = %d/%d, want 2/3", ev.Status.Active, ev.Status.Pending)

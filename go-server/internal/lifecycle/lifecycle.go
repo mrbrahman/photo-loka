@@ -10,7 +10,6 @@ import (
 	"photo-loka/internal/collections"
 	"photo-loka/internal/config"
 	"photo-loka/internal/frames"
-	"photo-loka/internal/geo"
 	"photo-loka/internal/jobs"
 	"photo-loka/internal/pipeline"
 	"photo-loka/internal/scheduler"
@@ -64,8 +63,8 @@ func ShutdownCleanup(d Deps) {
 	scheduler.Stop()
 	jobs.StopAll()          // stop file watchers
 	jobs.StopAllScheduled() // stop scheduled intake cron jobs
-	geo.SaveRateLimiter()   // persist rate limit counters for next startup
 	if pipeline.P != nil {
-		pipeline.P.StopAll() // stop all per-stage queues (includes geo-lookup)
+		pipeline.P.StopAll() // stop all per-stage queues; the geo rate gater
+		// persists its counters and tears down its rollover timer here.
 	}
 }

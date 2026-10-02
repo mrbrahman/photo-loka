@@ -18,7 +18,6 @@ import (
 	"photo-loka/internal/collections"
 	"photo-loka/internal/config"
 	"photo-loka/internal/database"
-	"photo-loka/internal/geo"
 	"photo-loka/internal/jobs"
 	"photo-loka/internal/lifecycle"
 	"photo-loka/internal/media"
@@ -175,11 +174,6 @@ func runServe() {
 
 	// Initialize package-level singletons that read config.Startup.
 	auth.Init()
-
-	// Initialize geo package (geonames rate limiter). Geo has no work queue of
-	// its own; the pipeline owns the geo-lookup stage queue. This is a non-queue
-	// subsystem init and so lives here in the composition root.
-	geo.Init()
 
 	// Initialize ML package (HTTP client). Non-queue subsystem used by search,
 	// ML routes, and trash cleanup as well as the pipeline. Must precede

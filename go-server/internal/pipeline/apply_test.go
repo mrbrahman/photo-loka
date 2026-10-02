@@ -37,29 +37,29 @@ func TestApplyLive_AddGate(t *testing.T) {
 	p, fakes := fakePipeline(t, cfgNoGates())
 
 	// Initially ungated: no predicate, dispatch allowed.
-	if !fakes[StageGeoLookup].dispatchAllowed() {
+	if !fakes[StageGeoCache].dispatchAllowed() {
 		t.Fatal("geo-lookup should be ungated initially")
 	}
 
 	// Apply a config gating geo-lookup behind bring-to-collection.
-	p.applyLive(cfgWithGates(StageGeoLookup, StageBringToCollection))
+	p.applyLive(cfgWithGates(StageGeoCache, StageBringToCollection))
 
 	// Now geo-lookup is gated: closed while bring-to-collection is busy...
 	fakes[StageBringToCollection].setBusy(1, 0)
-	if fakes[StageGeoLookup].dispatchAllowed() {
+	if fakes[StageGeoCache].dispatchAllowed() {
 		t.Error("geo-lookup should be gated closed while bring-to-collection is busy")
 	}
 	// ...open once it drains.
 	fakes[StageBringToCollection].setBusy(0, 0)
-	if !fakes[StageGeoLookup].dispatchAllowed() {
+	if !fakes[StageGeoCache].dispatchAllowed() {
 		t.Error("geo-lookup should open once bring-to-collection drains")
 	}
 
 	// And bring-to-collection's drain now kicks geo-lookup (async subscriber).
-	before := fakes[StageGeoLookup].kickCount()
+	before := fakes[StageGeoCache].kickCount()
 	fakes[StageBringToCollection].fireDrained()
 	waitFor(t, "bring-to-collection drain kicks newly-gated geo-lookup", func() bool {
-		return fakes[StageGeoLookup].kickCount() == before+1
+		return fakes[StageGeoCache].kickCount() == before+1
 	})
 }
 
