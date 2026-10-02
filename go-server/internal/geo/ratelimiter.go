@@ -59,14 +59,46 @@ func initRateLimiter(stateFile string) {
 	}
 }
 
-// rateCheck returns true if another geonames request is allowed. It resets the
-// counters when the hour or day changes.
+// rateCheck reports whether another geonames request is currently within
+// budget. It is READ-ONLY: it does not reset counters and does not increment.
+// Used as the API queues' "rate" gate predicate (isOpen), which the dispatch
+// loop may call at any time, so it must have no side effects. Counter resets
+// are owned by the rollover timer (see resetCounters); increments are owned by
+// rateReserve.
 func rateCheck() bool {
 	rlMu.Lock()
 	defer rlMu.Unlock()
+	return rlHourlyCount < config.Runtime.GeonamesHourlyLimit && rlDailyCount < config.Runtime.GeonamesDailyLimit
+}
 
+// rateReserve atomically reserves one request against the budget: under a
+// single lock it checks headroom AND, if available, increments both counters,
+// returning true. If over budget it returns false and increments nothing. This
+// check-and-increment must be atomic because two separate API queues (address
+// and city) share this limiter at concurrency 1 each: a plain rateCheck then a
+// later rateIncrement would let both queues slip through on the last unit and
+// exceed geonames' hard limit. An API task calls rateReserve immediately before
+// its HTTP call; the "rate" gate (rateCheck) only keeps work from dispatching
+// while already over budget, so under normal flow the reserve succeeds.
+func rateReserve() bool {
+	rlMu.Lock()
+	defer rlMu.Unlock()
+	if rlHourlyCount >= config.Runtime.GeonamesHourlyLimit || rlDailyCount >= config.Runtime.GeonamesDailyLimit {
+		return false
+	}
+	rlHourlyCount++
+	rlDailyCount++
+	return true
+}
+
+// resetCounters zeroes the hourly counter when the hour has rolled over and the
+// daily counter when the day has rolled over, updating the tracked hour/day.
+// Called by the rollover timer (geo.Init) just after each boundary; the timer
+// then kicks the API queues so items held by the "rate" gate resume.
+func resetCounters() {
+	rlMu.Lock()
+	defer rlMu.Unlock()
 	now := time.Now()
-
 	if now.Hour() != rlCurrentHour {
 		rlHourlyCount = 0
 		rlCurrentHour = now.Hour()
@@ -75,17 +107,6 @@ func rateCheck() bool {
 		rlDailyCount = 0
 		rlCurrentDay = now.YearDay()
 	}
-
-	return rlHourlyCount < config.Runtime.GeonamesHourlyLimit && rlDailyCount < config.Runtime.GeonamesDailyLimit
-}
-
-// rateIncrement increases both hourly and daily counters by one.
-func rateIncrement() {
-	rlMu.Lock()
-	defer rlMu.Unlock()
-
-	rlHourlyCount++
-	rlDailyCount++
 }
 
 // SaveRateLimiter writes the current rate limiter state to the state file.

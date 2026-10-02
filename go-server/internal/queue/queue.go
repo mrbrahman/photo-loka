@@ -176,6 +176,26 @@ func (q *Queue) ClearGates() {
 	q.mu.Unlock()
 }
 
+// ClearGate removes only the gate(s) with the given name, leaving any other
+// gates intact. Used when a queue is governed by more than one gater (e.g. a
+// stage carrying both a "resource" gate and a geo "rate" gate): a resource
+// re-wire must not drop the rate gate. Clears the block reason if it named the
+// removed gate.
+func (q *Queue) ClearGate(name string) {
+	q.mu.Lock()
+	kept := q.gates[:0:0]
+	for _, g := range q.gates {
+		if g.name != name {
+			kept = append(kept, g)
+		}
+	}
+	q.gates = kept
+	if q.blockReason == name {
+		q.blockReason = ""
+	}
+	q.mu.Unlock()
+}
+
 // Subscribe returns a channel that receives an Event snapshot on every
 // dispatch-cycle transition. The channel is buffered and sends are
 // non-blocking (drop-oldest): a slow consumer never stalls the queue, and

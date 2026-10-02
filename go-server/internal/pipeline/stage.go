@@ -22,6 +22,7 @@ type Queue interface {
 	Stop()
 	RegisterGate(name string, isOpen func() bool)
 	ClearGates()
+	ClearGate(name string)
 	Subscribe() <-chan queue.Event
 	Kick()
 }

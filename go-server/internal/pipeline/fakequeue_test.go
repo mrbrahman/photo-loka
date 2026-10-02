@@ -141,6 +141,18 @@ func (f *fakeQueue) ClearGates() {
 	f.mu.Unlock()
 }
 
+func (f *fakeQueue) ClearGate(name string) {
+	f.mu.Lock()
+	kept := f.gates[:0:0]
+	for _, g := range f.gates {
+		if g.name != name {
+			kept = append(kept, g)
+		}
+	}
+	f.gates = kept
+	f.mu.Unlock()
+}
+
 func (f *fakeQueue) Subscribe() <-chan queue.Event {
 	ch := make(chan queue.Event, 16)
 	f.mu.Lock()

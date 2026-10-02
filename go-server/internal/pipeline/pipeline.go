@@ -33,23 +33,23 @@ type Pipeline struct {
 	stages map[string]*Stage
 	entry  *Stage
 
-	// gateMu guards the mutable, config-driven gate state that Apply rewrites at
-	// runtime: each Stage's GatedBy and Enabled, the queue gates set by
-	// wireGates, and the subscriber generation below. Hot-path readers (the
-	// resource gate's isOpen via upstreamBusy, and routing's Enabled checks)
-	// take RLock; Apply takes Lock. The stage set and data-flow Downstreams are
-	// fixed after construction and need no lock.
+	// gateMu guards the mutable, config-driven state the pipeline itself owns
+	// and that Apply rewrites at runtime: each Stage's Enabled flag (read by
+	// routing). The resource-gating model (GatedBy / upstreamBusy) is owned by
+	// the resourceGater, which guards it with its own lock. Hot-path routing
+	// readers take RLock; Apply takes Lock. The stage set and data-flow
+	// Downstreams are fixed after construction and need no lock.
 	gateMu sync.RWMutex
 
-	// gateSubsStop is closed to signal the current generation of drained-event
-	// subscriber goroutines (started by wireGates) to exit. wireGates replaces
-	// it with a fresh channel each time it runs, so a live Apply tears down the
-	// old subscriptions and starts new ones without leaking goroutines. Guarded
-	// by gateMu (written in wireGates, which callers invoke under gateMu.Lock).
-	gateSubsStop chan struct{}
-	// gateSubsWG tracks the current subscriber goroutines so StopAll (and tests)
-	// can wait for them to exit.
-	gateSubsWG sync.WaitGroup
+	// gaters are the dispatch-gating strategies attached to the queues. The
+	// pipeline owns the queues and the set of gaters, and wires each gater onto
+	// the queues it governs; it does not know how any gater computes its
+	// condition. Today: the resource gater (below). Sub-step C adds the geo
+	// rate gater.
+	gaters []Gater
+	// resource is the resource-scheduling gater (kept as a typed reference for
+	// the live Apply re-wire, which rebuilds its GatedBy model).
+	resource *resourceGater
 }
 
 // P is the package-level pipeline singleton, built by Init.
@@ -157,8 +157,47 @@ func newPipeline(funcs stageFuncs, cfg PipelineConfig) *Pipeline {
 func newPipelineWithQueues(funcs stageFuncs, cfg PipelineConfig, qf queueFactory) *Pipeline {
 	p := &Pipeline{stages: make(map[string]*Stage)}
 	p.buildStages(funcs, cfg, qf)
+	// Resource gating is a Gater over the queues; build it from the config's
+	// gatedBy edges and the pipeline's queue-busy lookup, then attach.
+	p.resource = newResourceGater(gatedByMap(cfg), p.queueBusy)
+	p.gaters = []Gater{p.resource}
 	p.wireGates()
 	return p
+}
+
+// queueByName implements gateHost: look up a stage's queue by name (nil if
+// unknown). The stage set is fixed after construction, so no lock is needed.
+func (p *Pipeline) queueByName(name string) Queue {
+	if s, ok := p.stages[name]; ok {
+		return s.Queue
+	}
+	return nil
+}
+
+// queueBusy reports whether the named queue has running or pending work. The
+// resource gater uses it to evaluate upstream busyness.
+func (p *Pipeline) queueBusy(name string) bool {
+	q := p.queueByName(name)
+	if q == nil {
+		return false
+	}
+	st := q.GetStatus()
+	return st.Active > 0 || st.Pending > 0
+}
+
+// gatedByMap extracts the resource-gating edges from a config as a queue-name
+// map: queue name -> gating upstream queue names. This is the resource gater's
+// input, independent of the Stage type.
+func gatedByMap(cfg PipelineConfig) map[string][]string {
+	m := make(map[string][]string)
+	for _, sc := range cfg.Stages {
+		if len(sc.GatedBy) > 0 {
+			ups := make([]string, len(sc.GatedBy))
+			copy(ups, sc.GatedBy)
+			m[sc.Name] = ups
+		}
+	}
+	return m
 }
 
 // buildStages constructs the fixed data-flow graph and applies the tunable
@@ -212,83 +251,13 @@ func (p *Pipeline) buildStages(funcs stageFuncs, cfg PipelineConfig, qf queueFac
 	}
 }
 
-// wireGates installs each gated stage's "resource" gate and starts the
-// drained-event subscribers that kick dependents when an upstream drains.
-//
-// wireGates is called both at startup and on every live Apply, so it must be
-// idempotent: first clear ALL gates (so a stage that is no longer gated stops
-// declining dispatch) and stop the previous generation of subscriber goroutines,
-// then register gates and start fresh subscribers for the currently-gated graph.
-// Callers hold p.gateMu for writing; the gate isOpen closures run later on
-// dispatch goroutines and take p.gateMu.RLock themselves.
+// wireGates attaches every gater to the queues it governs. Each gater
+// registers its gate and sets up its own kicking; the pipeline does not know
+// how any gater computes its condition. Called at startup and on every live
+// Apply (gaters' Attach is idempotent).
 func (p *Pipeline) wireGates() {
-	// Tear down the previous subscriber generation (if any) and wait for it to
-	// exit, so re-wiring never leaks goroutines and old subscribers cannot kick
-	// using a stale dependents map.
-	if p.gateSubsStop != nil {
-		close(p.gateSubsStop)
-		p.gateSubsWG.Wait()
-	}
-	p.gateSubsStop = make(chan struct{})
-	stop := p.gateSubsStop
-
-	// Clear all gates first (idempotent re-wire).
-	for _, s := range p.stages {
-		s.Queue.ClearGates()
-	}
-
-	// Register the "resource" gate on each gated stage and build the reverse
-	// index upstream -> stages gated behind it, so an upstream's drained event
-	// knows whom to kick.
-	dependents := make(map[*Stage][]*Stage)
-	for _, s := range p.stages {
-		stage := s
-		if len(stage.GatedBy) > 0 {
-			// The gate reads GatedBy (via upstreamBusy) at dispatch time; take
-			// the read lock so a concurrent Apply cannot race the swap.
-			stage.Queue.RegisterGate("resource", func() bool {
-				p.gateMu.RLock()
-				busy := stage.upstreamBusy()
-				p.gateMu.RUnlock()
-				return !busy
-			})
-			for _, up := range stage.GatedBy {
-				dependents[up] = append(dependents[up], stage)
-			}
-		}
-	}
-
-	// For each upstream that gates something, subscribe to its event stream and
-	// kick the dependents on its busy->drained transition. One goroutine per
-	// such upstream; all exit when stop is closed (next re-wire or StopAll).
-	for up, gated := range dependents {
-		upstream := up
-		kickees := gated
-		ch := upstream.Queue.Subscribe()
-		p.gateSubsWG.Add(1)
-		go func() {
-			defer p.gateSubsWG.Done()
-			// Track drained state so we kick only on the busy->drained edge, not
-			// on every event. An upstream starts drained; real work un-drains it.
-			wasDrained := true
-			for {
-				select {
-				case <-stop:
-					return
-				case ev, ok := <-ch:
-					if !ok {
-						return
-					}
-					nowDrained := ev.Status.Active == 0 && ev.Status.Pending == 0
-					if nowDrained && !wasDrained {
-						for _, g := range kickees {
-							g.Queue.Kick()
-						}
-					}
-					wasDrained = nowDrained
-				}
-			}
-		}()
+	for _, g := range p.gaters {
+		g.Attach(p)
 	}
 }
 
@@ -325,9 +294,11 @@ func (p *Pipeline) Apply(cfg PipelineConfig) error {
 func (p *Pipeline) applyLive(cfg PipelineConfig) {
 	byName := cfg.byName()
 
+	// Update per-stage Enabled (routing) and concurrency under the pipeline's
+	// lock. GatedBy no longer lives on the Stage for gating purposes -- the
+	// resource gater owns it -- but we keep Stage.GatedBy in sync for any
+	// remaining readers until sub-step B removes it.
 	p.gateMu.Lock()
-	// Update enable flag and gate edges per stage. Concurrency is applied via
-	// the queue (its own lock); safe to call under gateMu (no lock inversion).
 	for name, s := range p.stages {
 		sc := byName[name]
 		s.Enabled = sc.enabled()
@@ -337,7 +308,6 @@ func (p *Pipeline) applyLive(cfg PipelineConfig) {
 		if n := sc.concurrency(); n != s.Queue.GetStatus().MaxConcurrency {
 			s.Queue.SetConcurrency(n)
 		}
-		// Rebuild GatedBy from scratch (a stage may have lost gates).
 		s.GatedBy = nil
 	}
 	for _, sc := range cfg.Stages {
@@ -351,10 +321,13 @@ func (p *Pipeline) applyLive(cfg PipelineConfig) {
 			}
 		}
 	}
-	// Re-point the gate hooks to match the new graph (idempotent; clears hooks
-	// on stages that are no longer gated).
-	p.wireGates()
 	p.gateMu.Unlock()
+
+	// Rebuild the resource gater's model from the new config and re-attach all
+	// gaters (idempotent: clears + re-registers each gater's gate, restarts
+	// kicking). Done outside gateMu since the gater owns its own lock.
+	p.resource.rebuild(gatedByMap(cfg))
+	p.wireGates()
 
 	// Kick every stage so a stage that just became ungated (or whose gate is
 	// already open) re-evaluates and dispatches any pending work immediately.
@@ -388,16 +361,10 @@ func (p *Pipeline) ResumeAll() {
 	}
 }
 
-// StopAll stops every stage's dispatch goroutine (shutdown) and tears down the
-// gate drained-event subscribers.
+// StopAll stops every stage's dispatch goroutine (shutdown) and tears down each
+// gater (e.g. the resource gater's drained-event subscribers).
 func (p *Pipeline) StopAll() {
-	p.gateMu.Lock()
-	if p.gateSubsStop != nil {
-		close(p.gateSubsStop)
-		p.gateSubsStop = nil
-	}
-	p.gateMu.Unlock()
-	p.gateSubsWG.Wait()
+	p.resource.Stop()
 	for _, s := range p.stages {
 		s.Queue.Stop()
 	}
