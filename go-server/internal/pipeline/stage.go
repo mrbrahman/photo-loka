@@ -27,26 +27,24 @@ type Queue interface {
 	Kick()
 }
 
-// Stage is one unit of pipeline work with its own queue and concurrency.
+// node is one entry in the pipeline's queue master list: a named work queue
+// plus the work function and the system-level enable flag. The pipeline owns a
+// map of these (by name) and the data-flow routing between them (a separate
+// routing table over queue names -- see routeDownstreams); a node itself
+// carries NO routing or gating state.
 //
-// Two relationships are tracked, deliberately kept separate (see
-// docs/pipeline-dag-design.md):
-//   - Downstreams: DATA FLOW. Where an item goes after this stage finishes.
-//     Hardcoded in code (buildStages); not configurable.
-//   - GatedBy: RESOURCE SCHEDULING. This stage must not START a task while any
-//     of these upstream stages is busy (running or pending). Derived from the
-//     user's scheduling config; may name any stage regardless of data flow.
-type Stage struct {
-	Name        string
-	Fn          StageFn
-	Queue       Queue
-	Downstreams []*Stage
-	GatedBy     []*Stage
+// Gating is owned entirely by the gaters (resource gating by resourceGater,
+// geo rate limiting by the geo rate gater), which the pipeline attaches onto
+// these nodes' queues. The node does not know whether or how it is gated.
+type node struct {
+	Name    string
+	Fn      StageFn
+	Queue   Queue
 
-	// Enabled is the system-level (this-install) master switch for the stage,
-	// set from PipelineConfig. A disabled optional stage is skipped during
-	// routing regardless of per-item applicability. Structural stages are
-	// always enabled (config validation forbids disabling them).
+	// Enabled is the system-level (this-install) master switch for the node's
+	// stage, set from PipelineConfig. A disabled optional stage is skipped
+	// during routing regardless of per-item applicability. Structural stages
+	// are always enabled (config validation forbids disabling them).
 	Enabled bool
 }
 
@@ -55,17 +53,3 @@ type Stage struct {
 // hint is nil or a field is absent, the stage self-hydrates from the DB/disk by
 // uuid, so every stage is callable standalone as well as from the orchestrator.
 type StageFn func(uuid string, hint *StageHint) error
-
-// upstreamBusy reports whether any stage in GatedBy is busy (running OR
-// pending). The gate is closed while this is true: the queue's "resource" gate
-// (registered with isOpen = !upstreamBusy) declines to start tasks until all
-// gating upstreams are fully drained.
-func (s *Stage) upstreamBusy() bool {
-	for _, up := range s.GatedBy {
-		st := up.Queue.GetStatus()
-		if st.Active > 0 || st.Pending > 0 {
-			return true
-		}
-	}
-	return false
-}

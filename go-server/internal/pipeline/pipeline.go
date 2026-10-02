@@ -1,8 +1,11 @@
-// Package pipeline is the indexing orchestrator. It wires the fixed media data
-// flow (bring-to-collection -> thumbnails -> ML, plus geo and video branches)
-// as a set of Stage instances, each backed by its own queue.Queue. Data flow
-// (Downstreams) is hardcoded here; resource gating (GatedBy) is layered on in a
-// later phase from config. See docs/pipeline-dag-design.md.
+// Package pipeline is the indexing orchestrator. It owns a set of work queues
+// (one per stage, the "node" master list), the fixed data-flow routing between
+// them (bring-to-collection -> thumbnails -> ML, plus geo and video branches),
+// and a set of gaters that decide when each queue may dispatch. Routing is a
+// pipeline concern expressed over queue names (routeDownstreams); gating is
+// delegated to gaters (resource scheduling by resourceGater, geo rate limiting
+// by the geo rate gater) so the pipeline does not know how any gate is
+// computed. See docs/pipeline-dag-design.md.
 package pipeline
 
 import (
@@ -30,15 +33,15 @@ const (
 // Pipeline is the process-wide orchestrator singleton. It owns the stage graph
 // and provides Submit (entry) plus standalone per-stage enqueue.
 type Pipeline struct {
-	stages map[string]*Stage
-	entry  *Stage
+	stages map[string]*node
+	entry  *node
 
 	// gateMu guards the mutable, config-driven state the pipeline itself owns
-	// and that Apply rewrites at runtime: each Stage's Enabled flag (read by
-	// routing). The resource-gating model (GatedBy / upstreamBusy) is owned by
-	// the resourceGater, which guards it with its own lock. Hot-path routing
-	// readers take RLock; Apply takes Lock. The stage set and data-flow
-	// Downstreams are fixed after construction and need no lock.
+	// and that Apply rewrites at runtime: each node's Enabled flag (read by
+	// routing). The resource-gating model is owned by the resourceGater, which
+	// guards it with its own lock. Hot-path routing readers take RLock; Apply
+	// takes Lock. The node set and the data-flow routing table are fixed after
+	// construction and need no lock.
 	gateMu sync.RWMutex
 
 	// gaters are the dispatch-gating strategies attached to the queues. The
@@ -155,8 +158,8 @@ func newPipeline(funcs stageFuncs, cfg PipelineConfig) *Pipeline {
 // newPipelineWithQueues is newPipeline with an injectable queue factory, for
 // tests that drive gating deterministically via a fake Queue.
 func newPipelineWithQueues(funcs stageFuncs, cfg PipelineConfig, qf queueFactory) *Pipeline {
-	p := &Pipeline{stages: make(map[string]*Stage)}
-	p.buildStages(funcs, cfg, qf)
+	p := &Pipeline{stages: make(map[string]*node)}
+	p.buildNodes(funcs, cfg, qf)
 	// Resource gating is a Gater over the queues; build it from the config's
 	// gatedBy edges and the pipeline's queue-busy lookup, then attach.
 	p.resource = newResourceGater(gatedByMap(cfg), p.queueBusy)
@@ -200,55 +203,39 @@ func gatedByMap(cfg PipelineConfig) map[string][]string {
 	return m
 }
 
-// buildStages constructs the fixed data-flow graph and applies the tunable
-// config (per-stage concurrency, enable flag, and gatedBy edges). Downstreams
-// (data flow) are hardcoded; GatedBy (scheduling) comes from config. Queues are
-// created via qf.
-func (p *Pipeline) buildStages(funcs stageFuncs, cfg PipelineConfig, qf queueFactory) {
+// buildNodes constructs the queue master list (one node per stage, with its
+// concurrency + enable flag from config) and the fixed data-flow routing table.
+// Routing (which queue feeds which) is a pipeline concern expressed over queue
+// names; resource gating is NOT built here (the resourceGater owns it, from
+// gatedByMap). Queues are created via qf.
+func (p *Pipeline) buildNodes(funcs stageFuncs, cfg PipelineConfig, qf queueFactory) {
 	byName := cfg.byName()
-	newStage := func(name string, fn StageFn) *Stage {
+	newNode := func(name string, fn StageFn) *node {
 		sc := byName[name]
-		s := &Stage{
+		n := &node{
 			Name:    name,
 			Fn:      fn,
 			Queue:   qf(name, sc.concurrency()),
 			Enabled: sc.enabled(),
 		}
-		p.stages[name] = s
-		return s
+		p.stages[name] = n
+		return n
 	}
 
-	// Create all stages first (concurrency + enable applied from config).
-	geoLookup := newStage(StageGeoLookup, funcs.geoLookup)
-	faceRecognition := newStage(StageFaceRecognition, funcs.faceRecognition)
-	imageEncoding := newStage(StageImageEncoding, funcs.imageEncoding)
-	videoCompression := newStage(StageVideoCompression, funcs.videoCompression)
-	imageThumbs := newStage(StageImageThumbnails, funcs.imageThumbnails)
-	videoThumb := newStage(StageVideoThumbnail, funcs.videoThumbnail)
-	entry := newStage(StageBringToCollection, funcs.bringToCollection)
+	// Create all nodes (concurrency + enable applied from config).
+	newNode(StageGeoLookup, funcs.geoLookup)
+	newNode(StageFaceRecognition, funcs.faceRecognition)
+	newNode(StageImageEncoding, funcs.imageEncoding)
+	newNode(StageVideoCompression, funcs.videoCompression)
+	newNode(StageImageThumbnails, funcs.imageThumbnails)
+	newNode(StageVideoThumbnail, funcs.videoThumbnail)
+	p.entry = newNode(StageBringToCollection, funcs.bringToCollection)
 
-	// Data flow (hardcoded): generate-image-thumbnails feeds both ML stages;
-	// generate-video-thumbnail feeds generate-image-thumbnails; the entry fans
-	// out to geo-lookup and the media-type branch (routeDownstreams filters by
-	// media type at enqueue time).
-	imageThumbs.Downstreams = []*Stage{faceRecognition, imageEncoding}
-	videoThumb.Downstreams = []*Stage{imageThumbs}
-	entry.Downstreams = []*Stage{geoLookup, videoThumb, imageThumbs, videoCompression}
-	p.entry = entry
-
-	// Resource gating (from config): resolve each stage's gatedBy names to
-	// *Stage. Names are validated before this point.
-	for _, sc := range cfg.Stages {
-		if len(sc.GatedBy) == 0 {
-			continue
-		}
-		s := p.stages[sc.Name]
-		for _, up := range sc.GatedBy {
-			if u, ok := p.stages[up]; ok {
-				s.GatedBy = append(s.GatedBy, u)
-			}
-		}
-	}
+	// Data flow is expressed over queue names by routeDownstreams (a pipeline
+	// method), which also applies the per-item conditionals (media type, GPS,
+	// ML availability, enable flag). There is no separate stored table: the
+	// routing graph is small and fixed, and keeping it as code next to the
+	// conditionals avoids a redundant candidate-set field that could drift.
 }
 
 // wireGates attaches every gater to the queues it governs. Each gater
@@ -294,10 +281,9 @@ func (p *Pipeline) Apply(cfg PipelineConfig) error {
 func (p *Pipeline) applyLive(cfg PipelineConfig) {
 	byName := cfg.byName()
 
-	// Update per-stage Enabled (routing) and concurrency under the pipeline's
-	// lock. GatedBy no longer lives on the Stage for gating purposes -- the
-	// resource gater owns it -- but we keep Stage.GatedBy in sync for any
-	// remaining readers until sub-step B removes it.
+	// Update per-node Enabled (routing) and concurrency under the pipeline's
+	// lock. Resource gating is not on the node anymore -- the resource gater
+	// owns it and is rebuilt below from the new config.
 	p.gateMu.Lock()
 	for name, s := range p.stages {
 		sc := byName[name]
@@ -307,18 +293,6 @@ func (p *Pipeline) applyLive(cfg PipelineConfig) {
 		// the dispatch path.
 		if n := sc.concurrency(); n != s.Queue.GetStatus().MaxConcurrency {
 			s.Queue.SetConcurrency(n)
-		}
-		s.GatedBy = nil
-	}
-	for _, sc := range cfg.Stages {
-		if len(sc.GatedBy) == 0 {
-			continue
-		}
-		s := p.stages[sc.Name]
-		for _, up := range sc.GatedBy {
-			if u, ok := p.stages[up]; ok {
-				s.GatedBy = append(s.GatedBy, u)
-			}
 		}
 	}
 	p.gateMu.Unlock()

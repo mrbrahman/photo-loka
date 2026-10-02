@@ -37,7 +37,7 @@ func testPipeline(t *testing.T, funcs stageFuncs, cfg PipelineConfig) *Pipeline 
 	return p
 }
 
-func names(stages []*Stage) []string {
+func names(stages []*node) []string {
 	out := make([]string, len(stages))
 	for i, s := range stages {
 		out[i] = s.Name

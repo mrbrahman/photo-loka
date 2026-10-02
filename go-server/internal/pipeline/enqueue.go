@@ -17,7 +17,7 @@ import (
 // video-compression), each downstream gets an independent copy, so concurrent
 // branches never share mutable item state. The orchestrator always forwards at
 // Normal; the priority parameter lets the same path serve the standalone API.
-func (p *Pipeline) enqueueItem(stage *Stage, item *PipelineItem, priority queue.Priority) {
+func (p *Pipeline) enqueueItem(stage *node, item *PipelineItem, priority queue.Priority) {
 	hint := item.hint()
 	st := stage
 	it := item
@@ -48,8 +48,9 @@ func (p *Pipeline) enqueueItem(stage *Stage, item *PipelineItem, priority queue.
 	})
 }
 
-// routeDownstreams filters a stage's candidate Downstreams by media type and
-// runtime applicability, implementing the fixed routing rules from the design:
+// routeDownstreams filters a node's candidate downstreams (from the pipeline's
+// routing table p.routes) by media type and runtime applicability, implementing
+// the fixed routing rules:
 //   - bring-to-collection fans out to geo-lookup (if GPS) and the media branch:
 //     video -> generate-video-thumbnail + video-compression (if enabled);
 //     image -> generate-image-thumbnails.
@@ -58,37 +59,37 @@ func (p *Pipeline) enqueueItem(stage *Stage, item *PipelineItem, priority queue.
 //     (each subject to its Enabled flag and ml.Available()).
 //
 // Optional stages (geo-lookup, video-compression, and the ML stages) run only
-// when their Stage.Enabled flag is set AND the per-item applicability holds.
+// when their node's Enabled flag is set AND the per-item applicability holds.
 // Structural stages (thumbnails) are always enabled.
-func (p *Pipeline) routeDownstreams(stage *Stage, item *PipelineItem) []*Stage {
-	switch stage.Name {
+func (p *Pipeline) routeDownstreams(n *node, item *PipelineItem) []*node {
+	switch n.Name {
 	case StageBringToCollection:
-		var out []*Stage
+		var out []*node
 		if item.hasGPS() {
-			if s := p.enabledStage(StageGeoLookup); s != nil {
+			if s := p.enabledNode(StageGeoLookup); s != nil {
 				out = append(out, s)
 			}
 		}
 		switch item.Mediatype {
 		case "video":
-			if s := p.enabledStage(StageVideoThumbnail); s != nil {
+			if s := p.enabledNode(StageVideoThumbnail); s != nil {
 				out = append(out, s)
 			}
 			if item.wantsCompression() {
-				if s := p.enabledStage(StageVideoCompression); s != nil {
+				if s := p.enabledNode(StageVideoCompression); s != nil {
 					out = append(out, s)
 				}
 			}
 		case "image":
-			if s := p.enabledStage(StageImageThumbnails); s != nil {
+			if s := p.enabledNode(StageImageThumbnails); s != nil {
 				out = append(out, s)
 			}
 		}
 		return out
 
 	case StageVideoThumbnail:
-		if s := p.enabledStage(StageImageThumbnails); s != nil {
-			return []*Stage{s}
+		if s := p.enabledNode(StageImageThumbnails); s != nil {
+			return []*node{s}
 		}
 		return nil
 
@@ -96,16 +97,16 @@ func (p *Pipeline) routeDownstreams(stage *Stage, item *PipelineItem) []*Stage {
 		return p.mlDownstreams()
 
 	default:
-		// Terminal stages (geo, ML, compression) have no downstreams.
+		// Terminal nodes (geo, ML, compression) have no downstreams.
 		return nil
 	}
 }
 
-// enabledStage returns the named stage only if it exists and is enabled;
+// enabledNode returns the named node only if it exists and is enabled;
 // otherwise nil. Used by routing to skip disabled optional stages. The Enabled
-// read is guarded by the gate lock so a live Apply cannot race it. (The stage
+// read is guarded by the gate lock so a live Apply cannot race it. (The node
 // set itself is fixed after construction, so the map lookup needs no lock.)
-func (p *Pipeline) enabledStage(name string) *Stage {
+func (p *Pipeline) enabledNode(name string) *node {
 	s, ok := p.stages[name]
 	if !ok {
 		return nil
@@ -119,18 +120,17 @@ func (p *Pipeline) enabledStage(name string) *Stage {
 	return nil
 }
 
-// mlDownstreams returns the ML stages that should run: enabled in config AND the
-// ML client is available. face-recognition and image-encoding are independent
-// (image-encoding no longer hardcoded off; it is enabled via config).
-func (p *Pipeline) mlDownstreams() []*Stage {
+// mlDownstreams returns the ML nodes that should run: enabled in config AND the
+// ML client is available. face-recognition and image-encoding are independent.
+func (p *Pipeline) mlDownstreams() []*node {
 	if !ml.Available() {
 		return nil
 	}
-	var out []*Stage
-	if s := p.enabledStage(StageFaceRecognition); s != nil {
+	var out []*node
+	if s := p.enabledNode(StageFaceRecognition); s != nil {
 		out = append(out, s)
 	}
-	if s := p.enabledStage(StageImageEncoding); s != nil {
+	if s := p.enabledNode(StageImageEncoding); s != nil {
 		out = append(out, s)
 	}
 	return out

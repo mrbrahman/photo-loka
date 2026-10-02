@@ -121,8 +121,10 @@ func TestBuildStages_AppliesConfig(t *testing.T) {
 	if got := face.Queue.GetStatus().MaxConcurrency; got != 3 {
 		t.Errorf("face-recognition concurrency = %d, want 3", got)
 	}
-	if len(face.GatedBy) != 1 || face.GatedBy[0].Name != StageImageThumbnails {
-		t.Errorf("face-recognition GatedBy not resolved: %+v", face.GatedBy)
+	// Resource gating now lives in the resource gater, not on the node. Assert
+	// the gater resolved face-recognition's gatedBy to image-thumbnails.
+	if ups := p.resource.gatedBy[StageFaceRecognition]; len(ups) != 1 || ups[0] != StageImageThumbnails {
+		t.Errorf("face-recognition gatedBy not resolved in resource gater: %+v", ups)
 	}
 	if p.stages[StageGeoLookup].Enabled {
 		t.Errorf("geo-lookup should be disabled")
