@@ -72,6 +72,100 @@ func TestGateBlocksDispatch(t *testing.T) {
 	waitFor(t, "block reason to clear", func() bool { return q.GetStatus().BlockReason == "" })
 }
 
+// TestConsumingGate_ReservesOncePerTask: a consuming gate's reserve is called
+// exactly once per task that runs (at the commit point), not per isOpen check.
+func TestConsumingGate_ReservesOncePerTask(t *testing.T) {
+	q := New("test", 1)
+	defer q.Stop()
+
+	var isOpenCalls, reserveCalls atomic.Int32
+	q.RegisterConsumingGate("rate",
+		func() bool { isOpenCalls.Add(1); return true },
+		func() bool { reserveCalls.Add(1); return true },
+	)
+
+	var ran atomic.Int32
+	for i := 0; i < 3; i++ {
+		q.Enqueue(Task{Description: "t", Fn: func() error { ran.Add(1); return nil }})
+	}
+	waitFor(t, "all three to run", func() bool { return ran.Load() == 3 })
+	time.Sleep(20 * time.Millisecond)
+
+	// reserve fires exactly once per task (3), while isOpen (the cheap scan
+	// check) may be called more often.
+	if got := reserveCalls.Load(); got != 3 {
+		t.Fatalf("reserve called %d times, want exactly 3 (once per task)", got)
+	}
+	if isOpenCalls.Load() < 3 {
+		t.Fatalf("isOpen called %d times, expected at least 3", isOpenCalls.Load())
+	}
+}
+
+// TestConsumingGate_ReserveFailureRequeuesAndBlocks: when reserve returns false
+// at the commit point, the task does not run, stays pending, and the gate name
+// becomes the block reason. A later Kick after reserve recovers dispatches it.
+func TestConsumingGate_ReserveFailureRequeuesAndBlocks(t *testing.T) {
+	q := New("test", 1)
+	defer q.Stop()
+
+	var allow atomic.Bool // reserve denies until set
+	q.RegisterConsumingGate("rate",
+		func() bool { return true }, // isOpen always admits
+		func() bool { return allow.Load() },
+	)
+
+	var ran atomic.Int32
+	q.Enqueue(Task{Description: "t", Fn: func() error { ran.Add(1); return nil }})
+
+	// reserve denies: task stays pending, does not run, block reason = "rate".
+	waitFor(t, "block reason set to rate", func() bool { return q.GetStatus().BlockReason == "rate" })
+	time.Sleep(20 * time.Millisecond)
+	if ran.Load() != 0 {
+		t.Fatalf("task ran despite reserve denial")
+	}
+	if got := q.GetStatus().Pending; got != 1 {
+		t.Fatalf("pending = %d after reserve denial, want 1 (requeued)", got)
+	}
+
+	// Allow reserve + kick: the task now commits and runs.
+	allow.Store(true)
+	q.Kick()
+	waitFor(t, "task runs after reserve allowed", func() bool { return ran.Load() == 1 })
+}
+
+// TestConsumingGate_NoRefundAcrossGates: with two consuming gates where the
+// first reserves successfully but the second denies, the task does not run and
+// the first gate's reservation is NOT rolled back (documented no-refund rule).
+func TestConsumingGate_NoRefundAcrossGates(t *testing.T) {
+	q := New("test", 1)
+	defer q.Stop()
+
+	var firstReserved atomic.Int32
+	q.RegisterConsumingGate("gateA",
+		func() bool { return true },
+		func() bool { firstReserved.Add(1); return true }, // always succeeds (consumes)
+	)
+	q.RegisterConsumingGate("gateB",
+		func() bool { return true },
+		func() bool { return false }, // always denies
+	)
+
+	var ran atomic.Int32
+	q.Enqueue(Task{Description: "t", Fn: func() error { ran.Add(1); return nil }})
+
+	// gateB denies at commit -> task blocked on gateB, never runs.
+	waitFor(t, "block reason set to gateB", func() bool { return q.GetStatus().BlockReason == "gateB" })
+	time.Sleep(20 * time.Millisecond)
+	if ran.Load() != 0 {
+		t.Fatalf("task ran despite gateB denial")
+	}
+	// gateA's reserve was called (and consumed) at least once; it is not
+	// refunded. We assert it fired (no-refund means the consume stands).
+	if firstReserved.Load() < 1 {
+		t.Fatalf("gateA reserve should have been called before gateB denied")
+	}
+}
+
 // drainedCounter subscribes to a queue and counts busy->drained transitions
 // seen on the event stream: an event whose snapshot has Active==0 && Pending==0
 // that follows a non-drained state. This is the event-stream equivalent of the

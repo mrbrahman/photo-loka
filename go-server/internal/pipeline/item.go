@@ -34,11 +34,12 @@ type PipelineItem struct {
 	//   - geo-lookup-addr sets GeoNeedsCity + GeoParsedAddr (the parsed address
 	//     as JSON) when a city lookup is needed, so the pipeline routes to
 	//     geo-lookup-city.
-	GeoNeedsAPI   bool
-	GeoLat        float64
-	GeoLng        float64
-	GeoNeedsCity  bool
-	GeoParsedAddr string
+	GeoNeedsAPI     bool
+	GeoLat          float64
+	GeoLng          float64
+	GeoNeedsCity    bool
+	GeoNeedsCityAPI bool
+	GeoParsedAddr   string
 }
 
 // hint builds a StageHint snapshot from the item's current state, to hand to a
@@ -58,11 +59,12 @@ func (it *PipelineItem) hint() *StageHint {
 		// Geo signals must travel to the next geo stage: geo-lookup-addr writes
 		// GeoParsedAddr onto the item (via absorb) and the pipeline forwards a
 		// clone to geo-lookup-city, whose hint must carry the parsed address.
-		GeoNeedsAPI:   it.GeoNeedsAPI,
-		GeoLat:        it.GeoLat,
-		GeoLng:        it.GeoLng,
-		GeoNeedsCity:  it.GeoNeedsCity,
-		GeoParsedAddr: it.GeoParsedAddr,
+		GeoNeedsAPI:     it.GeoNeedsAPI,
+		GeoLat:          it.GeoLat,
+		GeoLng:          it.GeoLng,
+		GeoNeedsCity:    it.GeoNeedsCity,
+		GeoNeedsCityAPI: it.GeoNeedsCityAPI,
+		GeoParsedAddr:   it.GeoParsedAddr,
 	}
 }
 
@@ -93,6 +95,7 @@ func (it *PipelineItem) absorb(h *StageHint) {
 	it.GeoLat = h.GeoLat
 	it.GeoLng = h.GeoLng
 	it.GeoNeedsCity = h.GeoNeedsCity
+	it.GeoNeedsCityAPI = h.GeoNeedsCityAPI
 	it.GeoParsedAddr = h.GeoParsedAddr
 }
 
@@ -144,9 +147,10 @@ type StageHint struct {
 
 	// Geo routing signals written by the geo stage fns (read by the pipeline's
 	// router after each geo stage; see PipelineItem).
-	GeoNeedsAPI   bool
-	GeoLat        float64
-	GeoLng        float64
-	GeoNeedsCity  bool
-	GeoParsedAddr string
+	GeoNeedsAPI     bool
+	GeoLat          float64
+	GeoLng          float64
+	GeoNeedsCity    bool
+	GeoNeedsCityAPI bool
+	GeoParsedAddr   string
 }

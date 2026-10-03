@@ -32,11 +32,11 @@ type geoRateGater struct {
 	governs   []string
 	stateFile string
 
-	mu           sync.Mutex
-	hourlyCount  int
-	dailyCount   int
-	currentHour  int
-	currentDay   int
+	mu          sync.Mutex
+	hourlyCount int
+	dailyCount  int
+	currentHour int
+	currentDay  int
 
 	stop chan struct{}
 	wg   sync.WaitGroup
@@ -130,7 +130,7 @@ func (g *geoRateGater) Attach(host gateHost) {
 	for _, name := range governs {
 		if q := host.queueByName(name); q != nil {
 			q.ClearGate("rate")
-			q.RegisterGate("rate", func() bool { return g.IsOpen(name) })
+			q.RegisterConsumingGate("rate", func() bool { return g.IsOpen(name) }, g.Reserve)
 		}
 	}
 

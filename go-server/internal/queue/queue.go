@@ -27,12 +27,19 @@ const eventBuffer = 16
 // TaskFn is a function executed by the queue.
 type TaskFn func() error
 
-// gate is a named dispatch condition. isOpen is evaluated at dispatch time; the
-// queue does not interpret the name -- it is reported as the block reason when
-// this is the first gate found closed. Owners register gates via RegisterGate.
+// gate is a named dispatch condition. isOpen is evaluated at dispatch time (a
+// pure read, possibly many times per attempt); the queue does not interpret the
+// name -- it is reported as the block reason when this is the first gate found
+// closed. A gate may also be CONSUMING: reserve (when non-nil) is called exactly
+// once at the commit point, immediately before a task launches, to atomically
+// consume a unit of whatever budget the gate guards (e.g. a geonames request).
+// reserve returning false blocks that dispatch (the task is requeued and the
+// gate becomes the block reason) -- distinct from isOpen, which is the cheap
+// admission check. Owners register gates via RegisterGate / RegisterConsumingGate.
 type gate struct {
-	name   string
-	isOpen func() bool
+	name    string
+	isOpen  func() bool
+	reserve func() bool // nil for a non-consuming gate
 }
 
 // Task represents a unit of work with a priority level.
@@ -166,6 +173,19 @@ func (q *Queue) RegisterGate(name string, isOpen func() bool) {
 	q.mu.Unlock()
 }
 
+// RegisterConsumingGate registers a gate that both admits (isOpen) and consumes
+// (reserve). isOpen is the cheap read-only admission check evaluated during the
+// dispatch scan; reserve is called exactly once at the commit point (after a
+// concurrency slot is secured and the final pause/stop check passes, right
+// before the task launches), so it fires once per task that actually runs --
+// never on a dispatch attempt that bails earlier. If reserve returns false the
+// task is requeued and this gate becomes the block reason. See drainQueue.
+func (q *Queue) RegisterConsumingGate(name string, isOpen, reserve func() bool) {
+	q.mu.Lock()
+	q.gates = append(q.gates, gate{name: name, isOpen: isOpen, reserve: reserve})
+	q.mu.Unlock()
+}
+
 // ClearGates removes all registered gates. Used for live re-wire on config
 // Apply: clear, then re-register the gates for the new graph. A queue with no
 // gates dispatches whenever !paused and a slot is free.
@@ -225,6 +245,27 @@ func (q *Queue) evalGates() string {
 		}
 	}
 	return ""
+}
+
+// commitReserve calls every consuming gate's reserve (in registration order) at
+// the commit point. Returns ok=true if all succeed (or there are no consuming
+// gates). On the first failure it returns that gate's name and ok=false; gates
+// reserved earlier in this call are NOT rolled back (see the commit-point
+// comment in drainQueue). Snapshots the gate slice under the lock, then calls
+// reserve outside it (reserve may touch other state and must not deadlock).
+func (q *Queue) commitReserve() (blockedBy string, ok bool) {
+	q.mu.Lock()
+	gates := q.gates
+	q.mu.Unlock()
+	for _, g := range gates {
+		if g.reserve == nil {
+			continue
+		}
+		if !g.reserve() {
+			return g.name, false
+		}
+	}
+	return "", true
 }
 
 // setBlockReason records the current block reason under the lock and reports
@@ -500,6 +541,25 @@ func (q *Queue) drainQueue() {
 			q.requeueFront(task)
 			return
 		default:
+		}
+
+		// Commit point: consume any consuming gates' budget NOW, the instant the
+		// task is guaranteed to launch (slot secured, not paused, not stopping).
+		// reserve is called exactly once per task that runs -- never on an
+		// attempt that bailed at the gate scan, dequeue, or slot/pause checks
+		// above. If a reserve is denied, this dispatch cannot proceed: release
+		// the slot, requeue the task, record the gate as the block reason, and
+		// stop draining (a later Kick from the gate owner re-drives us). Already-
+		// consumed gates in this same commit are NOT refunded -- consuming
+		// without launching is safe for a hard budget (we only ever reserve >=
+		// tasks launched) and keeps the queue simple.
+		if gate, ok := q.commitReserve(); !ok {
+			<-sem
+			q.requeueFront(task)
+			if q.setBlockReason(gate) {
+				q.emit()
+			}
+			return
 		}
 
 		q.active.Add(1)

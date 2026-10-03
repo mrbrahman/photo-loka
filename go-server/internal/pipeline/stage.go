@@ -21,6 +21,7 @@ type Queue interface {
 	Resume()
 	Stop()
 	RegisterGate(name string, isOpen func() bool)
+	RegisterConsumingGate(name string, isOpen, reserve func() bool)
 	ClearGates()
 	ClearGate(name string)
 	Subscribe() <-chan queue.Event
@@ -37,9 +38,9 @@ type Queue interface {
 // geo rate limiting by the geo rate gater), which the pipeline attaches onto
 // these nodes' queues. The node does not know whether or how it is gated.
 type node struct {
-	Name    string
-	Fn      StageFn
-	Queue   Queue
+	Name  string
+	Fn    StageFn
+	Queue Queue
 
 	// Enabled is the system-level (this-install) master switch for the node's
 	// stage, set from PipelineConfig. A disabled optional stage is skipped

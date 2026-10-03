@@ -23,19 +23,22 @@ import (
 // Stage name constants (also the config keys and the queue names).
 const (
 	StageBringToCollection = "bring-to-collection"
-	// Geo is a three-queue chain: geo-cache does the local phase (GPS derive,
-	// non-US resolve, US exact/proximity cache); on a US cache miss it routes to
-	// geo-lookup-addr (geonames findNearestAddress); if that needs a city it
-	// routes to geo-lookup-city (geonames postalCodeLookup). The two API queues
-	// are rate-gated by the geo rate gater.
-	StageGeoCache          = "geo-cache"
-	StageGeoAddr           = "geo-lookup-addr"
-	StageGeoCity           = "geo-lookup-city"
-	StageVideoThumbnail    = "generate-video-thumbnail"
-	StageImageThumbnails   = "generate-image-thumbnails"
-	StageFaceRecognition   = "face-recognition"
-	StageImageEncoding     = "image-encoding"
-	StageVideoCompression  = "video-compression"
+	// Geo is a five-queue chain: geo-cache does the local DB cache phase (GPS
+	// derive, non-US resolve, US exact/proximity cache); on a US cache miss it
+	// routes to geo-lookup-addr (geonames findNearestAddress); if that returns
+	// an empty placename it routes to geo-city-cache (local postal-code cache
+	// check); on a postal cache miss that routes to geo-lookup-city (geonames
+	// postalCodeLookup). The two *-lookup-* API queues are rate-gated by the geo
+	// rate gater; the two *-cache queues are local and free.
+	StageGeoCache         = "geo-cache"
+	StageGeoAddr          = "geo-lookup-addr"
+	StageGeoCityCache     = "geo-city-cache"
+	StageGeoCity          = "geo-lookup-city"
+	StageVideoThumbnail   = "generate-video-thumbnail"
+	StageImageThumbnails  = "generate-image-thumbnails"
+	StageFaceRecognition  = "face-recognition"
+	StageImageEncoding    = "image-encoding"
+	StageVideoCompression = "video-compression"
 )
 
 // Pipeline is the process-wide orchestrator singleton. It owns the stage graph
@@ -132,6 +135,7 @@ type stageFuncs struct {
 	bringToCollection StageFn
 	geoCache          StageFn
 	geoAddr           StageFn
+	geoCityCache      StageFn
 	geoCity           StageFn
 	videoThumbnail    StageFn
 	imageThumbnails   StageFn
@@ -146,6 +150,7 @@ func realStageFuncs() stageFuncs {
 		bringToCollection: stageBringToCollection,
 		geoCache:          stageGeoCache,
 		geoAddr:           stageGeoAddr,
+		geoCityCache:      stageGeoCityCache,
 		geoCity:           stageGeoCity,
 		videoThumbnail:    stageVideoThumbnail,
 		imageThumbnails:   stageImageThumbnails,
@@ -188,10 +193,6 @@ func newPipelineWithQueues(funcs stageFuncs, cfg PipelineConfig, qf queueFactory
 	}
 	p.geoRate = newGeoRateGater([]string{StageGeoAddr, StageGeoCity}, dataDir)
 	p.gaters = []Gater{p.resource, p.geoRate}
-	// The geo API stage functions consume a budget unit via this indirection
-	// (they are plain StageFns, built before the gater exists). Wired here to
-	// the gater's atomic Reserve.
-	geoBudgetReserve = p.geoRate.Reserve
 	p.wireGates()
 	return p
 }
@@ -253,6 +254,7 @@ func (p *Pipeline) buildNodes(funcs stageFuncs, cfg PipelineConfig, qf queueFact
 	// Create all nodes (concurrency + enable applied from config).
 	newNode(StageGeoCache, funcs.geoCache)
 	newNode(StageGeoAddr, funcs.geoAddr)
+	newNode(StageGeoCityCache, funcs.geoCityCache)
 	newNode(StageGeoCity, funcs.geoCity)
 	newNode(StageFaceRecognition, funcs.faceRecognition)
 	newNode(StageImageEncoding, funcs.imageEncoding)

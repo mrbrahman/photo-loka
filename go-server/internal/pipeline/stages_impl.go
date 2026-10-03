@@ -37,15 +37,6 @@ func stageBringToCollection(_ string, h *StageHint) error {
 	return nil
 }
 
-// geoBudgetReserve consumes one geonames request unit, returning false when
-// over budget. It is wired by newPipelineWithQueues to the geo rate gater's
-// atomic Reserve. The geo API stage functions call it immediately before their
-// geonames request so the consume happens exactly once per real call (the
-// "rate" gate's IsOpen is a pure read and may be evaluated many times per
-// dispatch attempt, so it cannot be the thing that consumes). A nil value
-// (unwired, e.g. a stage fn used in isolation) means "no budget enforcement".
-var geoBudgetReserve func() bool
-
 // stageGeoCache runs the local (no-API) geo phase for a uuid: GPS/country
 // derivation, non-US resolve, and US DB cache (exact/proximity). All terminal
 // except a US cache miss, which sets GeoNeedsAPI + GeoLat/GeoLng on the hint so
@@ -64,22 +55,17 @@ func stageGeoCache(uuid string, h *StageHint) error {
 	return nil
 }
 
-// stageGeoAddr runs the geonames findNearestAddress phase (rate-gated). It
-// consumes one budget unit (geoBudgetReserve) before the call; if the budget
-// was just exhausted it returns an error so the item is retried after the
-// rollover (the queue's "rate" gate normally prevents dispatch while over
-// budget, so this is the rare last-unit race). On a result that needs a city
-// lookup it sets GeoNeedsCity + GeoParsedAddr on the hint so the pipeline routes
-// to geo-lookup-city (no final write here, 2b); otherwise geo.LookupAddress
+// stageGeoAddr runs the geonames findNearestAddress phase. It is pure work: the
+// queue's consuming "rate" gate reserves a budget unit before this launches, so
+// no rate handling lives here. On a result that needs a city lookup it sets
+// GeoNeedsCity + GeoParsedAddr on the hint so the pipeline routes to the local
+// geo-city-cache stage (no final write here, 2b); otherwise geo.LookupAddress
 // writes the final address itself.
 func stageGeoAddr(uuid string, h *StageHint) error {
 	lat, lng, ok := geoAPICoords(uuid, h)
 	if !ok {
 		// Nothing to do (resolved locally or no GPS); not an error.
 		return nil
-	}
-	if geoBudgetReserve != nil && !geoBudgetReserve() {
-		return fmt.Errorf("geonames budget exhausted for %s (address lookup); will retry after rollover", uuid)
 	}
 	needsCity, parsed, err := geo.LookupAddress(uuid, lat, lng)
 	if err != nil {
@@ -92,16 +78,36 @@ func stageGeoAddr(uuid string, h *StageHint) error {
 	return nil
 }
 
-// stageGeoCity runs the geonames postalCodeLookup phase (rate-gated, terminal):
-// it writes the final address using the parsed address carried from stageGeoAddr.
-// It consumes one budget unit before the call. Standalone callers must supply
-// the parsed address via the hint.
+// stageGeoCityCache is the LOCAL (no-API) city-resolution phase, mirroring
+// geo-cache for the city side: given the parsed address carried from
+// geo-lookup-addr, it checks the postal-code DB cache. On a hit it writes the
+// final address (terminal). On a miss it sets GeoNeedsCityAPI so the pipeline
+// routes to geo-lookup-city (the paid API stage). This split guarantees that
+// geo-lookup-city makes exactly one API call per dispatch, so the queue's
+// reserve is never consumed for a cache hit.
+func stageGeoCityCache(uuid string, h *StageHint) error {
+	if h == nil || h.GeoParsedAddr == "" {
+		return fmt.Errorf("geo-city-cache requires a parsed address (run geo-lookup-addr first)")
+	}
+	city, found, err := geo.ResolveCityFromCache(h.GeoParsedAddr)
+	if err != nil {
+		return err
+	}
+	if found {
+		// Terminal: write the final address with the cached city.
+		return geo.WriteCityAddress(uuid, h.GeoParsedAddr, city)
+	}
+	h.GeoNeedsCityAPI = true // route to the API stage
+	return nil
+}
+
+// stageGeoCity runs the geonames postalCodeLookup phase (terminal, API-only).
+// It is pure work: the queue's consuming "rate" gate reserved a budget unit
+// before launch, and geo-city-cache already established the postal cache missed,
+// so this always makes exactly one API call and writes the final address.
 func stageGeoCity(uuid string, h *StageHint) error {
 	if h == nil || h.GeoParsedAddr == "" {
 		return fmt.Errorf("geo-lookup-city requires a parsed address (run geo-lookup-addr first)")
-	}
-	if geoBudgetReserve != nil && !geoBudgetReserve() {
-		return fmt.Errorf("geonames budget exhausted for %s (city lookup); will retry after rollover", uuid)
 	}
 	return geo.LookupCity(uuid, h.GeoParsedAddr)
 }

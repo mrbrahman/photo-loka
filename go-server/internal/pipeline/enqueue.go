@@ -98,9 +98,19 @@ func (p *Pipeline) routeDownstreams(n *node, item *PipelineItem) []*node {
 		return nil
 
 	case StageGeoAddr:
-		// Route to the city API phase only when the address lookup reported an
-		// empty placename (GeoNeedsCity), carrying the parsed address.
+		// Route to the local city-cache phase only when the address lookup
+		// reported an empty placename (GeoNeedsCity), carrying the parsed address.
 		if item.GeoNeedsCity {
+			if s := p.enabledNode(StageGeoCityCache); s != nil {
+				return []*node{s}
+			}
+		}
+		return nil
+
+	case StageGeoCityCache:
+		// Route to the city API phase only when the postal-code cache missed
+		// (GeoNeedsCityAPI); a cache hit already wrote the final address.
+		if item.GeoNeedsCityAPI {
 			if s := p.enabledNode(StageGeoCity); s != nil {
 				return []*node{s}
 			}

@@ -63,6 +63,7 @@ const STAGE_LABELS = {
   'bring-to-collection': 'Bring to Collection',
   'geo-cache': 'Geo Cache',
   'geo-lookup-addr': 'Geo Address Lookup',
+  'geo-city-cache': 'Geo City Cache',
   'geo-lookup-city': 'Geo City Lookup',
   'generate-video-thumbnail': 'Video Thumbnail',
   'generate-image-thumbnails': 'Image Thumbnails',

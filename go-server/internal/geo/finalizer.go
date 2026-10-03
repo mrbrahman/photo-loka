@@ -246,29 +246,109 @@ func LookupAddress(uuid string, lat, lng float64) (needsCity bool, parsedAddr st
 	return false, "", writeFinalAddress(uuid, address, placename, "FOUND_VIA_API", nil)
 }
 
-// LookupCity is the geo-lookup-city phase (rate-gated, terminal): it takes the
-// JSON-serialized parsed address from LookupAddress, resolves the city from the
-// postal code (DB cache first, then geonames postalCodeLookup behind the atomic
-// reserve) and writes the final address.
+// ResolveCityFromCache is the LOCAL city-resolution step (no API): it parses the
+// carried address and checks the postal-code DB cache. Returns the city and
+// found=true on a cache hit, or found=false on a miss (the caller -- the
+// geo-city-cache stage -- then routes to the geo-lookup-city API stage). Used so
+// a cache hit never consumes a geonames budget unit.
+func ResolveCityFromCache(parsedAddr string) (city string, found bool, err error) {
+	postalcode, country, _, perr := parseCityInputs(parsedAddr)
+	if perr != nil {
+		return "", false, perr
+	}
+	responseJSON, err := FindPostalCodeMatch(postalcode, country)
+	if err != nil {
+		return "", false, err
+	}
+	if responseJSON == "" {
+		return "", false, nil
+	}
+	c, err := extractCityFromPostalResponse(responseJSON)
+	if err != nil {
+		return "", false, err
+	}
+	return c, true, nil
+}
+
+// WriteCityAddress writes the final address using a city already resolved from
+// the cache (the geo-city-cache terminal path). No API call.
+func WriteCityAddress(uuid, parsedAddr, city string) error {
+	var address map[string]interface{}
+	if err := json.Unmarshal([]byte(parsedAddr), &address); err != nil {
+		return fmt.Errorf("parsing carried address for %s: %w", uuid, err)
+	}
+	return writeFinalAddress(uuid, address, city, "FOUND_VIA_API", nil)
+}
+
+// LookupCity is the geo-lookup-city phase: a pure geonames postalCodeLookup API
+// call (the postal cache already missed in geo-city-cache) that resolves the
+// city and writes the final address. Rate limiting is the queue's concern (the
+// consuming "rate" gate reserved a unit before this launched), so there is no
+// rate handling here -- and because the cache miss is already established, this
+// always makes exactly one API call.
 func LookupCity(uuid, parsedAddr string) error {
 	var address map[string]interface{}
 	if err := json.Unmarshal([]byte(parsedAddr), &address); err != nil {
 		return fmt.Errorf("parsing carried address for %s: %w", uuid, err)
 	}
+	postalcode, country, _, _ := parseCityInputs(parsedAddr)
 
-	postalcode, _ := address["postalcode"].(string)
-	countryCode := "US"
-	if cc, ok := address["countryCode"].(string); ok && cc != "" {
-		countryCode = cc
-	}
-
-	city, err := resolveCity(uuid, postalcode, countryCode)
+	city, err := lookupCityAPI(uuid, postalcode, country)
 	if err != nil {
 		return err
 	}
 	// Terminal write. city may be "" if the postal lookup yielded nothing; the
 	// address builder then falls back to the county (adminName2), as before.
 	return writeFinalAddress(uuid, address, city, "FOUND_VIA_API", nil)
+}
+
+// parseCityInputs extracts the postalcode and country from a parsed address
+// JSON (country defaults to US). Shared by the cache and API city paths.
+func parseCityInputs(parsedAddr string) (postalcode, country string, address map[string]interface{}, err error) {
+	if err = json.Unmarshal([]byte(parsedAddr), &address); err != nil {
+		return "", "", nil, fmt.Errorf("parsing carried address: %w", err)
+	}
+	postalcode, _ = address["postalcode"].(string)
+	country = "US"
+	if cc, ok := address["countryCode"].(string); ok && cc != "" {
+		country = cc
+	}
+	return postalcode, country, address, nil
+}
+
+// lookupCityAPI calls the geonames postalCodeLookup API for a postal code,
+// stores the response (cache seed), and returns the resolved city. Pure API: no
+// cache check (the caller established the miss) and no rate handling.
+func lookupCityAPI(uuid, postalcode, country string) (string, error) {
+	apiURL := fmt.Sprintf(
+		"http://api.geonames.org/postalCodeLookupJSON?postalcode=%s&country=%s&username=%s",
+		url.QueryEscape(postalcode), url.QueryEscape(country), url.QueryEscape(config.Startup.GeonamesUsername),
+	)
+
+	resp, err := http.Get(apiURL)
+	if err != nil {
+		return "", fmt.Errorf("postal code lookup failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read postal code response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("postal code API returned status %d", resp.StatusCode)
+	}
+
+	responseStr := string(body)
+	requestParams := fmt.Sprintf(`{"postalcode":"%s","country":"%s"}`, postalcode, country)
+
+	// Store the lookup (cache seed).
+	if err := InsertGeoLookup(uuid, "geonames", "postalCodeLookup", &requestParams, &responseStr); err != nil {
+		geoLogger().Error("failed to insert postal code lookup", "uuid", uuid, "error", err)
+	}
+
+	return extractCityFromPostalResponse(responseStr)
 }
 
 // writeFinalAddress builds the geo fields from a parsed address object plus a
@@ -334,54 +414,6 @@ func writeFinalAddress(uuid string, address map[string]interface{}, cityStr, sta
 	}
 
 	return UpdateGeoFields(uuid, fields)
-}
-
-// resolveCity finds a city name from a postal code: DB cache first, then the
-// geonames postalCodeLookup API on a miss. Rate limiting is the caller's
-// concern (the geo-lookup-city stage function reserved a budget unit via the
-// gater before invoking LookupCity). On a postal DB-cache hit no API call is
-// made and the reserved unit goes unused -- safe, since we only ever reserve
-// >= calls made and so never exceed geonames' hard limit. geo stays pure.
-func resolveCity(uuid, postalcode, country string) (string, error) {
-	// Check cache first
-	responseJSON, err := FindPostalCodeMatch(postalcode, country)
-	if err != nil {
-		return "", err
-	}
-
-	if responseJSON != "" {
-		return extractCityFromPostalResponse(responseJSON)
-	}
-
-	apiURL := fmt.Sprintf(
-		"http://api.geonames.org/postalCodeLookupJSON?postalcode=%s&country=%s&username=%s",
-		url.QueryEscape(postalcode), url.QueryEscape(country), url.QueryEscape(config.Startup.GeonamesUsername),
-	)
-
-	resp, err := http.Get(apiURL)
-	if err != nil {
-		return "", fmt.Errorf("postal code lookup failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read postal code response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("postal code API returned status %d", resp.StatusCode)
-	}
-
-	responseStr := string(body)
-	requestParams := fmt.Sprintf(`{"postalcode":"%s","country":"%s"}`, postalcode, country)
-
-	// Store the lookup
-	if err := InsertGeoLookup(uuid, "geonames", "postalCodeLookup", &requestParams, &responseStr); err != nil {
-		geoLogger().Error("failed to insert postal code lookup", "uuid", uuid, "error", err)
-	}
-
-	return extractCityFromPostalResponse(responseStr)
 }
 
 // extractCityFromPostalResponse extracts the city/placeName from a postal code lookup response.

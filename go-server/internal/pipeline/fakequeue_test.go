@@ -32,8 +32,9 @@ type fakeQueue struct {
 }
 
 type fakeGate struct {
-	name   string
-	isOpen func() bool
+	name    string
+	isOpen  func() bool
+	reserve func() bool
 }
 
 func newFakeQueue() *fakeQueue { return &fakeQueue{maxConc: 1} }
@@ -132,6 +133,12 @@ func (f *fakeQueue) Stop()                       { f.mu.Lock(); f.stopped = true
 func (f *fakeQueue) RegisterGate(name string, isOpen func() bool) {
 	f.mu.Lock()
 	f.gates = append(f.gates, fakeGate{name: name, isOpen: isOpen})
+	f.mu.Unlock()
+}
+
+func (f *fakeQueue) RegisterConsumingGate(name string, isOpen, reserve func() bool) {
+	f.mu.Lock()
+	f.gates = append(f.gates, fakeGate{name: name, isOpen: isOpen, reserve: reserve})
 	f.mu.Unlock()
 }
 

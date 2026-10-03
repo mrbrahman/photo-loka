@@ -20,6 +20,7 @@ func nopFuncs() stageFuncs {
 		bringToCollection: nop,
 		geoCache:          nop,
 		geoAddr:           nop,
+		geoCityCache:      nop,
 		geoCity:           nop,
 		videoThumbnail:    nop,
 		imageThumbnails:   nop,
@@ -170,6 +171,7 @@ func TestRouteDownstreams_GeoChain(t *testing.T) {
 	p := testPipeline(t, nopFuncs(), DefaultPipelineConfig())
 	cache := p.stages[StageGeoCache]
 	addr := p.stages[StageGeoAddr]
+	cityCache := p.stages[StageGeoCityCache]
 
 	// geo-cache: no API needed (resolved locally) -> terminal.
 	if got := names(p.routeDownstreams(cache, &PipelineItem{})); len(got) != 0 {
@@ -184,13 +186,22 @@ func TestRouteDownstreams_GeoChain(t *testing.T) {
 	if got := names(p.routeDownstreams(addr, &PipelineItem{})); len(got) != 0 {
 		t.Errorf("geo-lookup-addr with GeoNeedsCity=false should be terminal, got %v", got)
 	}
-	// geo-lookup-addr: empty placename -> geo-lookup-city.
-	if got := names(p.routeDownstreams(addr, &PipelineItem{GeoNeedsCity: true})); !equal(got, []string{StageGeoCity}) {
-		t.Errorf("geo-lookup-addr with GeoNeedsCity=true = %v, want [geo-lookup-city]", got)
+	// geo-lookup-addr: empty placename -> geo-city-cache (local).
+	if got := names(p.routeDownstreams(addr, &PipelineItem{GeoNeedsCity: true})); !equal(got, []string{StageGeoCityCache}) {
+		t.Errorf("geo-lookup-addr with GeoNeedsCity=true = %v, want [geo-city-cache]", got)
+	}
+
+	// geo-city-cache: postal cache hit -> terminal.
+	if got := names(p.routeDownstreams(cityCache, &PipelineItem{})); len(got) != 0 {
+		t.Errorf("geo-city-cache with GeoNeedsCityAPI=false should be terminal, got %v", got)
+	}
+	// geo-city-cache: postal cache miss -> geo-lookup-city (API).
+	if got := names(p.routeDownstreams(cityCache, &PipelineItem{GeoNeedsCityAPI: true})); !equal(got, []string{StageGeoCity}) {
+		t.Errorf("geo-city-cache with GeoNeedsCityAPI=true = %v, want [geo-lookup-city]", got)
 	}
 
 	// geo-lookup-city is terminal regardless.
-	if got := names(p.routeDownstreams(p.stages[StageGeoCity], &PipelineItem{GeoNeedsCity: true})); len(got) != 0 {
+	if got := names(p.routeDownstreams(p.stages[StageGeoCity], &PipelineItem{GeoNeedsCityAPI: true})); len(got) != 0 {
 		t.Errorf("geo-lookup-city should be terminal, got %v", got)
 	}
 }
@@ -375,12 +386,12 @@ func TestFlow_VideoItem(t *testing.T) {
 }
 
 // TestFlow_GeoChain_CarriesParsedAddress drives the full geo chain with real
-// queues and asserts the parsed address set by geo-lookup-addr reaches
-// geo-lookup-city. This guards the hint handoff: geo-lookup-addr writes
-// GeoParsedAddr on the hint, the pipeline absorbs it onto the item and forwards
-// a clone, and that clone's hint must carry GeoParsedAddr into the city stage.
-// (Regression: hint() previously dropped the geo signal fields, so the city
-// stage failed with "requires a parsed address".)
+// queues and asserts the parsed address set by geo-lookup-addr reaches both
+// geo-city-cache and geo-lookup-city. This guards the hint handoff across the
+// full geo chain: geo-lookup-addr writes GeoParsedAddr, the pipeline absorbs it
+// onto the item and forwards clones through geo-city-cache (which signals a
+// postal cache miss) to geo-lookup-city, whose hint must still carry the parsed
+// address. (Regression: hint() previously dropped the geo signal fields.)
 func TestFlow_GeoChain_CarriesParsedAddress(t *testing.T) {
 	rec := &recorder{}
 	funcs := nopFuncs()
@@ -399,8 +410,16 @@ func TestFlow_GeoChain_CarriesParsedAddress(t *testing.T) {
 	}
 	funcs.geoAddr = func(_ string, h *StageHint) error {
 		rec.mark(StageGeoAddr)
-		h.GeoNeedsCity = true // simulate empty placename -> route to city
+		h.GeoNeedsCity = true // simulate empty placename -> route to city-cache
 		h.GeoParsedAddr = `{"postalcode":"10001","countryCode":"US"}`
+		return nil
+	}
+	funcs.geoCityCache = func(_ string, h *StageHint) error {
+		rec.mark(StageGeoCityCache)
+		if h.GeoParsedAddr == "" {
+			t.Errorf("geo-city-cache did not receive the parsed address")
+		}
+		h.GeoNeedsCityAPI = true // simulate postal cache miss -> route to city API
 		return nil
 	}
 	var mu sync.Mutex
@@ -417,7 +436,7 @@ func TestFlow_GeoChain_CarriesParsedAddress(t *testing.T) {
 	p.submitEntry(&collections.Collection{}, "/src/a.jpg", "", true)
 
 	waitFor(t, "flow to reach geo-lookup-city", func() bool { return rec.ran(StageGeoCity) })
-	for _, want := range []string{StageGeoCache, StageGeoAddr, StageGeoCity} {
+	for _, want := range []string{StageGeoCache, StageGeoAddr, StageGeoCityCache, StageGeoCity} {
 		if !rec.ran(want) {
 			t.Errorf("expected geo stage %q to run", want)
 		}

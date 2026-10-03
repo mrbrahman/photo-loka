@@ -39,7 +39,8 @@ flowchart LR
     A -- "has GPS" --> H["geo-cache<br><i>(DB cache)</i>"]
 
     H -- "US cache miss" --> H2["geo-lookup-addr<br><i>(geonames)</i>"]
-    H2 -- "empty placename" --> H3["geo-lookup-city<br><i>(geonames)</i>"]
+    H2 -- "empty placename" --> H3["geo-city-cache<br><i>(postal cache)</i>"]
+    H3 -- "postal cache miss" --> H4["geo-lookup-city<br><i>(geonames)</i>"]
 
     B -- Yes --> C["generate-video-thumbnail<br><i>(ffmpeg)</i>"]
     C --> D
@@ -60,13 +61,17 @@ Routing rules (fixed, in code):
     `generate-video-thumbnail` then feeds `generate-image-thumbnails` - the
     extracted video frame is treated like an image from that point on.
   - **Image items:** go directly to `generate-image-thumbnails`.
-- Geo is a three-queue chain, routed on each stage's output (like the media-type
-  branch): `geo-cache` does the local DB cache phase (GPS/country derivation,
-  non-US resolve, US exact/proximity match) and is terminal unless it is a US
-  cache miss, in which case it routes to `geo-lookup-addr` (geonames
-  findNearestAddress). If that returns an empty placename, it routes to
-  `geo-lookup-city` (geonames postalCodeLookup); otherwise it is terminal. The
-  two API queues are rate-gated (see the geo rate gater); a cache hit / non-US /
+- Geo is a chain routed on each stage's output (like the media-type branch).
+  `geo-cache` does the local DB cache phase (GPS/country derivation, non-US
+  resolve, US exact/proximity match) and is terminal unless it is a US cache
+  miss, in which case it routes to `geo-lookup-addr` (geonames
+  findNearestAddress). If that returns an empty placename, it routes to the
+  local `geo-city-cache` (postal-code DB cache); on a postal cache hit that is
+  terminal, and only on a postal cache miss does it route to `geo-lookup-city`
+  (geonames postalCodeLookup). The two `*-lookup-*` API queues are rate-gated
+  (see the geo rate gater) and -- because the two `*-cache` stages absorb all
+  cache hits -- each API queue makes exactly one geonames call per dispatch, so
+  a reserved budget unit is never spent on a cache hit. A cache hit / non-US /
   no-GPS item never calls the API.
 - `generate-image-thumbnails` (libvips) is the predecessor for both ML stages,
   `face-recognition` (insightface) and `image-encoding` (clip). Since the ML
@@ -401,6 +406,7 @@ both ML stages, and `image-encoding` gated behind `face-recognition`):
     { "name": "bring-to-collection", "concurrency": 5 },
     { "name": "geo-cache", "concurrency": 10 },
     { "name": "geo-lookup-addr", "concurrency": 1 },
+    { "name": "geo-city-cache", "concurrency": 10 },
     { "name": "geo-lookup-city", "concurrency": 1 },
     { "name": "generate-video-thumbnail", "concurrency": 5 },
     { "name": "generate-image-thumbnails", "concurrency": 5 },
@@ -437,9 +443,11 @@ Some stages only apply to certain media types:
   generate-video-thumbnail produces a frame
 - face-recognition, image-encoding: only for items that have a generated image
   (i.e. downstream of generate-image-thumbnails)
-- geo-cache: only if GPS coordinates exist. geo-lookup-addr / geo-lookup-city:
-  only reached on a US cache miss / empty-placename result (output-driven
-  routing from the preceding geo stage).
+- geo-cache: only if GPS coordinates exist. geo-lookup-addr / geo-city-cache /
+  geo-lookup-city: reached only on a US cache miss / empty-placename /
+  postal-cache miss respectively (output-driven routing from the preceding geo
+  stage). The two *-cache stages are local; the two *-lookup-* stages hit the
+  geonames API and are rate-gated.
 
 The stage function handles this (returns nil immediately if not applicable), or we
 add a `Condition func(*PipelineItem) bool` field to Stage. This is orthogonal to
