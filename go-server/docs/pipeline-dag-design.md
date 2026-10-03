@@ -1,37 +1,76 @@
-# Pipeline Design - Future Enhancement
+# Indexing Pipeline Architecture
 
-## Current State
+This describes the indexing pipeline as built: a set of work **queues**, a
+fixed **data-flow routing** between them, and pluggable **gaters** that decide
+when each queue may dispatch. It is a how-it-works document; it links to the
+code rather than restating it.
 
-The indexing pipeline uses a single queue with priority levels (matching Node.js behavior):
-- `indexQueue` (CPU-1 workers) - High: indexFile, Normal: face recognition, Low: video compression
-- `geoQueue` (1 worker) - rate-limited geo API lookups (separate due to rate limiting)
-- `videoQueue` exists but is currently unused (video compression was moved to indexQueue Low priority so it doesn't run concurrently with indexing)
+Related docs: the broader module map is in
+[architecture.md](architecture.md).
 
-The `internal/queue/Queue` struct supports:
-- Three priority levels (High > Normal > Low, FIFO within each)
-- Independent concurrency (configurable per queue)
-- Pause/resume per queue
-- Status/errors per queue
-- Any `func() error` as a task
+## Three layers
 
-## Goal
+The design deliberately separates three concerns, each owned by a different
+layer so no layer knows how the others decide:
 
-Allow users to define a configurable processing pipeline. There are two
-orthogonal concerns, and keeping them separate is the whole point of this design:
+1. **Queue** (`internal/queue/queue.go`) - a priority work queue with its own
+   concurrency, pause/resume, an event stream, and a set of opaque *gates*. It
+   runs `func() error` tasks and knows nothing about stages, data flow, or what
+   any gate means.
+2. **Gaters** - strategies that decide *when* a queue may dispatch. Each owns
+   its own condition and its own notion of "something changed," and exposes a
+   uniform contract (`pipeline.Gater`). Two exist: the **resource gater**
+   (`internal/pipeline/gater.go`) and the **geo rate gater**
+   (`internal/pipeline/georate.go`).
+3. **Pipeline** (`internal/pipeline/pipeline.go`) - owns all the queues (one per
+   stage), the fixed data-flow routing between them, and the set of gaters. It
+   wires each gater onto the queues it governs. It has no `Stage` type and does
+   not know how any gate is computed.
 
-1. **Data flow** - how an item moves from stage to stage. This is *fixed* and
-   hardcoded in Go. It defines what the pipeline *is*.
-2. **Resource scheduling** - which stages are allowed to run at the same time as
-   which, so contended resources (CPU, GPU, rate-limited APIs) are not
-   oversubscribed. This is the *tunable* part the user configures.
+Two orthogonal concerns run through these layers:
 
-The rest of this document covers the two in that order: the fixed data flow
-first, then the configurable scheduling on top of it.
+- **Data flow** - how an item moves from stage to stage. Fixed, hardcoded in Go
+  (`routeDownstreams` in `internal/pipeline/enqueue.go`). It defines what the
+  pipeline *is*.
+- **Resource scheduling** - which stages may run at the same time, so contended
+  resources (CPU, GPU, a rate-limited API) are not oversubscribed. Tunable per
+  install via config, enforced by gaters.
 
-## Static data flow (fixed, hardcoded)
+## Stages (the queue master list)
 
-Every item enters at `bring-to-collection` and then flows through a fixed
-dependency graph. This routing lives in Go code; no config or diagram changes it.
+Each stage is one entry in the pipeline's queue master list: a named
+`queue.Queue` plus a work function and a system-level enable flag. The internal
+record is `node` (`internal/pipeline/stage.go`); it carries no routing or gating
+state - routing is a pipeline concern and gating belongs to the gaters.
+
+The fixed stages (names in `internal/pipeline/pipeline.go`):
+
+| Stage | Work | Notes |
+|-------|------|-------|
+| `bring-to-collection` | exiftool extract + place + DB insert | entry; structural |
+| `geo-cache` | GPS/country derive, non-US resolve, US DB exact/proximity cache | local, no API |
+| `geo-lookup-addr` | geonames `findNearestAddress` | API, rate-gated |
+| `geo-city-cache` | postal-code DB cache lookup | local, no API |
+| `geo-lookup-city` | geonames `postalCodeLookup` | API, rate-gated |
+| `generate-video-thumbnail` | ffmpeg first-frame extract | video only; structural |
+| `generate-image-thumbnails` | libvips thumbnails + ML buffer | structural |
+| `face-recognition` | insightface | ML; needs the image buffer |
+| `image-encoding` | CLIP embedding | ML; needs the image buffer |
+| `video-compression` | ffmpeg webm | video only |
+
+The stage work functions live in `internal/pipeline/stages_impl.go`; each has
+the shape `func(uuid string, hint *StageHint) error` and is standalone-callable
+(given a bare uuid it self-hydrates from the DB/disk), so a single stage can be
+re-run outside the orchestrated flow via `EnqueueStage`.
+
+## Data flow (fixed, hardcoded)
+
+Every item enters at `bring-to-collection` and flows through a fixed graph. A
+stage enqueues its successor(s) when it finishes; each edge is single-
+predecessor (no stage waits on multiple predecessors for the same item, so there
+is no fan-in join to track). Routing is implemented in `routeDownstreams`
+(`internal/pipeline/enqueue.go`), which filters the candidate successors per
+item.
 
 ```mermaid
 flowchart LR
@@ -47,358 +86,162 @@ flowchart LR
     B -- Yes --> G["video-compression<br><i>(ffmpeg)</i>"]
     B -- No --> D["generate-image-thumbnails<br><i>(libvips)</i>"]
 
-
     D --> E["face-recognition<br><i>(insightface)</i>"]
     D --> F["image-encoding<br><i>(clip)</i>"]
 ```
 
-Routing rules (fixed, in code):
+Routing is **output-driven**: a stage sets fields on the item/hint and the
+router reads them, exactly as the media-type branch reads `Mediatype`/`hasGPS`.
+The signals live on `PipelineItem` / `StageHint` (`internal/pipeline/item.go`);
+the hint carries a stage's outputs forward, and `absorb` pulls them back onto
+the item so the router (and downstream stages) see them.
+
+Routing rules:
+
 - An item always enters at `bring-to-collection`.
-- After `bring-to-collection`, the item fans out to `geo-cache` (if it has GPS)
-  and to a media-type branch:
-  - **Video items:** `generate-video-thumbnail` and `video-compression` both run
-    (the two ffmpeg stages are independent of each other).
-    `generate-video-thumbnail` then feeds `generate-image-thumbnails` - the
-    extracted video frame is treated like an image from that point on.
-  - **Image items:** go directly to `generate-image-thumbnails`.
-- Geo is a chain routed on each stage's output (like the media-type branch).
-  `geo-cache` does the local DB cache phase (GPS/country derivation, non-US
-  resolve, US exact/proximity match) and is terminal unless it is a US cache
-  miss, in which case it routes to `geo-lookup-addr` (geonames
-  findNearestAddress). If that returns an empty placename, it routes to the
-  local `geo-city-cache` (postal-code DB cache); on a postal cache hit that is
-  terminal, and only on a postal cache miss does it route to `geo-lookup-city`
-  (geonames postalCodeLookup). The two `*-lookup-*` API queues are rate-gated
-  (see the geo rate gater) and -- because the two `*-cache` stages absorb all
-  cache hits -- each API queue makes exactly one geonames call per dispatch, so
-  a reserved budget unit is never spent on a cache hit. A cache hit / non-US /
-  no-GPS item never calls the API.
-- `generate-image-thumbnails` (libvips) is the predecessor for both ML stages,
-  `face-recognition` (insightface) and `image-encoding` (clip). Since the ML
-  enhancement, both consume the compressed image produced by
-  `generate-image-thumbnails` rather than the original file.
+- It then fans out to `geo-cache` (if it has GPS) and to a media-type branch:
+  - **Video:** `generate-video-thumbnail` and `video-compression` both run (the
+    two ffmpeg stages are independent). `generate-video-thumbnail` then feeds
+    `generate-image-thumbnails` - the extracted frame is an image from there on.
+  - **Image:** goes directly to `generate-image-thumbnails`.
+- **Geo is a four-step chain, each step routed on the previous step's output:**
+  - `geo-cache` (local) resolves from GPS/country and the US DB cache; it is
+    terminal unless it is a US cache miss, which routes to `geo-lookup-addr`.
+  - `geo-lookup-addr` (API) calls `findNearestAddress`; if the result has an
+    empty placename it routes to `geo-city-cache`, otherwise it is terminal.
+  - `geo-city-cache` (local) checks the postal-code DB cache; a hit writes the
+    final address (terminal), a miss routes to `geo-lookup-city`.
+  - `geo-lookup-city` (API) calls `postalCodeLookup` and writes the final
+    address (terminal).
+  - The two local `*-cache` stages absorb every cache hit, so each rate-gated
+    API stage makes **exactly one** geonames call per dispatch - a reserved
+    budget unit is never spent on a cache hit. A cache hit / non-US / no-GPS item
+    never calls the API. The geo *work* (cache + geonames) is the pure `geo`
+    package (`internal/geo/finalizer.go`); the pipeline stages orchestrate it.
+- `generate-image-thumbnails` feeds both ML stages, `face-recognition` and
+  `image-encoding`, each of which consumes the thumbnail's in-memory buffer.
 
-Each edge is a single-predecessor edge: a stage enqueues its successor(s) when it
-finishes. No stage waits on *multiple* predecessors for the same item, so there is
-no fan-in join to track.
+## Gaters
 
-## Dynamic resource scheduling (configurable)
+A **gater** decides, moment to moment, whether a queue may dispatch. It
+implements `pipeline.Gater` (`internal/pipeline/gater.go`):
 
-The data flow above says nothing about *concurrency*. Running everything as fast
-as possible would oversubscribe contended resources. But which stages contend
-depends entirely on the machine, so this layer is tunable per install:
+- `GateName()` - the gate's label on the queue (also the UI block reason).
+- `Governs()` - which queues it gates.
+- `IsOpen(queue)` - the cheap, read-only admission check.
+- `Attach(host)` - register its gate on the governed queues and set up its own
+  kicking (re-evaluating a queue when its condition may have changed).
 
-- On a box with a GPU, `face-recognition` and `image-encoding` (both GPU-bound)
-  can run in parallel with the CPU-bound stages like `video-compression` - two
-  different resources, no contention.
-- On a CPU-only box, those same three stages all fight for the CPU, so the user
-  may want to serialize some of them (e.g. do not run `video-compression` while
-  the ML stages are running).
-- On a box with lots of CPU, the user may instead raise per-stage concurrency
-  (e.g. compress 5 videos at once) and gate very little.
+The pipeline iterates its gaters and, for each governed queue, registers a gate
+with the queue (`wireGates` in `pipeline.go`). The queue stays neutral: it holds
+`{name, isOpen, reserve}` gates and, at dispatch, requires every gate open
+(short-circuit; the first closed gate is the block reason). Pause and gating are
+independent - a queue can be admin-paused and/or gate-blocked, and both must be
+clear to dispatch.
 
-Crucially, **resource gating is independent of data flow.** A gate can sit
-between two stages that have no data-flow relationship at all (e.g.
-`video-compression` gated behind `face-recognition` purely because they share a
-CPU on a GPU-less box, even though the data flow lets them run in parallel). So
-gating is captured as its own graph, not derived from the data-flow graph or from
-any left-to-right ordering.
+Each gater owns its own *kicking* (how it learns its condition changed); this is
+deliberately not part of the `Gater` interface because it differs per gater (see
+each below).
 
-The mechanism is a one-directional **gate** between stages. Each gate is an
-explicit edge "B is gated behind A": B must not start a task while A is busy.
-Stages with no gate between them may run concurrently. This is orthogonal to each
-stage's own *internal* concurrency (how many items it processes in parallel).
+### Gates are pulled at dispatch, not watched
 
-### Terminology
+A subtle but load-bearing property: the queue evaluates a gate's `isOpen` only
+when it is attempting to dispatch; it does not watch gate conditions. A gate can
+open (an upstream drains, the rate budget resets) without the gated queue
+knowing - it only finds out by re-evaluating on its next dispatch attempt, which
+is why a gater must `Kick()` the queue when its condition may have changed.
 
-- **Stage** - a unit of work with its own queue and concurrency (e.g.
-  `generate-image-thumbnails` with max concurrency 5). Stages are fixed.
-- **Busy** - a stage is *busy* when it has any task running OR any task pending
-  (running + pending > 0). A stage is *fully drained* when it is not busy:
-  nothing running and nothing queued.
-- **Gate** - a one-directional exclusion relationship. If B is gated behind A,
-  then B must not start a task while A is busy. B yields to A; A never waits for B.
-- **Concurrency** - a stage's own max parallelism (how many items it runs at
-  once). Independent of gating.
-- **Coexisting stages** - any two stages with no gate edge between them may run
-  concurrently, each up to its own concurrency limit.
+The consequence: gate/block state is only meaningful when a queue has work to
+dispatch. An empty queue is just "idle"; whether a gate is notionally closed is
+invisible and irrelevant. So `GetStatus().BlockReason` (and the UI) report a
+block reason only when something is pending and a dispatch attempt actually hit a
+closed gate - an idle stage reads as idle even if a gate would be closed. There
+is exactly one gate evaluation per dispatch attempt and one truth (the first
+closed gate), and that same result is what the status/SSE report; the pipeline
+does not separately recompute "is this stage gated" for the UI.
 
-### Gating semantics (the core of this change)
+### Resource gater
 
-A gate is about avoiding *concurrent execution*, not about data dependency and
-not about pending work.
+`resourceGater` (`internal/pipeline/gater.go`) implements resource scheduling: a
+governed queue must not start a task while any of its gating upstreams is
+**busy**. It owns the gate graph (`gatedBy`: queue name -> gating upstream names)
+and a busy lookup over the pipeline's queues.
 
-Precise rule:
-- **A gated stage B must not start a task while its upstream A is *busy*, where
-  busy means A has any task running OR any task pending (running + pending > 0).**
-  In other words, B waits until A is *fully drained* - nothing running and nothing
-  queued.
-- A pending B task is allowed to sit in B's queue. It simply is not *dispatched*
-  (started) while A is busy.
-- The gate is evaluated at **dispatch time** - the instant B is about to start a
-  task, it checks whether any upstream is busy. A pending B task becomes eligible
-  only once the upstream is fully drained, so the check cannot be done only at
-  enqueue time.
+- **Busy** = running OR pending (`Active + Pending > 0`). A stage is **fully
+  drained** when neither.
+- `IsOpen(B)` = no upstream of B is busy. Evaluated at **dispatch time**, so a
+  pending B task sits in B's queue and simply is not started while an upstream is
+  busy.
+- **Kicking:** the gater subscribes to each gating upstream's event stream and,
+  on the upstream's busy->drained transition (`Active==0 && Pending==0`), kicks
+  the stages gated behind it so they re-evaluate. It kicks only on that edge, not
+  on every completion (a mid-drain completion leaves the gate closed, so waking
+  the gated stage would be wasted).
 
-Why "fully drained" and not merely "no running task": using running+pending avoids
-a blip where A momentarily has zero running tasks (between two of its own items)
-but still has queued work. Under a "no running task" rule, B could opportunistically
-grab a slot in that gap and then overlap with A when A picks up its next pending
-item. Requiring A to be fully drained removes that race: B only starts once A is
-genuinely done.
+#### Why "fully drained" and not "no running task"
 
-Tradeoff (accepted): this is stricter / more throughput-conservative. Under a
-continuous trickle of input (e.g. a live folder watch that keeps feeding an
-upstream), the upstream may rarely reach empty, so a gated stage could be delayed
-for a long time. For this app's common case - batch indexing a folder, draining it,
-then compressing - "fully drained" is exactly the desired behavior and the trickle
-concern does not apply. If steady-trickle starvation ever becomes a problem, revisit
-per-gate configurability.
+Using running+pending avoids a blip where an upstream momentarily has zero
+running tasks (between two of its own items) but still has queued work. Under a
+"no running task" rule a gated stage could grab a slot in that gap and overlap
+with the upstream when it picks up its next item. Requiring full drain removes
+that race.
 
-Directionality and tie-breaks (a gate is one-directional; the upstream has priority):
-- **The upstream A never waits for the gated stage B.** B yields to A.
+Tradeoff (accepted): this is throughput-conservative. Under a continuous trickle
+into an upstream (e.g. a live folder watch) the upstream may rarely reach empty,
+delaying its gated downstream. For the common case - batch-index a folder, drain
+it, then compress - fully-drained is exactly right. Revisit per-gate config if
+trickle starvation ever appears.
+
+#### Directionality (one-directional; upstream has priority)
+
+- The upstream A never waits for the gated stage B; B yields to A.
 - If A becomes busy again while B already has tasks running, those in-flight B
-  tasks are **not** killed - they finish naturally. But no *new* B task is
-  dispatched until A is fully drained again.
-- So the invariant is "do not *start* B while A is busy." With the fully-drained
-  rule this overlap is rare (B only started because A was empty, and A becoming
-  busy again requires new input), but if it does occur, B's already-running work
-  finishes rather than being killed. This is an accepted tradeoff.
+  tasks finish naturally (never killed), but no *new* B task starts until A is
+  fully drained again. With the fully-drained rule this overlap is rare (B only
+  started because A was empty), and the brief overlap is accepted.
 
-### Example configurations
+### Geo rate gater
 
-The same fixed data flow can be scheduled many ways depending on the hardware available.
-The diagrams below show only the **gate graph** - each dotted edge with a lock
-label reads "A blocks B" (B does not start while A is busy). The dotted line and
-lock label are deliberately different from the solid data-flow arrows `-->` in the
-[Static data flow] section, so the two graphs are not confused; a gate edge may
-connect stages that have no data-flow relationship. The number in parentheses is
-each stage's own max concurrency (internal parallelism), independent of gating.
-Stages with no gate
-edge between them run concurrently.
+`geoRateGater` (`internal/pipeline/georate.go`) implements geonames rate
+limiting. It is fully self-contained and symmetric with the resource gater: it
+owns its condition (the geonames request budget - hourly/daily counters plus
+their persisted state file under `DATA_DIR`), decides *when* to kick (an
+hour/day rollover timer), and *what* to kick (the two governed API queues,
+`geo-lookup-addr` and `geo-lookup-city`). The `geo` package holds no rate state.
 
-For the first cut, the user supplies this configuration as JSON text (see [Config
-format] below); a graphical builder may come later. Either way, the model is the
-same gate graph.
+The rate gate is a **consuming** gate - it both admits and consumes:
 
-**GPU box** - the two ML stages run on the GPU, everything else on CPU. The two
-resources do not contend, so there are no gates at all: every stage runs as soon
-as its data-flow predecessor is done, bounded only by its own concurrency. (No
-gate edges.)
+- `IsOpen` is the pure, read-only budget check (within hourly and daily limits).
+  It may be evaluated many times per dispatch attempt (and on attempts that then
+  bail), so it must have no side effects.
+- `Reserve` is the atomic check-and-increment that actually consumes one unit. It
+  is registered as the gate's `reserve` and the **queue calls it once at the
+  commit point** - after a concurrency slot is secured and the final pause/stop
+  check passes, right before the task launches - so it fires exactly once per
+  task that runs, never on a speculative `isOpen` check. See the commit-point
+  logic in `drainQueue` (`internal/queue/queue.go`) and `RegisterConsumingGate`.
 
-```mermaid
-flowchart LR
-    a["bring-to-collection (5)"]
-    b["geo-cache (10)"]
-    c["generate-video-thumbnail (5)"]
-    d["generate-image-thumbnails (5)"]
-    e["face-recognition (2)"]
-    f["image-encoding (2)"]
-    g["video-compression (4)"]
-```
+Because each API stage makes exactly one call per dispatch (the `*-cache` stages
+absorb hits) and the consume is atomic, the shared budget across the two API
+queues is honored precisely: we only ever reserve >= calls made, so geonames'
+hard limit is never exceeded. When over budget the gate is closed and items wait
+in place (no mark-and-skip, no partial write); the rollover timer resets the
+counters and kicks both queues so held items resume.
 
-**CPU-only box** - no GPU, so the ML stages and video compression all compete for
-the CPU. The user serializes the CPU-heavy work so only one heavy model runs at a
-time and compression waits for both: `face-recognition` blocks `image-encoding`,
-and both ML stages block `video-compression`. The compression gate runs *tangent*
-to data flow - there is no data-flow edge between `video-compression` and the ML
-stages, yet on this box they contend for the CPU. Lighter stages
-(`bring-to-collection`, `geo-cache`, thumbnails) are left ungated.
+Reserve-at-commit can fail in a rare race (the sibling API queue took the last
+unit between the gate check and the commit). The queue treats a failed reserve
+like a closed gate: release the slot, requeue the task, set the gate as the block
+reason, and stop until the next kick. Multiple consuming gates on one queue are
+allowed; if an earlier one reserved and a later one denies, the earlier
+reservation is **not** refunded (over-reserving is safe for a hard limit, and it
+keeps the queue simple).
 
-```mermaid
-flowchart LR
-    a["bring-to-collection (5)"]
-    b["geo-cache (10)"]
-    c["generate-video-thumbnail (5)"]
-    d["generate-image-thumbnails (5)"]
-    e["face-recognition (1)"]
-    f["image-encoding (1)"]
-    g["video-compression (2)"]
+## Configuration
 
-    e -.->| 🔒 | f
-    e -.->| 🔒 | g
-    f -.->| 🔒 | g
-```
-
-**Big-CPU box** - lots of CPU, no GPU. Instead of gating, the user raises
-concurrency so many items run at once (e.g. 5 concurrent video compressions). The
-two ML stages are left to run concurrently (no gate between them), but
-`video-compression` is still gated behind both - it is the heaviest CPU consumer,
-so it waits until the ML work is fully drained.
-
-```mermaid
-flowchart LR
-    a["bring-to-collection (5)"]
-    b["geo-cache (10)"]
-    c["generate-video-thumbnail (5)"]
-    d["generate-image-thumbnails (5)"]
-    e["face-recognition (3)"]
-    f["image-encoding (3)"]
-    g["video-compression (5)"]
-
-    e -.->| 🔒 | g
-    f -.->| 🔒 | g
-```
-
-## Tentative design in Go
-
-### 1. Each stage = a `queue.Queue` instance (already available)
-
-Each stage gets its own queue with its own concurrency. The gate needs the
-upstream's *busy* state (running + pending). The queue already exposes both via
-`GetStatus()` (`Active` = running, `Pending` = queued), so no new counters are
-required - the gate reads `Active + Pending > 0`.
-
-### 2. Stage definition
-
-```go
-type Stage struct {
-    Name        string
-    Concurrency int
-    Fn          func(item *PipelineItem) error // the actual work
-    Queue       *queue.Queue
-
-    // Data flow (hardcoded routing): where an item goes after this stage.
-    Downstreams []*Stage
-
-    // Resource gating: this stage must not START a task while any of these
-    // upstream stages is busy (running or pending). Evaluated at dispatch time.
-    GatedBy []*Stage
-}
-```
-
-Note the two lists are separate on purpose: `Downstreams` is data flow,
-`GatedBy` is resource scheduling. They are configured from different sources
-(Downstreams from code; GatedBy derived from the user's scheduling config).
-
-### 3. Gate evaluation
-
-A stage is *busy* if its queue reports any running OR pending task. The gate for a
-stage is "no upstream in `GatedBy` is busy" (all upstreams fully drained).
-
-```go
-func (s *Stage) upstreamBusy() bool {
-    for _, up := range s.GatedBy {
-        st := up.Queue.GetStatus()
-        if st.Active > 0 || st.Pending > 0 {
-            return true
-        }
-    }
-    return false
-}
-```
-
-Because the gate must be checked at dispatch time, the queue's dispatch loop needs
-a way to defer starting a task when the gate is closed. Chosen approach:
-
-- **Option A - gate hook in the queue (chosen).** Add an optional
-  `CanDispatch func() bool` to `queue.Queue`. Before the dispatch loop starts a
-  task, it calls the hook; if it returns false, it does not dispatch and waits for
-  the next notify to re-check. The gate hook is
-  `func() bool { return !stage.upstreamBusy() }`. This keeps gating logic out of
-  the pipeline's item-forwarding path, and the queue never calls Pause/Resume for
-  gating (those stay reserved for explicit admin control - see Control
-  Responsibility below).
-
-- **Option B - orchestrator-driven pause/resume (rejected).** The orchestrator
-  watches upstream busy counts and calls `stage.Queue.Pause()` / `Resume()` as
-  gates open and close. Rejected: it overloads the pause flag with two meanings
-  (gating vs admin) and needs a polling watcher goroutine that is racier around
-  the drained transition.
-
-Option A makes the gate decision exactly at dispatch, closing the race where B
-starts in the same instant A becomes busy. It requires a small, well-contained
-change to the queue (a pre-dispatch predicate + an on-drained signal).
-
-Re-checking (efficient trigger): the gate `!upstreamBusy()` can only flip from
-closed to open when an upstream becomes **fully drained** - its running + pending
-count reaches **zero**. Therefore the kick must fire on the upstream's
-**busy -> drained transition**, NOT on every task completion.
-
-- Kicking on every completion is wasteful: if an upstream has 5 tasks running (or
-  more pending) and one finishes, the gate is still closed. The gated stage would
-  wake, re-evaluate `CanDispatch()`, get false, and sleep again - a wasted wakeup.
-- The only meaningful edge is the queue going empty: the last task completes AND no
-  pending tasks remain. At that instant the orchestrator signals the notify
-  channels of the stages that list this upstream in `GatedBy`.
-
-Concretely: when a worker finishes a task and decrements the queue's active count,
-the queue checks whether running + pending is now zero; if so it fires an "idle"
-(drained) signal, which the orchestrator forwards to the dependent gated stages.
-
-Because gating waits for full drain (running + pending == 0), the momentary-idle
-blip does not arise: a gated stage only starts once its upstreams are genuinely
-empty, and the one-directional rule handles the rare case where new input arrives
-at an upstream just after it drained.
-
-#### Control Responsibility
-
-- **The queue** decides moment-to-moment whether it may dispatch, by evaluating its
-  `CanDispatch()` predicate at dispatch time. Gating never sets the queue's paused
-  flag; a gated-closed queue is simply declining to dispatch, not paused.
-- **The orchestrator** wires each gated stage's predicate
-  (`CanDispatch = !upstreamBusy`) and delivers the drained-signal kicks to gated
-  stages when an upstream empties. It does not read or flip pause state for gating.
-- **`Pause()` / `Resume()`** remain reserved for explicit operator/admin control
-  (the admin endpoints, manual stop). A stage can be gated-closed AND admin-paused
-  independently; both must be clear before it dispatches (`!isPaused && CanDispatch()`).
-
-### 4. Pipeline orchestrator
-
-```go
-type Pipeline struct {
-    stages map[string]*Stage
-    entry  *Stage // bring-to-collection
-}
-
-// Submit puts a new item at the entry stage. Routing to downstreams is
-// hardcoded; gating is enforced by the queue's dispatch predicate.
-func (p *Pipeline) Submit(item *PipelineItem) {
-    p.enqueue(p.entry, item)
-}
-
-func (p *Pipeline) enqueue(stage *Stage, item *PipelineItem) {
-    stage.Queue.Enqueue(queue.Task{
-        Description: stage.Name,
-        Fn: func() error {
-            if err := stage.Fn(item); err != nil {
-                return err
-            }
-            // Data flow: forward to hardcoded downstreams.
-            for _, ds := range stage.Downstreams {
-                p.enqueue(ds, item)
-            }
-            return nil
-        },
-    })
-}
-```
-
-Note there is no `JoinTracker` here. An earlier design modeled the gate as a
-per-item data dependency (video-compression waits for both thumbnail AND geo *for
-the same item*) and needed a fan-in join. Under this model the gate is a *resource*
-constraint, not a per-item join, so no join tracking is needed. The data-flow graph
-does have intermediate dependencies (e.g. `face-recognition` and `image-encoding`
-run only after `generate-image-thumbnails`, and `generate-video-thumbnail` feeds
-`generate-image-thumbnails`), but each is a single-predecessor edge expressed
-directly in the hardcoded routing (`Downstreams`) - a stage simply enqueues its
-successor when it finishes. No stage waits on *multiple* predecessors for the same
-item, so no fan-in join tracker is required. If a genuine per-item fan-in
-dependency is ever added, it would be handled separately in the hardcoded routing.
-
-### 5. Config format
-
-Only the tunable parts (per-stage concurrency and gating) come from config. Data
-flow is not configurable.
-
-The config is JSON: a flat list of stages, each with its own `concurrency` and an
-optional inline `gatedBy` list naming the stages it is gated behind. Because gating
-is an independent graph (not tied to data flow or any ordering), `gatedBy` can name
-*any* stage. Absence of a `gatedBy` entry means no gate - the stage may run
-concurrently with everything it is not gated behind.
-
-Concretely (the "CPU-only box" example above - `video-compression` gated behind
-both ML stages, and `image-encoding` gated behind `face-recognition`):
+Only the **tunable** parts are config: per-stage concurrency, a per-stage enable
+flag, and the resource-gating graph. Data flow is not configurable. The config
+is a JSON blob persisted in `runtime_config` under `pipelineConfig`, parsed and
+validated in `internal/pipeline/config.go`.
 
 ```json
 {
@@ -417,92 +260,139 @@ both ML stages, and `image-encoding` gated behind `face-recognition`):
 }
 ```
 
-Each entry in `gatedBy` becomes a `GatedBy` edge on that stage (read "this stage is
-gated behind the named stage"). Validation: every stage in the fixed data flow must
-appear exactly once; every name in a `gatedBy` list must be a known stage; and the
-gate graph must be acyclic (a cycle would deadlock, since each stage would wait for
-the other to drain).
+- `gatedBy` is the resource-gating graph: "this stage is gated behind the named
+  stage(s)." Because gating is independent of data flow, `gatedBy` may name any
+  stage, including one with no data-flow relationship.
+- The geonames **rate** gate is NOT part of this config - it is geo-owned and its
+  condition is the geonames budget, not an editable edge. It surfaces only as a
+  stage's block reason.
+- Validation (`config.go`): every fixed stage appears exactly once; no unknown
+  stages; structural stages (entry + thumbnail stages) cannot be disabled; every
+  `gatedBy` name is a known stage; and the gate graph is acyclic (a cycle would
+  deadlock, each stage waiting for the other to drain).
+- Config is applied live without a restart (`Apply` in `pipeline.go`): enable
+  flags, concurrency, and the gate graph are updated in place, gaters re-attach,
+  and every queue is kicked. Invalid config is rejected atomically (the running
+  pipeline is left unchanged). The seed/migration is
+  `internal/database/migrations/015-geo-stage-split.sql` (and the base
+  `014-pipeline-config.sql`).
 
-### 6. Runtime control APIs
+### Example gate graphs by hardware
 
-```
-GET  /api/admin/pipeline/status          -> status per stage (pending, running, gated?)
-PUT  /api/admin/pipeline/stages/:name/concurrency/:n
-PUT  /api/admin/pipeline/stages/:name/pause
-PUT  /api/admin/pipeline/stages/:name/resume
-```
+The same fixed data flow is scheduled differently per machine. The diagrams
+below show only the **gate graph** - a dotted lock edge "A 🔒 B" reads "B does
+not start while A is busy." Numbers in parentheses are each stage's own
+concurrency (independent of gating). Omitted stages are ungated. (Geo stages are
+left ungated here; only the geonames rate gate constrains the geo API queues,
+and that is not part of this graph.)
 
-Status should expose, per stage: pending, running, and whether it is currently
-*gated closed* (an upstream is still busy - running or pending).
+**GPU box** - the two ML stages run on the GPU, everything else on CPU. No
+contention, so no gates: every stage runs as soon as its data-flow predecessor
+is done, bounded only by its own concurrency.
 
-### 7. Conditional stages
-
-Some stages only apply to certain media types:
-- generate-video-thumbnail, video-compression: only for video items
-- generate-image-thumbnails: for images directly, and for videos after
-  generate-video-thumbnail produces a frame
-- face-recognition, image-encoding: only for items that have a generated image
-  (i.e. downstream of generate-image-thumbnails)
-- geo-cache: only if GPS coordinates exist. geo-lookup-addr / geo-city-cache /
-  geo-lookup-city: reached only on a US cache miss / empty-placename /
-  postal-cache miss respectively (output-driven routing from the preceding geo
-  stage). The two *-cache stages are local; the two *-lookup-* stages hit the
-  geonames API and are rate-gated.
-
-The stage function handles this (returns nil immediately if not applicable), or we
-add a `Condition func(*PipelineItem) bool` field to Stage. This is orthogonal to
-gating.
-
-## Migration Path
-
-1. Phase 3 (done): Two hardcoded queues, pipeline logic in `indexing/pipeline.go`
-2. Future step: Refactor pipeline.go to use Stage structs with hardcoded
-   `Downstreams` routing (data flow), keeping current behavior.
-3. Future step: Add the dispatch-time gate predicate (`CanDispatch`) and the
-   on-drained signal to `queue.Queue` (Option A), then wire `GatedBy` +
-   drained-transition re-check in the orchestrator.
-4. Future step: Add config parsing for concurrency + gating only.
-5. Future step: Add per-stage status/control endpoints (including gated state).
-
-## Confirmed Decisions
-
-- **Gate condition (confirmed):** a gate holds the downstream until its upstream is
-  *fully drained* (running + pending == 0), not merely momentarily idle. This
-  avoids the blip where the upstream has zero running but still-queued work.
-  Accepted tradeoff: stricter/more conservative; a continuous trickle into an
-  upstream could delay its downstream. Fine for the batch-index workload; revisit
-  per-gate config if trickle starvation ever appears.
-- **Tie-break (confirmed):** a gate is one-directional. The upstream never waits
-  for the gated stage; the gated stage yields to the upstream. When an upstream
-  becomes busy again while its gated stage has tasks running, those in-flight tasks
-  finish naturally (they are never killed), but no new task is dispatched until the
-  upstream is fully drained. Brief overlap of in-flight downstream work with the
-  upstream's newly-arrived work is accepted.
-- **Gate scope (confirmed):** gating holds only the directly gated stage(s) and
-  everything downstream of them - not the whole pipeline.
-- **Drained re-check (confirmed, required):** the kick fires on an upstream's
-  **busy -> drained transition** (running + pending reaches zero), NOT on every
-  task completion. Kicking per-completion is wasteful because the gate stays closed
-  while any upstream task is running or pending. When an upstream becomes fully
-  drained, it signals the notify channel of each stage that lists it in `GatedBy`.
-  A gated stage must not stall waiting for an unrelated notify, so this
-  drained-transition kick is a hard requirement, not an optimization.
-
-## Files to Create (when implementing)
-
-```
-go-server/internal/pipeline/
-    stage.go       # Stage struct (Downstreams + GatedBy)
-    pipeline.go    # Pipeline orchestrator, Submit, enqueue, gate re-check
-    config.go      # Parse JSON stages (concurrency + inline gatedBy), validate DAG (not data flow)
-    handler.go     # Per-stage status/control endpoints
+```mermaid
+flowchart LR
+    e["face-recognition (2)"]
+    f["image-encoding (2)"]
+    g["video-compression (4)"]
 ```
 
-Queue changes (small, contained) to `internal/queue/queue.go` for Option A gating:
-1. An optional pre-dispatch predicate `CanDispatch func() bool`, checked in the
-   dispatch loop alongside the existing `isPaused` check (dispatch requires
-   `!isPaused && (CanDispatch == nil || CanDispatch())`).
-2. An on-drained signal: when a worker's `active.Add(-1)` brings running to zero
-   and no pending tasks remain, fire a callback/channel so the orchestrator can
-   kick the stages gated behind this queue. The queue already tracks `active` and
-   pending counts, so this is a cheap check at task completion.
+**CPU-only box** - the ML stages and compression contend for the CPU. Serialize
+the heavy work: `face-recognition` blocks `image-encoding`, and both block
+`video-compression` (which runs tangent to data flow - no data-flow edge to the
+ML stages, but it contends for the same CPU).
+
+```mermaid
+flowchart LR
+    e["face-recognition (1)"]
+    f["image-encoding (1)"]
+    g["video-compression (2)"]
+
+    e -.->| 🔒 | f
+    e -.->| 🔒 | g
+    f -.->| 🔒 | g
+```
+
+**Big-CPU box** - raise concurrency instead of gating. The two ML stages run
+concurrently; `video-compression` (heaviest) still waits behind both.
+
+```mermaid
+flowchart LR
+    e["face-recognition (3)"]
+    f["image-encoding (3)"]
+    g["video-compression (5)"]
+
+    e -.->| 🔒 | g
+    f -.->| 🔒 | g
+```
+
+## Runtime control and status
+
+Per-stage admin endpoints (`internal/pipeline/handler.go`, mounted under
+`/api/admin`):
+
+```
+GET  /api/admin/pipeline/status                      per-stage status snapshot
+GET  /api/admin/pipeline/events                      live per-stage status (SSE)
+GET  /api/admin/pipeline/config                      current config JSON
+PUT  /api/admin/pipeline/config                      validate + apply + persist
+POST /api/admin/pipeline/config/validate             validate only
+PUT  /api/admin/pipeline/stages/:name/concurrency/:n set a stage's concurrency
+PUT  /api/admin/pipeline/stages/:name/pause          pause a stage
+PUT  /api/admin/pipeline/stages/:name/resume         resume a stage
+```
+
+Per-stage status includes pending/active/completed/failed counters, paused, max
+concurrency, and the block reason (the first closed gate's name, e.g.
+`resource` or `rate`, or empty when dispatching/idle). The block reason is only
+meaningful when a stage has pending work, so an idle stage reads as idle even if
+a gate would nominally be closed.
+
+### Live status via the queue event stream
+
+The queue is the single **emitter** of live status. Each queue emits an event on
+every dispatch-cycle transition (enqueue, start, completion, pause, resume,
+concurrency change, gate block/clear) carrying its own facts - the counters,
+paused, concurrency, and current block reason - via `Subscribe() <-chan Event`.
+Two independent consumers subscribe to that same stream:
+
+- **The pipeline orchestrator** - the resource gater's drained-kick watches each
+  gating upstream's events for the busy->drained edge (this is its kicking
+  mechanism; see the resource gater above).
+- **The SSE broadcaster** (`internal/pipeline/sse.go`) - forwards per-stage
+  snapshots to the browser over `GET /api/admin/pipeline/events`. Because the
+  queue carries a full snapshot in every event, the broadcaster adds only the
+  pipeline-level overlay the queue cannot know (the stage `enabled` flag and
+  friendly identity); the block reason comes straight from the queue.
+
+Properties that fall out of this design:
+
+- **Silent when idle.** Events are emitted only on transitions, so an idle
+  pipeline produces no traffic - this replaced an unconditional 1.5s poll on the
+  Indexer page.
+- **No server-side throttling.** The server emits per transition; the browser
+  client coalesces DOM updates (buffers and flushes once per
+  `requestAnimationFrame`) so bursts under load do not thrash layout.
+- **Auth over the cookie path.** An `EventSource` cannot send an Authorization
+  header; the admin route authenticates via the `refreshToken` cookie that the
+  browser sends automatically on same-origin requests (the same fallback used
+  for media), and `AdminMiddleware` reads the role it sets.
+
+For the SSE mechanics and the client wiring, see `internal/pipeline/sse.go` and
+the Indexer component (`web/js/components/pl-admin-indexer.js`).
+
+## Code map
+
+| Concern | File |
+|---------|------|
+| Queue (gates, events, dispatch, reserve-at-commit) | `internal/queue/queue.go` |
+| Gater contract + resource gater | `internal/pipeline/gater.go` |
+| Geo rate gater (budget, timer, Reserve) | `internal/pipeline/georate.go` |
+| Pipeline: nodes, wiring, Apply | `internal/pipeline/pipeline.go` |
+| Data-flow routing | `internal/pipeline/enqueue.go` |
+| Item / hint (routing signals) | `internal/pipeline/item.go` |
+| Stage work functions | `internal/pipeline/stages_impl.go` |
+| Config parse/validate | `internal/pipeline/config.go` |
+| Admin + SSE handlers | `internal/pipeline/handler.go`, `internal/pipeline/sse.go` |
+| Geo work (pure cache + geonames) | `internal/geo/finalizer.go` |
+| Config seed/migration | `internal/database/migrations/014-pipeline-config.sql`, `015-geo-stage-split.sql` |
