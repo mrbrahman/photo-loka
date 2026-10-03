@@ -98,3 +98,30 @@ func TestSSE_StreamsLiveQueueEvent(t *testing.T) {
 		t.Fatal("timed out waiting for a live queue event on the merged channel")
 	}
 }
+
+// TestSSE_ReturnsOnServerShutdown: an open SSE handler (client still connected)
+// returns when ShutdownSSE fires, so a graceful srv.Shutdown is not held open by
+// an idle-but-live EventSource. Regression guard for the shutdown-timeout bug.
+func TestSSE_ReturnsOnServerShutdown(t *testing.T) {
+	setP(t)
+	gin.SetMode(gin.TestMode)
+
+	// A long-lived request (context never cancelled by the "client").
+	req := httptest.NewRequest("GET", "/api/admin/pipeline/events", nil)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = req
+
+	done := make(chan struct{})
+	go func() { events(c); close(done) }()
+
+	// Signal server shutdown; the handler must return promptly.
+	ShutdownSSE()
+
+	select {
+	case <-done:
+		// returned as expected
+	case <-time.After(2 * time.Second):
+		t.Fatal("SSE handler did not return after ShutdownSSE (would hang srv.Shutdown)")
+	}
+}

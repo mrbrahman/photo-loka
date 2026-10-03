@@ -3,6 +3,7 @@ package pipeline
 import (
 	"encoding/json"
 	"io"
+	"sync"
 
 	"photo-loka/internal/queue"
 
@@ -102,6 +103,22 @@ type sseEvent struct {
 	Status queue.Status `json:"status"`
 }
 
+// sseShutdown is closed once, when the server begins graceful shutdown
+// (wired via http.Server.RegisterOnShutdown -> ShutdownSSE). Every open SSE
+// handler selects on it and returns, so long-lived EventSource connections do
+// not hold srv.Shutdown open until its deadline. An SSE stream is otherwise
+// idle-but-open and never ends on its own, so without this the server's
+// graceful shutdown blocks for the full timeout whenever a browser has the
+// Indexer page open.
+var sseShutdown = make(chan struct{})
+var sseShutdownOnce sync.Once
+
+// ShutdownSSE signals all open pipeline SSE handlers to close. Idempotent.
+// Registered with the HTTP server via RegisterOnShutdown.
+func ShutdownSSE() {
+	sseShutdownOnce.Do(func() { close(sseShutdown) })
+}
+
 // events is the SSE endpoint for live pipeline status.
 // GET /api/admin/pipeline/events
 //
@@ -139,6 +156,10 @@ func events(c *gin.Context) {
 	clientGone := c.Request.Context().Done()
 	for {
 		select {
+		case <-sseShutdown:
+			// Server is shutting down: return so the connection goes idle and
+			// srv.Shutdown can complete without waiting for the deadline.
+			return
 		case <-clientGone:
 			return
 		case ev, ok := <-merged:

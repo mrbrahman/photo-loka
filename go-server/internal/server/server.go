@@ -123,6 +123,15 @@ func Run() error {
 		Handler: router,
 	}
 
+	// Long-lived SSE handlers (the admin pipeline events stream and the frame
+	// events stream) block until the client disconnects, so a graceful
+	// srv.Shutdown would otherwise wait for them until its deadline whenever a
+	// browser has one open. RegisterOnShutdown fires these at the start of
+	// Shutdown, telling those handlers to return so connections go idle and
+	// Shutdown completes promptly.
+	srv.RegisterOnShutdown(pipeline.ShutdownSSE)
+	srv.RegisterOnShutdown(frames.ShutdownSSE)
+
 	// Channel to listen for interrupt signals
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)

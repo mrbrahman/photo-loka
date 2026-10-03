@@ -7,9 +7,25 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 )
+
+// sseShutdown is closed once when the server begins graceful shutdown (wired via
+// http.Server.RegisterOnShutdown -> ShutdownSSE). The /frame/events handler
+// selects on it and returns, so an open (idle-but-live) frame EventSource does
+// not hold srv.Shutdown open until its deadline.
+var (
+	sseShutdown     = make(chan struct{})
+	sseShutdownOnce sync.Once
+)
+
+// ShutdownSSE signals all open frame SSE handlers to close. Idempotent;
+// registered with the HTTP server via RegisterOnShutdown.
+func ShutdownSSE() {
+	sseShutdownOnce.Do(func() { close(sseShutdown) })
+}
 
 // RegisterPublicRoutes registers public (unauthenticated) frame routes.
 func RegisterPublicRoutes(rg *gin.RouterGroup) {
@@ -116,6 +132,10 @@ func events(c *gin.Context) {
 
 	for {
 		select {
+		case <-sseShutdown:
+			// Server shutting down: return so the connection goes idle and
+			// srv.Shutdown completes without waiting for its deadline.
+			return
 		case <-clientGone:
 			return
 		case event, ok := <-ch:
