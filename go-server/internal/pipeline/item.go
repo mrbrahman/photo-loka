@@ -55,6 +55,14 @@ func (it *PipelineItem) hint() *StageHint {
 		FinalFile:    it.FinalFile,
 		ExifData:     it.ExifData,
 		MLBuf:        it.MLBuf,
+		// Geo signals must travel to the next geo stage: geo-lookup-addr writes
+		// GeoParsedAddr onto the item (via absorb) and the pipeline forwards a
+		// clone to geo-lookup-city, whose hint must carry the parsed address.
+		GeoNeedsAPI:   it.GeoNeedsAPI,
+		GeoLat:        it.GeoLat,
+		GeoLng:        it.GeoLng,
+		GeoNeedsCity:  it.GeoNeedsCity,
+		GeoParsedAddr: it.GeoParsedAddr,
 	}
 }
 

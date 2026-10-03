@@ -374,6 +374,62 @@ func TestFlow_VideoItem(t *testing.T) {
 	}
 }
 
+// TestFlow_GeoChain_CarriesParsedAddress drives the full geo chain with real
+// queues and asserts the parsed address set by geo-lookup-addr reaches
+// geo-lookup-city. This guards the hint handoff: geo-lookup-addr writes
+// GeoParsedAddr on the hint, the pipeline absorbs it onto the item and forwards
+// a clone, and that clone's hint must carry GeoParsedAddr into the city stage.
+// (Regression: hint() previously dropped the geo signal fields, so the city
+// stage failed with "requires a parsed address".)
+func TestFlow_GeoChain_CarriesParsedAddress(t *testing.T) {
+	rec := &recorder{}
+	funcs := nopFuncs()
+	funcs.bringToCollection = func(_ string, h *StageHint) error {
+		rec.mark(StageBringToCollection)
+		h.UUID = "g1"
+		h.Mediatype = "image"
+		h.ExifData = &media.ExifData{Mediatype: "image", GPSLat: ptrF(40), GPSLng: ptrF(-74)}
+		return nil
+	}
+	funcs.geoCache = func(_ string, h *StageHint) error {
+		rec.mark(StageGeoCache)
+		h.GeoNeedsAPI = true // simulate a US cache miss -> route to addr
+		h.GeoLat, h.GeoLng = 40, -74
+		return nil
+	}
+	funcs.geoAddr = func(_ string, h *StageHint) error {
+		rec.mark(StageGeoAddr)
+		h.GeoNeedsCity = true // simulate empty placename -> route to city
+		h.GeoParsedAddr = `{"postalcode":"10001","countryCode":"US"}`
+		return nil
+	}
+	var mu sync.Mutex
+	var gotAddr string
+	funcs.geoCity = func(_ string, h *StageHint) error {
+		mu.Lock()
+		gotAddr = h.GeoParsedAddr
+		mu.Unlock()
+		rec.mark(StageGeoCity)
+		return nil
+	}
+
+	p := testPipeline(t, funcs, ungatedConfig())
+	p.submitEntry(&collections.Collection{}, "/src/a.jpg", "", true)
+
+	waitFor(t, "flow to reach geo-lookup-city", func() bool { return rec.ran(StageGeoCity) })
+	for _, want := range []string{StageGeoCache, StageGeoAddr, StageGeoCity} {
+		if !rec.ran(want) {
+			t.Errorf("expected geo stage %q to run", want)
+		}
+	}
+	mu.Lock()
+	got := gotAddr
+	mu.Unlock()
+	if got != `{"postalcode":"10001","countryCode":"US"}` {
+		t.Errorf("geo-lookup-city received parsed address %q, want the one set by geo-lookup-addr", got)
+	}
+}
+
 // TestFlow_EntryError_NoDownstream: if the entry stage fails, nothing downstream
 // runs (the task returns an error before forwarding).
 func TestFlow_EntryError_NoDownstream(t *testing.T) {

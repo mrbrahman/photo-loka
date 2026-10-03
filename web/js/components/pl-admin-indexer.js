@@ -25,10 +25,12 @@ import sheet from "./styles/pl-admin-indexer.css" with { type: "css" };
 // re-render. Incoming events are coalesced and flushed once per animation frame
 // so a burst under load does not thrash layout (the server does no throttling).
 
-// Fixed data-flow order for displaying stage cards (matches the pipeline graph).
+// Fixed data-flow order for displaying queue cards (matches the pipeline graph).
 const STAGE_ORDER = [
   'bring-to-collection',
-  'geo-lookup',
+  'geo-cache',
+  'geo-lookup-addr',
+  'geo-lookup-city',
   'generate-video-thumbnail',
   'generate-image-thumbnails',
   'face-recognition',
@@ -36,10 +38,12 @@ const STAGE_ORDER = [
   'video-compression',
 ];
 
-// Short, friendly labels for the stage cards.
+// Short, friendly labels for the queue cards.
 const STAGE_LABELS = {
   'bring-to-collection': 'Bring to Collection',
-  'geo-lookup': 'Geo Lookup',
+  'geo-cache': 'Geo Cache',
+  'geo-lookup-addr': 'Geo Address Lookup',
+  'geo-lookup-city': 'Geo City Lookup',
   'generate-video-thumbnail': 'Video Thumbnail',
   'generate-image-thumbnails': 'Image Thumbnails',
   'face-recognition': 'Face Recognition',
@@ -67,7 +71,8 @@ class PlAdminIndexer extends HTMLElement {
   // of the collapsible section (a collapsed container has no usable layout).
   #dagSeeded = false;
 
-  // localStorage key for the Pipeline gates expand/collapse state (per device).
+  // localStorage key for the Resource Gates section expand/collapse state (per
+  // device). The key string is unchanged for backward compatibility.
   static PIPELINE_OPEN_KEY = 'pl:indexer:pipelineGatesOpen';
 
   static template = document.createElement('template');
@@ -86,7 +91,7 @@ class PlAdminIndexer extends HTMLElement {
              is lazily seeded on first expand (a collapsed, display:none
              container has no usable layout for the SVG). -->
         <sl-details id="gates-details" class="section gates-details">
-          <span slot="summary" class="section-title gates-summary">Pipeline gates</span>
+          <span slot="summary" class="section-title gates-summary">Resource Gates</span>
           <p class="section-hint">
             Click one stage then another to add a gate (upstream blocks the
             gated stage). Click an edge or its lock to remove it. Use the power
@@ -118,7 +123,7 @@ class PlAdminIndexer extends HTMLElement {
 
         <!-- Per-stage cards -->
         <div class="section">
-          <h3 class="section-title">Stages</h3>
+          <h3 class="section-title">Queues</h3>
           <div class="stage-grid" id="stage-grid">
             <div class="empty-state">Loading stages...</div>
           </div>
