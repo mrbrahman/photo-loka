@@ -1,13 +1,14 @@
 // Album operations (rename, search for existing)
 
 import { authenticatedFetch } from '../authn.mjs';
+import { apiUrl } from '../api-base.mjs';
 
 /**
  * Rename an album within a single day. Identified by (album_date, currAlbumName);
  * the new name applies to the same album_date.
  */
 export async function updateAlbumName(collectionId, albumDate, currAlbumName, newAlbumName) {
-  let res = await authenticatedFetch('/api/updateAlbumName', {
+  let res = await authenticatedFetch(apiUrl('/api/updateAlbumName'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -26,7 +27,7 @@ export async function updateAlbumName(collectionId, albumDate, currAlbumName, ne
 export async function searchForExistingAlbums(searchStr, wantFullName, collectionId) {
   let url = `/api/searchForExistingAlbums?searchStr=${encodeURIComponent(searchStr)}&wantFullName=${wantFullName}`;
   if (collectionId) url += `&collection_id=${collectionId}`;
-  let res = await authenticatedFetch(url);
+  let res = await authenticatedFetch(apiUrl(url));
   if (!res.ok) throw await res.json().catch(() => ({ error: { message: `${res.status} ${res.statusText}` } }));
   return await res.json();
 }

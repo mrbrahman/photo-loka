@@ -1,5 +1,6 @@
 import {notify} from '../utils.mjs';
 import { updateRating } from '../api/media-api.mjs';
+import { apiUrl } from '../api-base.mjs';
 import { formatDayHeader } from '../album-path.mjs';
 
 import sheet from "./styles/pl-slide-media.css" with { type: "css" };
@@ -74,7 +75,7 @@ class PlSlideMedia extends HTMLElement {
 
     if (this.item?.data?.type?.startsWith('image')) {
       let img = Object.assign(document.createElement('img'), {
-        src: `/api/getImage?uuid=${this.item.data.id}`
+        src: apiUrl(`/api/getImage?uuid=${this.item.data.id}`)
       });
 
       img.onload = () => {
@@ -94,7 +95,7 @@ class PlSlideMedia extends HTMLElement {
       });
 
       let src = Object.assign(document.createElement('source'), {
-        src: `/api/getVideo?uuid=${this.item.data.id}&quality=${window.innerWidth >= 1281 ? 'original' : 'compressed'}`
+        src: apiUrl(`/api/getVideo?uuid=${this.item.data.id}&quality=${window.innerWidth >= 1281 ? 'original' : 'compressed'}`)
       });
 
       let txt = 'Cannot play video';

@@ -8,6 +8,7 @@ import './components/pl-slide-media.js';
 import './components/pl-item-info.js';
 
 import { getNextFrameItem } from './api/frame-api.mjs';
+import { apiUrl } from './api-base.mjs';
 
 const IMAGE_DISPLAY_DURATION = 7000;
 
@@ -56,7 +57,7 @@ function clearError() {
 }
 
 function setupSSE() {
-  eventSource = new EventSource('/frame/events');
+  eventSource = new EventSource(apiUrl('/frame/events'));
   
   eventSource.onopen = () => {
     console.log('SSE connection opened');

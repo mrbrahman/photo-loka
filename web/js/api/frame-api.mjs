@@ -1,7 +1,9 @@
 // Public frame endpoints (no auth required)
 
+import { apiUrl } from '../api-base.mjs';
+
 export async function getNextFrameItem() {
-  let res = await fetch('/frame/getNext');
+  let res = await fetch(apiUrl('/frame/getNext'));
   let output = await res.json();
 
   if (!res.ok) {

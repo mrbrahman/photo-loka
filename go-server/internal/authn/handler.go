@@ -66,11 +66,22 @@ func login(c *gin.Context) {
 	})
 }
 
+// refreshTokenFromRequest resolves the refresh token from the request. It
+// prefers the HttpOnly refreshToken cookie (browser, same-origin). As a
+// fallback it reads the X-Refresh-Token header, which packaged apps (Capacitor
+// WebView) use because cross-origin cookies are not sent. Returns "" if absent.
+func refreshTokenFromRequest(c *gin.Context) string {
+	if cookie, err := c.Cookie("refreshToken"); err == nil && cookie != "" {
+		return cookie
+	}
+	return c.GetHeader("X-Refresh-Token")
+}
+
 // refresh issues a new token pair from a valid refresh token.
 // POST /api/authn/refresh
 func refresh(c *gin.Context) {
-	refreshToken, err := c.Cookie("refreshToken")
-	if err != nil || refreshToken == "" {
+	refreshToken := refreshTokenFromRequest(c)
+	if refreshToken == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"error": gin.H{
 				"message": "No refresh token provided",
@@ -127,8 +138,8 @@ func refresh(c *gin.Context) {
 // logout invalidates the refresh token and clears the cookie.
 // POST /api/authn/logout
 func logout(c *gin.Context) {
-	refreshToken, err := c.Cookie("refreshToken")
-	if err == nil && refreshToken != "" {
+	refreshToken := refreshTokenFromRequest(c)
+	if refreshToken != "" {
 		auth.Logout(refreshToken)
 	}
 

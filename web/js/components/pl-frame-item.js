@@ -2,6 +2,7 @@ import { notify, showConfirmDialog } from '../utils.mjs';
 import { serialize } from 'shoelace/utilities/form.js';
 import { searchItems } from '../api/search-api.mjs';
 import { createFrame, updateFrame, deleteFrame, pauseFrame, resumeFrame } from '../api/admin-api.mjs';
+import { apiUrl } from '../api-base.mjs';
 
 import sheet from "./styles/pl-frame-item.css" with { type: "css" };
 
@@ -162,7 +163,7 @@ class PlFrameItem extends HTMLElement {
         
         previewGrid.innerHTML = items.map(item => `
           <div class="preview-item">
-            <img src="/api/getThumbnail?uuid=${item.uuid}&height=100" alt="">
+            <img src="${apiUrl(`/api/getThumbnail?uuid=${item.uuid}&height=100`)}" alt="">
           </div>
         `).join('');
         

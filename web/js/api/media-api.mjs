@@ -1,9 +1,10 @@
 // Media item operations (rating, private, trash, move, rename, description)
 
 import { authenticatedFetch } from '../authn.mjs';
+import { apiUrl } from '../api-base.mjs';
 
 export async function updateRating(uuids, newRating) {
-  let res = await authenticatedFetch('/api/updateRating', {
+  let res = await authenticatedFetch(apiUrl('/api/updateRating'), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ uuid_arr: uuids, newRating })
@@ -12,7 +13,7 @@ export async function updateRating(uuids, newRating) {
 }
 
 export async function trashItems(collectionId, uuids) {
-  let res = await authenticatedFetch('/api/trashItems', {
+  let res = await authenticatedFetch(apiUrl('/api/trashItems'), {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ collection_id: collectionId, uuid_arr: uuids })
@@ -21,7 +22,7 @@ export async function trashItems(collectionId, uuids) {
 }
 
 export async function togglePrivate(collectionId, uuids, makePrivate) {
-  let res = await authenticatedFetch('/api/togglePrivate', {
+  let res = await authenticatedFetch(apiUrl('/api/togglePrivate'), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ collection_id: collectionId, uuid_arr: uuids, makePrivate })
@@ -30,7 +31,7 @@ export async function togglePrivate(collectionId, uuids, makePrivate) {
 }
 
 export async function restoreFromTrash(collectionId, uuids) {
-  let res = await authenticatedFetch('/api/restoreFromTrash', {
+  let res = await authenticatedFetch(apiUrl('/api/restoreFromTrash'), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ collection_id: collectionId, uuid_arr: uuids })
@@ -39,7 +40,7 @@ export async function restoreFromTrash(collectionId, uuids) {
 }
 
 export async function cleanupTrash(collectionId, uuids) {
-  let res = await authenticatedFetch('/api/cleanupTrash', {
+  let res = await authenticatedFetch(apiUrl('/api/cleanupTrash'), {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ collection_id: collectionId, uuid_arr: uuids })
@@ -48,7 +49,7 @@ export async function cleanupTrash(collectionId, uuids) {
 }
 
 export async function emptyTrash(collectionId, uuids) {
-  let res = await authenticatedFetch('/api/emptyTrash', {
+  let res = await authenticatedFetch(apiUrl('/api/emptyTrash'), {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ collection_id: collectionId, uuid_arr: uuids })
@@ -62,7 +63,7 @@ export async function emptyTrash(collectionId, uuids) {
  * apply_folder_pattern (moustache) to compute the on-disk folder path.
  */
 export async function moveItems(collectionId, uuids, targetAlbumDate, targetAlbumName) {
-  let res = await authenticatedFetch('/api/moveItems', {
+  let res = await authenticatedFetch(apiUrl('/api/moveItems'), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -76,7 +77,7 @@ export async function moveItems(collectionId, uuids, targetAlbumDate, targetAlbu
 }
 
 export async function renameFile(collectionId, uuid, newBasename) {
-  let res = await authenticatedFetch('/api/renameFile', {
+  let res = await authenticatedFetch(apiUrl('/api/renameFile'), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ collection_id: collectionId, uuid, newBasename })
@@ -85,7 +86,7 @@ export async function renameFile(collectionId, uuid, newBasename) {
 }
 
 export async function updateDescription(uuid, description) {
-  let res = await authenticatedFetch('/api/updateDescription', {
+  let res = await authenticatedFetch(apiUrl('/api/updateDescription'), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ uuid, description })
@@ -94,7 +95,7 @@ export async function updateDescription(uuid, description) {
 }
 
 export async function getItemInfo(uuid) {
-  let res = await authenticatedFetch(`/api/getItemInfo?uuid=${uuid}`);
+  let res = await authenticatedFetch(apiUrl(`/api/getItemInfo?uuid=${uuid}`));
   if (!res.ok) throw await res.json().catch(() => ({ error: { message: `${res.status} ${res.statusText}` } }));
   return await res.json();
 }
