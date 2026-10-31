@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 
 	"photo-loka/internal/admin"
@@ -46,6 +47,8 @@ func Setup(webFS http.FileSystem) {
 	router = gin.New()
 	router.Use(gin.Recovery())
 
+	router.Use(cors.New(corsConfig()))
+
 	// Request logging middleware (skip thumbnail requests)
 	router.Use(requestLogger())
 
@@ -53,6 +56,32 @@ func Setup(webFS http.FileSystem) {
 	router.Use(staticFileHandler(webFS))
 
 	setupRoutes()
+}
+
+// corsConfig is the CORS policy for the packaged mobile app (Capacitor
+// WebView). The web app is served same-origin with the API, so browser
+// requests carry no cross-origin Origin and this is a no-op for them. The
+// Android WebView, however, serves its page from https://localhost (Capacitor's
+// default androidScheme) and calls the API cross-origin, so without these
+// headers it blocks every JSON fetch (including the OPTIONS preflight).
+// Credentials are intentionally NOT allowed: auth is header/token-based
+// (Authorization, X-Refresh-Token, and the access_token query param), not
+// cross-origin cookies, which keeps CORS simple and avoids the SameSite/HTTPS
+// tangle.
+//
+// Android only: the iOS origin is capacitor://localhost, whose non-standard
+// scheme gin-contrib/cors rejects (it requires http/https). Add iOS via
+// AllowOriginFunc if that platform is ever targeted.
+//
+// Extracted as a function (not inlined in Setup) so the policy is unit-tested
+// directly rather than against a drifting copy.
+func corsConfig() cors.Config {
+	return cors.Config{
+		AllowOrigins:     []string{"https://localhost"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Authorization", "Content-Type", "X-Refresh-Token"},
+		AllowCredentials: false,
+	}
 }
 
 // setupRoutes mounts all route groups.
