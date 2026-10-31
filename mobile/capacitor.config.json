@@ -1,0 +1,8 @@
+{
+  "appId": "com.photoloka.app",
+  "appName": "Photo-Loka",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "http"
+  }
+}

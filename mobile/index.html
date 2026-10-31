@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, viewport-fit=cover">
+
+  <title>Photo-Loka</title>
+  <link rel="icon" type="image/x-icon" href="assets/icon-454.png">
+  <meta name="theme-color" content="#66b3ff">
+
+  <!-- All assets are local (vendored at build time). No CDN: a packaged app
+       must not depend on reaching the internet to render. -->
+  <link rel="stylesheet" href="css/theme-vars.css" />
+  <link id="sl-theme-light" rel="stylesheet" href="vendor/shoelace/light.css" />
+  <link id="sl-theme-dark" rel="stylesheet" href="vendor/shoelace/dark.css" disabled />
+
+  <!-- Early theme init to prevent flash of wrong theme -->
+  <script>
+    (function() {
+      var t = localStorage.getItem('rr-theme') ||
+              (matchMedia('(prefers-color-scheme:dark)').matches ? 'dark' : 'light');
+      if (t === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        document.documentElement.classList.add('sl-theme-dark');
+        document.getElementById('sl-theme-light').disabled = true;
+        document.getElementById('sl-theme-dark').disabled = false;
+      }
+    })();
+  </script>
+
+  <!-- Leaflet CSS (local). pl-map also imports leaflet-css as a CSS module for
+       its shadow DOM; this top-level link is for marker icon positioning. -->
+  <link rel="stylesheet" href="vendor/leaflet.css" />
+
+  <style>
+    :not(:defined) { visibility: hidden; opacity: 0; }
+    :root {
+      /* Lato is not vendored; fall back to the system sans stack. */
+      --sl-font-sans: 'Lato', -apple-system, system-ui, 'Segoe UI', Roboto, sans-serif;
+      --sl-font-size-medium: 0.9rem;
+      --progress-bar-height: 4px;
+    }
+    body, h1, h2, h3, h4, h5, h6 {
+      font-family: Lato,-apple-system,system-ui,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    }
+    body { overflow: hidden; margin: 0; padding: 0; }
+
+    /* Shoelace toasts (notify()) mount a position:fixed .sl-toast-stack on
+       document.body at top:0, outside #app-root, so #app-root's safe-area
+       padding does not affect them and they overlap the status bar on mobile.
+       position:fixed can only be corrected by moving the element itself, so
+       offset the stack by the top inset here (global, light-DOM rule). */
+    .sl-toast-stack {
+      top: env(safe-area-inset-top) !important;
+    }
+    /* Offset content by the device safe-area insets (status bar at top, gesture
+       bar at bottom, notch cutouts at the sides). The WebView draws edge-to-edge
+       because of viewport-fit=cover, so without this the app header renders under
+       the status bar and its top buttons become unclickable. border-box keeps the
+       total box at 100dvw/100dvh while the padding reserves the inset space. */
+    #app-root {
+      box-sizing: border-box;
+      width: 100dvw;
+      height: 100dvh;
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+      padding-left: env(safe-area-inset-left);
+      padding-right: env(safe-area-inset-right);
+    }
+  </style>
+
+  <!-- Mobile bootstrap (bundled, includes @capacitor/* and all frontend deps).
+       Decides between the server-setup intake screen and booting the app; sets
+       window.__API_BASE__ before dynamically importing js/main.mjs. -->
+  <script type="module">
+    import { boot } from './js/mobile-boot.mjs';
+    document.addEventListener('DOMContentLoaded', boot);
+  </script>
+</head>
+<body>
+  <div id="app-root"></div>
+
+  <!-- Leaflet as local global scripts (classic, non-module): pl-map uses the
+       window.L global and markercluster plugs into it. Local, not CDN. -->
+  <script src="vendor/leaflet.js"></script>
+  <script src="vendor/leaflet.markercluster.js"></script>
+</body>
+</html>

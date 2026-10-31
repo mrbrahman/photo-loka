@@ -1,0 +1,20 @@
+# Node deps
+node_modules/
+
+# Ephemeral web-asset staging dir, repopulated by build.sh each run
+www/
+
+# Android build outputs / local SDK config (the android/ project itself is
+# committed, but its generated build artifacts and local settings are not)
+android/build/
+android/app/build/
+android/.gradle/
+android/local.properties
+android/.idea/
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/capacitor-cordova-android-plugins/
+
+# Misc
+*.log
+.DS_Store
