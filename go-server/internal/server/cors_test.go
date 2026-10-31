@@ -29,7 +29,7 @@ func corsTestRouter(t *testing.T) *gin.Engine {
 func TestCORSPreflightAllowedOrigin(t *testing.T) {
 	r := corsTestRouter(t)
 	req := httptest.NewRequest(http.MethodOptions, "/api/ping", nil)
-	req.Header.Set("Origin", "https://localhost")
+	req.Header.Set("Origin", "http://localhost")
 	req.Header.Set("Access-Control-Request-Method", "POST")
 	req.Header.Set("Access-Control-Request-Headers", "Authorization,X-Refresh-Token")
 	w := httptest.NewRecorder()
@@ -38,27 +38,30 @@ func TestCORSPreflightAllowedOrigin(t *testing.T) {
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("preflight status = %d, want 204", w.Code)
 	}
-	if got := w.Header().Get("Access-Control-Allow-Origin"); got != "https://localhost" {
-		t.Fatalf("Allow-Origin = %q, want https://localhost", got)
+	if got := w.Header().Get("Access-Control-Allow-Origin"); got != "http://localhost" {
+		t.Fatalf("Allow-Origin = %q, want http://localhost", got)
 	}
 	if got := w.Header().Get("Access-Control-Allow-Credentials"); got != "" {
 		t.Fatalf("Allow-Credentials = %q, want empty (no credentials)", got)
 	}
 }
 
-// A real cross-origin request from the WebView origin gets the origin echoed.
+// Both the Android WebView origin (http://localhost) and an HTTPS-scheme build
+// (https://localhost) are echoed when they make a cross-origin request.
 func TestCORSActualRequestAllowedOrigin(t *testing.T) {
-	r := corsTestRouter(t)
-	req := httptest.NewRequest(http.MethodGet, "/api/ping", nil)
-	req.Header.Set("Origin", "https://localhost")
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
+	for _, origin := range []string{"http://localhost", "https://localhost"} {
+		r := corsTestRouter(t)
+		req := httptest.NewRequest(http.MethodGet, "/api/ping", nil)
+		req.Header.Set("Origin", origin)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", w.Code)
-	}
-	if got := w.Header().Get("Access-Control-Allow-Origin"); got != "https://localhost" {
-		t.Fatalf("Allow-Origin = %q, want https://localhost", got)
+		if w.Code != http.StatusOK {
+			t.Fatalf("origin %s: status = %d, want 200", origin, w.Code)
+		}
+		if got := w.Header().Get("Access-Control-Allow-Origin"); got != origin {
+			t.Fatalf("origin %s: Allow-Origin = %q, want %s", origin, got, origin)
+		}
 	}
 }
 

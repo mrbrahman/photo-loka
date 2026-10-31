@@ -61,13 +61,15 @@ func Setup(webFS http.FileSystem) {
 // corsConfig is the CORS policy for the packaged mobile app (Capacitor
 // WebView). The web app is served same-origin with the API, so browser
 // requests carry no cross-origin Origin and this is a no-op for them. The
-// Android WebView, however, serves its page from https://localhost (Capacitor's
-// default androidScheme) and calls the API cross-origin, so without these
-// headers it blocks every JSON fetch (including the OPTIONS preflight).
-// Credentials are intentionally NOT allowed: auth is header/token-based
-// (Authorization, X-Refresh-Token, and the access_token query param), not
-// cross-origin cookies, which keeps CORS simple and avoids the SameSite/HTTPS
-// tangle.
+// Android WebView serves its page from http://localhost (we set
+// androidScheme=http so requests to a plain-HTTP self-hosted server are
+// same-scheme and not blocked as mixed content) and calls the API
+// cross-origin, so without these headers it blocks every JSON fetch (including
+// the OPTIONS preflight). We also allow https://localhost so an HTTPS-scheme
+// build (or a future HTTPS server) works without a server change. Credentials
+// are intentionally NOT allowed: auth is header/token-based (Authorization,
+// X-Refresh-Token, and the access_token query param), not cross-origin
+// cookies, which keeps CORS simple and avoids the SameSite/HTTPS tangle.
 //
 // Android only: the iOS origin is capacitor://localhost, whose non-standard
 // scheme gin-contrib/cors rejects (it requires http/https). Add iOS via
@@ -77,7 +79,7 @@ func Setup(webFS http.FileSystem) {
 // directly rather than against a drifting copy.
 func corsConfig() cors.Config {
 	return cors.Config{
-		AllowOrigins:     []string{"https://localhost"},
+		AllowOrigins:     []string{"http://localhost", "https://localhost"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Authorization", "Content-Type", "X-Refresh-Token"},
 		AllowCredentials: false,
