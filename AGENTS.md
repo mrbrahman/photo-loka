@@ -85,6 +85,33 @@ Rules going forward:
   without a button). `message` is inserted as HTML, so never pass unsanitized
   user input into it.
 
+- **Safe-area insets (mobile)** - the `web/` frontend also runs inside the
+  Capacitor Android WebView (`mobile/`), which draws edge-to-edge under the
+  status bar / gesture bar (SDK 36 forces this). Any `position: fixed` or
+  `position: absolute` element anchored to a viewport edge MUST offset by the
+  device inset, e.g. `top: calc(2px + env(safe-area-inset-top))` or
+  `bottom: calc(12px + env(safe-area-inset-bottom))` (also `-left`/`-right` for
+  notches). `env(safe-area-inset-*)` is `0` in a desktop browser, so this is a
+  no-op on the web and needs no separate mobile stylesheet -- but omitting it
+  makes the element overlap (and steal taps from) the system bars on a phone.
+  Non-edge-anchored content inherits the inset from `#app-root`'s padding
+  (set in `mobile/index.html`); only viewport-anchored fixed/absolute elements
+  need their own `env()` offset.
+
+- **Keep `web/` mobile-build-friendly** - `mobile/build.sh` bundles the shared
+  `web/` frontend into the app with esbuild and vendors its deps locally (no
+  runtime CDN). Two things break the mobile build if added carelessly to `web/`:
+  (1) a new runtime-CDN dependency or import-map specifier -- add it to the
+  bundle/vendor step in `mobile/build.sh`, do not rely on it being fetched at
+  runtime; (2) code that assumes a global set by a CDN `<script>` (the way the
+  old Navigo CDN set `window.Navigo`) -- bundled npm packages set no such
+  global. Prefer normal ESM imports.
+
+- **Do not gate app init on `DOMContentLoaded` alone** - the mobile boot imports
+  `main.mjs` dynamically, after `DOMContentLoaded` has already fired, so a
+  listener added then never runs. Guard on `document.readyState` (run now if not
+  `loading`, else add the listener). See `web/js/main.mjs`'s router init.
+
 ## Commit message format
 
 - The user always commits manually. Do NOT run `git commit` (or `git add`/`git push`) unless explicitly asked. Prepare and describe the changes; leave the actual commit to the user.
