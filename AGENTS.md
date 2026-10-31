@@ -112,6 +112,46 @@ Rules going forward:
   listener added then never runs. Guard on `document.readyState` (run now if not
   `loading`, else add the listener). See `web/js/main.mjs`'s router init.
 
+## Mobile (Capacitor) conventions
+
+The `mobile/` folder is a thin Capacitor Android wrapper around the shared
+`web/` frontend (see `mobile/README.md` for the architecture). These rules keep
+it thin and keep the web app the single source of truth.
+
+- **`web/` owns all UI and features; `mobile/` stays a shell.** Do NOT fork UI
+  or feature logic into `mobile/`. The only things that belong there are: the
+  boot (`mobile-boot.mjs`), the first-run server-URL intake screen
+  (`pl-server-setup.mjs`), native bridges/shims (`mobile-back.mjs`), and the
+  Capacitor project config. Anything a user sees or interacts with goes in
+  `web/` so the browser and app stay identical.
+
+- **Boot order: set everything the web app needs BEFORE importing `main.mjs`.**
+  `mobile-boot.mjs` must install native shims and `window.__API_BASE__` (the
+  server URL) and then `await import('./main.mjs')` -- never earlier, or app
+  code runs against the wrong origin / without the shim. New native setup
+  follows the `initBackButton()` pattern: a side-effecting init called at the
+  top of `boot()`.
+
+- **Dismissable overlays MUST use `CloseWatcher`.** Any new closable UI in `web/`
+  (dialog, panel, overlay, inline editor) should dismiss via the web
+  `CloseWatcher` API, as the existing overlays and Shoelace components do. The
+  mobile layer wraps `CloseWatcher` into a LIFO stack (`mobile-back.mjs`) so the
+  Android hardware back button closes the topmost one automatically -- with zero
+  mobile-side changes. Hand-rolling Esc/close handling instead silently breaks
+  the hardware back button in the app.
+
+- **Capacitor plugins/deps: pin to the Capacitor major (8) and re-sync.** Add
+  `@capacitor/*` plugins at a version matching `@capacitor/core` (currently 8.x),
+  run `npm install` + `npx cap sync android`, and rebuild. Frontend libraries
+  that the shared `web/` code imports must also be bundled/vendored by
+  `mobile/build.sh` (see the "keep web/ mobile-build-friendly" frontend rule).
+
+- **Native back routing is hash-aware, not `history.back()`.** The hash router
+  accumulates stale entries, so the back handler decides from the current route
+  (close overlay -> else navigate to the gallery home -> else `App.exitApp()`),
+  not by walking raw history. Extend `isRootRoute()` in `mobile-back.mjs` if new
+  top-level routes are added.
+
 ## Commit message format
 
 - The user always commits manually. Do NOT run `git commit` (or `git add`/`git push`) unless explicitly asked. Prepare and describe the changes; leave the actual commit to the user.
