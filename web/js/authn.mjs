@@ -46,6 +46,22 @@ export function isAuthenticated() {
   return !!getToken();
 }
 
+// Build a URL for header-less requests (media <img>/<video> src and SSE
+// EventSource) that cannot send an Authorization header. In the browser these
+// are same-origin and authenticate via the HttpOnly refreshToken cookie, so
+// this returns apiUrl(path) unchanged. In a packaged app (Capacitor WebView)
+// the request is cross-origin with no cookie, so the JWT access token is
+// appended as an access_token query param, which the server's AuthMiddleware
+// accepts. Gated on usesHeaderRefreshToken() so the browser never puts a token
+// in a URL.
+export function apiMediaUrl(path) {
+  if (!usesHeaderRefreshToken()) return apiUrl(path);
+  const token = getToken();
+  if (!token) return apiUrl(path);
+  const sep = path.includes('?') ? '&' : '?';
+  return apiUrl(path) + `${sep}access_token=${encodeURIComponent(token)}`;
+}
+
 export async function login(username, password) {
   const response = await fetch(apiUrl('/api/authn/login'), {
     method: 'POST',

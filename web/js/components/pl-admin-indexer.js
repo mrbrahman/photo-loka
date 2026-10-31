@@ -5,6 +5,7 @@ import {
   getPipelineConfig, validatePipelineConfig, applyPipelineConfig,
   openPipelineEvents,
 } from '../api/admin-api.mjs';
+import { usesHeaderRefreshToken, refreshToken } from '../authn.mjs';
 
 import { PipelineDiagramDagre } from '../pipeline-diagram-dagre.mjs';
 
@@ -62,6 +63,8 @@ class PlAdminIndexer extends HTMLElement {
   // burst of events coalesces into one DOM update pass.
   #pending = new Map();
   #rafId = null;
+  // Timer for token-mode SSE reconnect (packaged app only). null when idle.
+  #reconnectTimer = null;
   #status = {};
   // stage name -> { card, refs } built once and patched in place.
   #cards = new Map();
@@ -208,10 +211,32 @@ class PlAdminIndexer extends HTMLElement {
     const es = openPipelineEvents();
     es.onmessage = (e) => this.#onEvent(e);
     es.onerror = () => {
-      // EventSource reconnects automatically; nothing to do but note it. A
-      // persistent auth failure (missing/expired refreshToken cookie) will keep
-      // erroring -- the user can hit Refresh, which also re-fetches errors.
-      console.warn('Pipeline SSE error; browser will attempt to reconnect');
+      // Browser (cookie-auth, same-origin): EventSource reconnects on its own
+      // with the cookie re-sent, so nothing to do but note it. A persistent
+      // auth failure keeps erroring; the user can hit Refresh.
+      //
+      // Packaged app (token-auth via access_token query param): the token is
+      // short-lived, and EventSource would auto-reconnect with the SAME (now
+      // possibly stale) URL. So instead we tear this stream down, proactively
+      // refresh the access token, and reopen with a freshly-built URL. A short
+      // backoff avoids hammering the server on a genuine outage. If the refresh
+      // itself fails (session truly expired), we stop and let the user refresh.
+      if (!usesHeaderRefreshToken()) {
+        console.warn('Pipeline SSE error; browser will attempt to reconnect');
+        return;
+      }
+      if (this.#reconnectTimer != null) return; // already scheduled
+      this.#closeEvents();
+      this.#reconnectTimer = setTimeout(async () => {
+        this.#reconnectTimer = null;
+        try {
+          await refreshToken();
+        } catch (err) {
+          console.warn('Pipeline SSE: token refresh failed, not reconnecting', err);
+          return;
+        }
+        this.#openEvents();
+      }, 3000);
     };
     this.#events = es;
   }
@@ -219,6 +244,7 @@ class PlAdminIndexer extends HTMLElement {
   #closeEvents() {
     if (this.#events) { this.#events.close(); this.#events = null; }
     if (this.#rafId != null) { cancelAnimationFrame(this.#rafId); this.#rafId = null; }
+    if (this.#reconnectTimer != null) { clearTimeout(this.#reconnectTimer); this.#reconnectTimer = null; }
     this.#pending.clear();
   }
 

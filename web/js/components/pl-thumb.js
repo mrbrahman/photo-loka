@@ -1,5 +1,5 @@
 import sheet from "./styles/pl-thumb.css" with { type: "css" };
-import { apiUrl } from '../api-base.mjs';
+import { apiMediaUrl } from '../authn.mjs';
 
 class PlThumb extends HTMLElement {
   // instance variables
@@ -316,7 +316,7 @@ class PlThumb extends HTMLElement {
       };
       // console.log(`need ${this.height * this.#dppx} px`)
       // img.src = `https://picsum.photos/id/${this.id}/${Math.round(this.width)}/${Math.round(this.height)}`;
-      img.src = apiUrl(`/api/getThumbnail?uuid=${this.id}&height=${Math.round(this.height)}`)
+      img.src = apiMediaUrl(`/api/getThumbnail?uuid=${this.id}&height=${Math.round(this.height)}`)
     } 
   }
   #paintRating(){

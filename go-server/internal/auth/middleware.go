@@ -8,8 +8,9 @@ import (
 )
 
 // AuthMiddleware returns a Gin middleware that validates JWT access tokens.
-// It checks the Authorization header first, then falls back to the refreshToken
-// cookie (for image/media requests that cannot send headers).
+// It checks the Authorization header first, then an access_token query param
+// (for header-less media/SSE requests in cross-origin packaged apps), then
+// falls back to the refreshToken cookie (same-origin image/media requests).
 func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var tokenStr string
@@ -20,6 +21,20 @@ func AuthMiddleware() gin.HandlerFunc {
 			parts := strings.SplitN(authHeader, " ", 2)
 			if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
 				tokenStr = parts[1]
+			}
+		}
+
+		// Fallback: access_token query param. Header-less requests (media
+		// <img>/<video> src and SSE EventSource) cannot send an Authorization
+		// header. Same-origin browsers use the refreshToken cookie fallback
+		// below; cross-origin packaged apps (Capacitor WebView) do not get the
+		// cookie, so they pass the JWT access token as a query param instead.
+		// Treated as a normal access token: it flows into VerifyAccessToken
+		// below, so no separate validation path and the role is set for any
+		// downstream AdminMiddleware.
+		if tokenStr == "" {
+			if q := c.Query("access_token"); q != "" {
+				tokenStr = q
 			}
 		}
 

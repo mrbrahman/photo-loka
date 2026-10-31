@@ -1,6 +1,6 @@
 // Admin operations (users, collections, frames, indexing, intakes)
 
-import { authenticatedFetch } from '../authn.mjs';
+import { authenticatedFetch, apiMediaUrl } from '../authn.mjs';
 import { apiUrl } from '../api-base.mjs';
 
 // Standard error: attempt to parse the server's JSON error body.
@@ -194,10 +194,13 @@ export async function setIntakeStatus(collectionId, intakeIndex, status) {
 // dispatch-cycle transition. On connect the server sends one snapshot per
 // stage, so a freshly-opened page renders immediately; the stream is otherwise
 // silent while the pipeline is idle. EventSource cannot set an Authorization
-// header, so this authenticates via the refreshToken cookie (same-origin,
-// sent automatically) which the server's auth middleware accepts.
+// header, so authentication uses apiMediaUrl: same-origin browsers rely on the
+// refreshToken cookie (sent automatically); cross-origin packaged apps get an
+// access_token query param. Because that token is short-lived, the consumer
+// recreates the EventSource on error so a reconnect picks up a fresh token
+// (see pl-admin-indexer #openEvents).
 export function openPipelineEvents() {
-  return new EventSource(apiUrl('/api/admin/pipeline/events'));
+  return new EventSource(apiMediaUrl('/api/admin/pipeline/events'));
 }
 
 export async function getIndexerStatus() {

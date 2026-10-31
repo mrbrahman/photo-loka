@@ -1,6 +1,6 @@
 import {notify, showConfirmDialog} from '../utils.mjs';
 import { getFaceSuggestions, searchPersonNames, nameFaceCluster, updatePersonName, dismissFaceCluster } from '../api/faces-api.mjs';
-import { apiUrl } from '../api-base.mjs';
+import { apiMediaUrl } from '../authn.mjs';
 
 import sheet from "./styles/pl-face-thumb.css" with { type: "css" };
 
@@ -45,7 +45,7 @@ class PlFaceThumb extends HTMLElement {
       img.hidden = true;
       this.shadowRoot.getElementById('placeholder').hidden = false;
     };
-    img.src = apiUrl(`/api/getFaceThumbnail?uuid=${this.#uuid}&cluster_id=${encodeURIComponent(this.#clusterId)}`);
+    img.src = apiMediaUrl(`/api/getFaceThumbnail?uuid=${this.#uuid}&cluster_id=${encodeURIComponent(this.#clusterId)}`);
 
     let input = this.shadowRoot.getElementById('name');
     let datalist = this.shadowRoot.getElementById('suggestions');
