@@ -23,7 +23,8 @@
    which are rendered as <a> elements in the top-left corner. */
 #locate-wrapper {
   position: absolute;
-  bottom: 12px;
+  /* Lift above the bottom safe-area inset (gesture bar) on mobile; 0 in browser. */
+  bottom: calc(12px + env(safe-area-inset-bottom));
   left: 12px;
   z-index: 1;
   display: flex;

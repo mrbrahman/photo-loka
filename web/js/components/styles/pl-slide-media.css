@@ -13,7 +13,9 @@
 
 #overlay {
   position: absolute;
-  top: 10px;
+  /* Clear the device top safe-area inset (status bar) on mobile so the album
+     name header does not render under it; env() is 0 in a desktop browser. */
+  top: calc(10px + env(safe-area-inset-top));
   left: 10px;
   color: white;
   display: flex;
@@ -80,7 +82,9 @@
 
 #actions {
   position: absolute;
-  top: 20px;
+  /* Clear the top safe-area inset (status bar) so the slideshow action buttons
+     stay below it and remain tappable on mobile; 0 in a desktop browser. */
+  top: calc(20px + env(safe-area-inset-top));
   right: 10px;
   display: flex;
   align-items: center;

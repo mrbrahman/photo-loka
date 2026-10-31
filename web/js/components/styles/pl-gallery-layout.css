@@ -30,7 +30,9 @@ pl-day-section {
 
 #nav-btns {
   position: fixed;
-  bottom: 3vh;
+  /* Add the bottom safe-area inset (gesture bar) so the floating nav buttons
+     are not partly hidden behind it on mobile; env() is 0 in a browser. */
+  bottom: calc(3vh + env(safe-area-inset-bottom));
   right: 30px;
   display: flex;
   flex-direction: column;
@@ -69,7 +71,7 @@ pl-day-section {
 
 @media (max-width: 640px) {
   #nav-btns {
-    bottom: 2vh;
+    bottom: calc(2vh + env(safe-area-inset-bottom));
     right: 10px;
   }
 }

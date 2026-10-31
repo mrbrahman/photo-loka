@@ -1,6 +1,11 @@
 :host {
   position: fixed;
-  top: 2px;
+  /* Offset below the device safe-area top inset (status bar / notch). This is
+     position:fixed, so it is relative to the viewport and ignores #app-root's
+     safe-area padding; without this the selection controls bar overlaps the
+     status bar on mobile. In a normal browser env(safe-area-inset-top) is 0, so
+     this is exactly top:2px there -- no visual change on the web. */
+  top: calc(2px + env(safe-area-inset-top));
   left: 5px;
   right: 5px;
   /* Sits above sticky day/album headers (z=2) and nav-btns (z=10) so

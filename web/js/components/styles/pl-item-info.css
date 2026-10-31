@@ -19,7 +19,11 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 12px;
+  /* Extend the top padding by the device safe-area inset (status bar) so the
+     info panel header (title + close button) clears it when the panel overlays
+     full-screen on mobile; env() is 0 in a desktop browser, so the header keeps
+     its 6px top padding there. */
+  padding: calc(6px + env(safe-area-inset-top)) 12px 6px 12px;
   border-bottom: 1px solid var(--border-secondary);
   font-size: 1.6rem;
   font-weight: 500;

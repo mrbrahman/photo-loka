@@ -5,7 +5,8 @@ import {
   getPipelineConfig, validatePipelineConfig, applyPipelineConfig,
   openPipelineEvents,
 } from '../api/admin-api.mjs';
-import { usesHeaderRefreshToken, refreshToken } from '../authn.mjs';
+import { refreshToken } from '../authn.mjs';
+import { usesHeaderRefreshToken } from '../api-base.mjs';
 
 import { PipelineDiagramDagre } from '../pipeline-diagram-dagre.mjs';
 

@@ -57,8 +57,16 @@ window.addEventListener('beforeinstallprompt', (e) => {
   deferredPrompt = e;
 });
 
-// Event listeners for component communication
-document.addEventListener('DOMContentLoaded', () => {
-  // Initialize router after DOM is ready
+// Initialize the router once the DOM is ready. Guard on readyState so this
+// works whether main.mjs is loaded during initial parse (browser: via
+// <script type="module">, DOMContentLoaded still pending) or imported later
+// (mobile: dynamically imported by mobile-boot AFTER DOMContentLoaded has
+// already fired, in which case the event would never arrive and the router
+// would never start -> blank screen).
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    initRouter();
+  });
+} else {
   initRouter();
-});
+}
