@@ -152,6 +152,48 @@ it thin and keep the web app the single source of truth.
   not by walking raw history. Extend `isRootRoute()` in `mobile-back.mjs` if new
   top-level routes are added.
 
+### Building and testing on a device
+
+`mobile/build.sh` produces `mobile/android/app/build/outputs/apk/debug/app-debug.apk`
+(needs JDK 21 + Android SDK 36; see `mobile/README.md`). To get it onto a
+physical phone and inspect it, two routes:
+
+- **adb over Wi-Fi (preferred for iterating; gives live inspection).** Phone and
+  dev box on the same LAN, Developer options -> Wireless debugging on.
+  - Pair (code + port from "Pair device with pairing code"):
+    `adb pair <phone-ip>:<pair-port> <code>`, then
+    `adb connect <phone-ip>:<connect-port>` (the connect port on the main
+    Wireless-debugging screen differs from the pairing port; both rotate each
+    time the dialog opens).
+  - Install: `adb -s <device> install -r .../app-debug.apk`.
+  - Inspect the live WebView (DOM, console, network) via the Chrome DevTools
+    protocol: `adb -s <device> forward tcp:9222 localabstract:webview_devtools_remote_$(adb -s <device> shell pidof com.photoloka.app)`,
+    then read `http://localhost:9222/json` for the page's `webSocketDebuggerUrl`
+    and drive `Runtime.evaluate`. This is how layout/auth/icon issues were
+    diagnosed objectively instead of by guessing.
+  - Gotchas: `adb pair` can fail with `protocol fault (couldn't read status
+    message)` -- toggle Wireless debugging off/on (restarts the daemon) and
+    retry with a fresh code. Pairing over a VPN/WireGuard tunnel is flaky; pair
+    on the LAN. The wireless session drops when the phone sleeps; reconnect (and
+    re-pair if needed).
+
+- **Sideload (no adb).** Copy the APK somewhere the phone can reach it (e.g.
+  `cp .../app-debug.apk /mnt/c/Users/<you>/Downloads/` on WSL, then transfer),
+  tap to install (allow "unknown sources"). Use this when adb pairing won't
+  cooperate; you lose DevTools inspection but it always works.
+
+- **A reinstall (`install -r` / tap-update) preserves app data** (the stored
+  server URL in Preferences), so you stay logged in and skip the intake screen.
+  A full uninstall (or an `androidScheme` change, which moves the WebView
+  origin and thus its `localStorage`) clears it -> intake + login again.
+
+- **WSL networking (dev box on WSL2).** The phone reaches the server at the
+  Windows host LAN IP, not a WSL IP. With mirrored networking the WSL VM shares
+  that IP, but inbound from the phone needs a Windows Defender inbound rule for
+  the server port AND (mirrored mode) the Hyper-V firewall default-inbound set
+  to Allow. Verify reachability with the phone browser hitting
+  `http://<host-ip>:<port>/health` before blaming the app.
+
 ## Commit message format
 
 - The user always commits manually. Do NOT run `git commit` (or `git add`/`git push`) unless explicitly asked. Prepare and describe the changes; leave the actual commit to the user.
