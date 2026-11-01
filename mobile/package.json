@@ -13,16 +13,17 @@
     "@capacitor/app": "8.1.2",
     "@capacitor/core": "8.6.0",
     "@capacitor/preferences": "8.0.1",
+    "@dagrejs/dagre": "1.1.4",
     "@shoelace-style/shoelace": "2.15.1",
-    "navigo": "8.11.1",
     "cronstrue": "2.50.0",
+    "d3-selection": "3.0.0",
+    "d3-transition": "3.0.1",
     "leaflet": "1.9.4",
     "leaflet.markercluster": "1.4.1",
-    "@dagrejs/dagre": "1.1.4",
-    "d3-selection": "3.0.0",
-    "d3-transition": "3.0.1"
+    "navigo": "8.11.1"
   },
   "devDependencies": {
+    "@capacitor/assets": "^4.0.0",
     "@capacitor/cli": "8.6.0",
     "esbuild": "0.28.2"
   }
