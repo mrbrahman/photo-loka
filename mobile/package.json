@@ -23,8 +23,9 @@
     "navigo": "8.11.1"
   },
   "devDependencies": {
-    "@capacitor/assets": "^4.0.0",
+    "@capacitor/assets": "4.0.0",
     "@capacitor/cli": "8.6.0",
+    "@fontsource/lato": "5.3.0",
     "esbuild": "0.28.2"
   }
 }

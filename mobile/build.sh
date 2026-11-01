@@ -90,6 +90,20 @@ mkdir -p "$WWW/vendor/shoelace"
 cp "$SL/themes/light.css" "$WWW/vendor/shoelace/light.css"
 cp "$SL/themes/dark.css"  "$WWW/vendor/shoelace/dark.css"
 
+# Lato web font (the app's primary font; @font-face'd in index.html). The
+# browser build loads Lato from Google Fonts, but a packaged app must not depend
+# on a CDN, so vendor the woff2 for the weights the app uses (400/700/900 --
+# the same set the Google Fonts link requests; 500/600 are synthesized). Both
+# the latin and latin-ext subsets are vendored per weight, matching
+# @fontsource/lato's own @font-face split (index.html declares both). Roboto is
+# NOT vendored: it only appears in fallback stacks and is the Android system font.
+mkdir -p "$WWW/fonts"
+FS=node_modules/@fontsource/lato/files
+for w in 400 700 900; do
+  cp "$FS/lato-latin-$w-normal.woff2"     "$WWW/fonts/lato-latin-$w.woff2"
+  cp "$FS/lato-latin-ext-$w-normal.woff2" "$WWW/fonts/lato-latin-ext-$w.woff2"
+done
+
 # --- esbuild bundling -------------------------------------------------------
 # Everything that the browser build resolves via the CDN import map is now
 # bundled from node_modules. The app lives in ../web (a sibling of mobile/ with

@@ -117,6 +117,10 @@ sl-progress-bar.hide {
 }
 
 #nav-header > #nav-title {
+  /* Lato Black (900) for the brand wordmark. NOTE: in the Capacitor Android
+     app this falls back to the system bold -- the WebView won't render the
+     vendored Lato 900 static file. See the @font-face block in
+     mobile/index.html for the full explanation. Browser is unaffected. */
   font-weight: 900;
   letter-spacing: -0.03em;
   white-space: nowrap;

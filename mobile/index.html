@@ -35,8 +35,61 @@
 
   <style>
     :not(:defined) { visibility: hidden; opacity: 0; }
+
+    /* Lato, vendored locally (no CDN). Weights 400/700/900 match what the web
+       build requests from Google Fonts; 500/600 are synthesized. Declarations
+       mirror @fontsource/lato (latin + latin-ext subsets per weight, with its
+       unicode-ranges). display:swap avoids invisible text while loading.
+
+       KNOWN LIMITATION -- Lato 900 does not render in the Android System
+       WebView (it falls back to the system bold). 400 and 700 render correctly
+       and cover essentially all text. Root cause: @fontsource ships Lato as
+       per-weight STATIC files; the WebView reads the 900 file's internal
+       (OS/2) weight metadata as ~normal and therefore refuses to use it for a
+       `font-weight: 900` request, even though the @font-face below declares it
+       as 900 and the file loads fine (`document.fonts.check("900 16px Lato")`
+       returns true, but glyphs still fall back). The usual fix -- a variable
+       font whose wght axis covers 900 -- is unavailable: Lato has no variable
+       build on @fontsource. We chose NOT to work around it (a mobile-only
+       family alias would mean forking web/ CSS, against the thin-shell rule).
+
+       WHERE THIS SHOWS: the only `font-weight: 900` usage is the "Photo-Loka"
+       wordmark -- web/js/components/styles/pl-app-shell.css (#nav-title) and
+       pl-login-page.css (h1.brand). Those render in the system bold on the app;
+       everything else is real Lato. If Lato ever ships a variable build, drop
+       the static 900 faces for it and this resolves. */
+    @font-face {
+      font-family: 'Lato'; font-style: normal; font-weight: 400; font-display: swap;
+      src: url('fonts/lato-latin-400.woff2') format('woff2');
+      unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+    }
+    @font-face {
+      font-family: 'Lato'; font-style: normal; font-weight: 400; font-display: swap;
+      src: url('fonts/lato-latin-ext-400.woff2') format('woff2');
+      unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+    }
+    @font-face {
+      font-family: 'Lato'; font-style: normal; font-weight: 700; font-display: swap;
+      src: url('fonts/lato-latin-700.woff2') format('woff2');
+      unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+    }
+    @font-face {
+      font-family: 'Lato'; font-style: normal; font-weight: 700; font-display: swap;
+      src: url('fonts/lato-latin-ext-700.woff2') format('woff2');
+      unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+    }
+    @font-face {
+      font-family: 'Lato'; font-style: normal; font-weight: 900; font-display: swap;
+      src: url('fonts/lato-latin-900.woff2') format('woff2');
+      unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+    }
+    @font-face {
+      font-family: 'Lato'; font-style: normal; font-weight: 900; font-display: swap;
+      src: url('fonts/lato-latin-ext-900.woff2') format('woff2');
+      unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+    }
+
     :root {
-      /* Lato is not vendored; fall back to the system sans stack. */
       --sl-font-sans: 'Lato', -apple-system, system-ui, 'Segoe UI', Roboto, sans-serif;
       --sl-font-size-medium: 0.9rem;
       --progress-bar-height: 4px;
