@@ -99,11 +99,14 @@ class PlSlideshow extends HTMLElement {
 
     this.addEventListener('fullscreenchange', this.#slideshowToggle);
     this.addEventListener('pl-start-slideshow', ()=>{
-      // if (document.fullscreenElement){
-      //   document.exitFullscreen();
-      // } else {
-        this.requestFullscreen();
-      // }
+      // Slideshow MODE is driven explicitly (see #startSlideshow), not by the
+      // Fullscreen API -- so it works in the Capacitor WebView, which has no
+      // Fullscreen API. Fullscreen is an optional presentation enhancement:
+      // request it best-effort for the browser; if it is unavailable (WebView)
+      // or rejected, the slideshow still runs.
+      this.#startSlideshow();
+      const el = this.requestFullscreen?.();
+      if (el && typeof el.catch === 'function') el.catch(() => {});
     });
 
     this.addEventListener('pl-info-panel-toggled', (evt) => {
@@ -141,20 +144,37 @@ class PlSlideshow extends HTMLElement {
     slide.hasPrev = !!this.shadowRoot.getElementById('slides').querySelector('[data-pos="-1"]');
   }
 
+  // Explicitly enter slideshow mode: set the flag, mark the active slide, and
+  // start the auto-advance timer. Decoupled from the Fullscreen API so it works
+  // everywhere (browser and WebView). Idempotent.
+  #startSlideshow = () => {
+    if (this.#slideshowMode) return;
+    this.#slideshowMode = true;
+    let slide = this.shadowRoot.getElementById('slides').querySelector('[data-pos="0"]');
+    if (slide) slide.slideshowMode = true;
+    this.#startTimer();
+  }
+
+  // Explicitly exit slideshow mode: stop the timer, unmark the slide, and exit
+  // fullscreen if we happen to be in it (browser). Safe to call when not in
+  // slideshow mode. Idempotent.
+  #stopSlideshow = () => {
+    if (!this.#slideshowMode) return;
+    this.#slideshowMode = false;
+    let slide = this.shadowRoot.getElementById('slides').querySelector('[data-pos="0"]');
+    if (slide) slide.slideshowMode = false;
+    this.#stopTimer();
+    if (document.fullscreenElement) document.exitFullscreen?.();
+  }
+
+  // Fullscreen is only a presentation layer now. The one thing we still honor
+  // from it: if the user EXITS fullscreen (e.g. presses Esc in a browser) while
+  // a slideshow is running, treat that as "stop the slideshow". Entering
+  // fullscreen no longer starts the slideshow (that is explicit now), so we do
+  // nothing on the enter transition.
   #slideshowToggle = () => {
-    if(document.fullscreenElement){
-      this.#slideshowMode = true;
-
-      let slide = this.shadowRoot.getElementById('slides').querySelector('[data-pos="0"]');
-      slide.slideshowMode = true;
-      this.#startTimer();
-
-    } else {
-      this.#slideshowMode = false;
-
-      let slide = this.shadowRoot.getElementById('slides').querySelector('[data-pos="0"]');
-      slide.slideshowMode = false;
-      this.#stopTimer();
+    if (!document.fullscreenElement && this.#slideshowMode) {
+      this.#stopSlideshow();
     }
   }
 
@@ -163,7 +183,11 @@ class PlSlideshow extends HTMLElement {
       if(this.shadowRoot.getElementById('slides').querySelector('[data-pos="1"]')){
         this.#next()
       } else {
-        document.exitFullscreen();
+        // Reached the last slide: end the slideshow explicitly (stops the timer
+        // and exits fullscreen if we are in it). Previously this relied on
+        // document.exitFullscreen() firing fullscreenchange, which the WebView
+        // never does.
+        this.#stopSlideshow();
       }
     }, this.#slideDuration*1000);
   }
