@@ -20,10 +20,12 @@
 // permissions. Import for side effects BEFORE main.mjs. Mobile only; the
 // browser build never loads this and keeps the native web geolocation.
 //
-// Note: only getCurrentPosition is shimmed (the one call pl-map makes). The
-// web code also calls navigator.permissions.query({name:'geolocation'}) for
-// loading-spinner UX; that is left alone and its try/catch falls through
-// harmlessly if the WebView does not support it.
+// Note: shims BOTH navigator.geolocation.getCurrentPosition (the actual fetch)
+// and navigator.permissions.query({name:'geolocation'}) (pl-map reads the
+// permission state from it to decide when to show the "Fetching location..."
+// feedback). Without the permissions shim the WebView's Permissions API
+// reports an unhelpful/absent state and the feedback never shows even though
+// the fetch works.
 
 import { Geolocation } from '@capacitor/geolocation';
 
@@ -31,6 +33,17 @@ import { Geolocation } from '@capacitor/geolocation';
 const PERMISSION_DENIED = 1;
 const POSITION_UNAVAILABLE = 2;
 const TIMEOUT = 3;
+
+// Map a Capacitor permission state ('granted'|'denied'|'prompt'|
+// 'prompt-with-rationale') to a web PermissionStatus.state ('granted'|'denied'
+// |'prompt'). Prefer precise, fall back to coarse.
+function toWebPermState(perm) {
+  const s = perm.location !== 'prompt' && perm.location !== undefined ? perm.location
+    : perm.coarseLocation ?? perm.location;
+  if (s === 'granted') return 'granted';
+  if (s === 'denied') return 'denied';
+  return 'prompt';
+}
 
 export function installGeolocationShim() {
   if (typeof navigator === 'undefined' || !navigator.geolocation) return;
@@ -76,4 +89,21 @@ export function installGeolocationShim() {
       error && error({ code, message: msg });
     }
   };
+
+  // Shim navigator.permissions.query for geolocation so pl-map's feedback logic
+  // (which reads the permission state) works. Non-geolocation queries fall
+  // through to the original implementation. The returned PermissionStatus-like
+  // object reports the real state from the plugin; addEventListener is a no-op
+  // (the plugin has no permission-change event, so "show feedback after grant"
+  // is skipped -- the important "granted -> feedback now" path still works, and
+  // getCurrentPosition's own prompt drives the grant regardless).
+  if (navigator.permissions && navigator.permissions.query) {
+    const origQuery = navigator.permissions.query.bind(navigator.permissions);
+    navigator.permissions.query = async (desc) => {
+      if (!desc || desc.name !== 'geolocation') return origQuery(desc);
+      let state = 'prompt';
+      try { state = toWebPermState(await Geolocation.checkPermissions()); } catch (e) { /* default prompt */ }
+      return { state, status: state, onchange: null, addEventListener() {}, removeEventListener() {} };
+    };
+  }
 }
