@@ -61,8 +61,9 @@ func login(c *gin.Context) {
 	})
 
 	c.JSON(http.StatusOK, gin.H{
-		"accessToken": tokenPair.AccessToken,
-		"user":        tokenPair.User,
+		"accessToken":  tokenPair.AccessToken,
+		"refreshToken": tokenPair.RefreshToken,
+		"user":         tokenPair.User,
 	})
 }
 
@@ -130,8 +131,9 @@ func refresh(c *gin.Context) {
 	})
 
 	c.JSON(http.StatusOK, gin.H{
-		"accessToken": tokenPair.AccessToken,
-		"user":        tokenPair.User,
+		"accessToken":  tokenPair.AccessToken,
+		"refreshToken": tokenPair.RefreshToken,
+		"user":         tokenPair.User,
 	})
 }
 
