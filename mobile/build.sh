@@ -63,7 +63,19 @@ cp -r "$WEB/assets" "$WWW/assets"
 # build's CDN <script>s, just local), not bundled into the ESM graph.
 cp node_modules/leaflet/dist/leaflet.js                                  "$WWW/vendor/leaflet.js"
 cp node_modules/leaflet/dist/leaflet.css                                 "$WWW/vendor/leaflet.css"
+# Leaflet default marker icons. leaflet.css references images/marker-icon.png
+# (etc.) relative to itself, and L.Icon.Default._detectIconPath resolves the
+# marker <img> src from that. The vendored leaflet.css sits at vendor/, so the
+# images must be at vendor/images/ or the pl-item-info location marker 404s and
+# shows nothing. (pl-map uses L.DivIcon, which needs no image, so only the
+# default-icon marker in pl-item-info was affected.)
+cp -r node_modules/leaflet/dist/images                                   "$WWW/vendor/images"
 cp node_modules/leaflet.markercluster/dist/leaflet.markercluster.js      "$WWW/vendor/leaflet.markercluster.js"
+# MarkerCluster CSS modules imported by pl-map (markercluster-css /
+# markercluster-default-css). Like leaflet.css they stay external and are
+# loaded from these vendored files at runtime (aliased below).
+cp node_modules/leaflet.markercluster/dist/MarkerCluster.css             "$WWW/vendor/MarkerCluster.css"
+cp node_modules/leaflet.markercluster/dist/MarkerCluster.Default.css     "$WWW/vendor/MarkerCluster.Default.css"
 # Shoelace lazy-loads icon SVGs at runtime from its base path. The bundled
 # Shoelace components (in main.mjs) carry their own copy of the base-path module
 # with the DEFAULT (empty) base path, which resolves icons to /assets/icons/.
@@ -97,8 +109,8 @@ SL_ABS="$PWD/$SL"
 # ./styles/<name>.css (minified below). leaflet-css is aliased to a runtime
 # path that points at the vendored copy relative to js/main.mjs
 # (www/js/main.mjs -> ../vendor/leaflet.css).
-ALIASES="--alias:shoelace=$SL_ABS --alias:leaflet-css=../vendor/leaflet.css"
-EXTERNALS="--external:./styles/* --external:*.css --external:../vendor/leaflet.css"
+ALIASES="--alias:shoelace=$SL_ABS --alias:leaflet-css=../vendor/leaflet.css --alias:markercluster-css=../vendor/MarkerCluster.css --alias:markercluster-default-css=../vendor/MarkerCluster.Default.css"
+EXTERNALS="--external:./styles/* --external:*.css --external:../vendor/leaflet.css --external:../vendor/MarkerCluster.css --external:../vendor/MarkerCluster.Default.css"
 
 echo "Bundling app (main.mjs) ..."
 # --inject the navigo global shim: web/js/router.mjs uses a bare global `Navigo`

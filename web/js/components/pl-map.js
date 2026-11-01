@@ -1,5 +1,7 @@
 import sheet from "./styles/pl-map.css" with { type: "css" };
 import leafletSheet from "leaflet-css" with { type: "css" };
+import markerClusterSheet from "markercluster-css" with { type: "css" };
+import markerClusterDefaultSheet from "markercluster-default-css" with { type: "css" };
 import { getGpsCoordinates } from '../api/search-api.mjs';
 import { notify } from '../utils.mjs';
 
@@ -12,11 +14,9 @@ class PlMap extends HTMLElement {
   static {
     this.template.innerHTML = // html
     `
-      <!-- Leaflet CSS -->
-      <!-- Leaflet MarkerCluster CSS -->
-      <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
-      <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
-      
+      <!-- Leaflet + MarkerCluster CSS are imported as CSS modules and adopted
+           into the shadow root (see adoptedStyleSheets in the constructor), so
+           they need no <link> tags here. -->
       <div id="container">
         <div id="map"></div>
         <!-- Styled as plain button to match Leaflet's native zoom controls -->
@@ -47,7 +47,7 @@ class PlMap extends HTMLElement {
 
   constructor() {
     super().attachShadow({ mode: 'open' });
-    this.shadowRoot.adoptedStyleSheets = [sheet, leafletSheet];
+    this.shadowRoot.adoptedStyleSheets = [sheet, leafletSheet, markerClusterSheet, markerClusterDefaultSheet];
   }
 
   connectedCallback() {
