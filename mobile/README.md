@@ -59,9 +59,34 @@ Without the Android SDK/JDK, stage and sync only (no APK):
 ```
 
 `build.sh` mirrors `go-server/build.sh`: it stages `web/` + the mobile files
-into `www/`, bundles with esbuild (same CDN externals as the web release build;
-`@capacitor/*` is bundled in), runs `cap sync android`, builds the APK, then
-removes `www/`.
+into `www/`, bundles with esbuild, runs `cap sync android`, builds the APK, then
+removes `www/`. Unlike the browser build (which loads deps from a CDN via an
+import map), the mobile bundle is **fully self-contained** -- all frontend deps
+are vendored locally, so the app needs no network except to reach the user's
+server and live OSM map tiles.
+
+### Self-contained assets (vendored locally, no runtime CDN)
+
+`build.sh` vendors everything the browser build would otherwise load from a CDN:
+
+- **Frontend libs** (shoelace, navigo, cronstrue, leaflet + markercluster,
+  dagre, d3) -- npm-installed and bundled into `main.mjs` by esbuild (leaflet is
+  kept as a local global script; its CSS + marker images and the MarkerCluster
+  CSS are copied to `www/vendor/`). Shoelace icons are copied to
+  `www/assets/icons/` (where Shoelace's default base path looks).
+- **Fonts** -- Lato (400/700/900) via `@fontsource/lato`, copied to `www/fonts/`
+  and `@font-face`'d in `index.html` (replaces the Google Fonts `<link>`).
+  Known limitation: the Android WebView falls back to system bold for weight
+  900 (the Photo-Loka wordmark only); see the `@font-face` comment in
+  `index.html`.
+- **App icon + splash** -- generated from `mobile/assets/icon.png` (a copy of
+  `web/assets/icon-454.png`) by `@capacitor/assets`. Regenerate after changing
+  the source with:
+  ```bash
+  npx @capacitor/assets generate --android
+  ```
+  This writes the adaptive launcher icons (all densities) and splash screens
+  into `android/`; those generated files are committed.
 
 ## Local toolchain setup (Linux / WSL2 Ubuntu, no Android Studio)
 

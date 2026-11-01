@@ -407,6 +407,21 @@ Any change under `web/` should bump the `VERSION` constant in `web/sw.mjs` so th
 service worker triggers the PWA "new version available" update on installed
 clients.
 
+## Mobile (Android) app
+
+There is a Capacitor-based **Android app** under [`mobile/`](mobile/README.md). It
+is a thin native wrapper that runs the exact same `web/` frontend inside an
+Android WebView -- the browser and the app stay identical; `mobile/` only adds a
+first-run screen to enter the server URL, a few native shims (hardware back
+button, etc.), and a self-contained build that vendors all assets locally (no
+runtime CDN). Point it at your Photo-Loka server's address and it behaves like
+the web app, including the digital-frame and gallery features.
+
+It is a work in progress and currently built/sideloaded manually (a debug APK;
+no Play Store release or signing yet). Build and device-testing instructions --
+including the JDK 21 + Android SDK setup -- are in
+[`mobile/README.md`](mobile/README.md).
+
 # Architecture
 ## Main
 - Go server (single binary, Gin framework)
