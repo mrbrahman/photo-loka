@@ -33,4 +33,11 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Location: the map's "zoom to my location" uses navigator.geolocation,
+         which in the WebView is gated behind these native permissions (and a
+         runtime prompt triggered by @capacitor/geolocation; see
+         mobile/mobile-geo.mjs). Without them getCurrentPosition fails
+         immediately with "permission denied" and no prompt appears. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 </manifest>

@@ -17,6 +17,7 @@
 
 import { Preferences } from '@capacitor/preferences';
 import { initBackButton } from './mobile-back.mjs';
+import { installGeolocationShim } from './mobile-geo.mjs';
 import './pl-server-setup.mjs';
 
 const SERVER_URL_KEY = 'serverUrl';
@@ -59,6 +60,9 @@ export async function boot() {
   // Install the CloseWatcher shim + hardware back-button handler BEFORE any app
   // code (main.mjs) runs, so every CloseWatcher a component creates is tracked.
   initBackButton();
+  // Route navigator.geolocation through @capacitor/geolocation so the map's
+  // "zoom to my location" gets a native permission prompt (also before main.mjs).
+  installGeolocationShim();
 
   const stored = await getStoredServerUrl();
   if (stored) {
