@@ -13,6 +13,7 @@ import (
 	"photo-loka/internal/jobs"
 	"photo-loka/internal/pipeline"
 	"photo-loka/internal/scheduler"
+	"photo-loka/internal/upload"
 )
 
 // Deps bundles the remaining stateful collaborators that startup/shutdown act
@@ -55,6 +56,11 @@ func StartupActions(d Deps, cleanupTokens func()) {
 
 	// Schedule token cleanup (daily at 3am)
 	scheduler.AddJob("token-cleanup", "0 3 * * *", cleanupTokens)
+
+	// Schedule UI-upload staging cleanup (daily at 3:30pm): one global job that
+	// sweeps every collection's ui_intake_upload_path and removes empty session
+	// dirs left behind after a successful intake.
+	scheduler.AddJob("upload-staging-cleanup", "30 15 * * *", upload.CleanupEmptySessionDirs)
 }
 
 // ShutdownCleanup stops background workers and persists state after the HTTP

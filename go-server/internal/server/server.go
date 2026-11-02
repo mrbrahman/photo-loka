@@ -30,6 +30,7 @@ import (
 	"photo-loka/internal/ml"
 	"photo-loka/internal/pipeline"
 	"photo-loka/internal/search"
+	"photo-loka/internal/upload"
 )
 
 // Package-level Gin engine, set by Setup. The HTTP layer is a process-wide
@@ -89,6 +90,7 @@ func setupRoutes() {
 		items.RegisterRoutes(apiGroup)
 		geo.RegisterRoutes(apiGroup)
 		ml.RegisterRoutes(apiGroup)
+		upload.RegisterRoutes(apiGroup)
 	}
 
 	// Media routes (with frame IP bypass)
@@ -180,6 +182,7 @@ func requestLogger() gin.HandlerFunc {
 			strings.HasPrefix(path, "/assets/") ||
 			strings.Contains(path, "/getThumbnail") ||
 			strings.Contains(path, "/getFaceThumbnail") ||
+			strings.Contains(path, "/uploadFile") ||
 			strings.HasSuffix(path, ".html") ||
 			strings.HasSuffix(path, ".mjs") ||
 			strings.HasSuffix(path, ".json") ||
