@@ -1,0 +1,164 @@
+:host {
+  display: block;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.container {
+  padding: 1.5rem 2rem;
+  max-width: 750px;
+  margin: 0 auto;
+}
+
+/* --- Header --- */
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.header h2 {
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.intro {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  margin: 0 0 1.25rem 0;
+}
+
+/* --- File picker --- */
+
+.picker {
+  margin-bottom: 1.5rem;
+}
+
+#file-input {
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+
+/* --- Total progress --- */
+
+.total-wrap {
+  margin-bottom: 1.5rem;
+}
+
+.total-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 0.35rem;
+}
+
+#total-bar {
+  --height: 10px;
+}
+
+/* --- File list --- */
+
+.file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.file-row {
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  padding: 0.65rem 0.85rem;
+  background: var(--bg-surface);
+}
+
+.file-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  margin-bottom: 0.4rem;
+}
+
+.file-name {
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-status {
+  font-size: 0.75rem;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.file-bar {
+  --height: 6px;
+}
+
+.file-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.35rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.file-error {
+  color: var(--sl-color-danger-600);
+  text-align: right;
+}
+
+/* Status-driven accents */
+
+.file-row.is-uploaded .file-status {
+  color: var(--sl-color-success-600);
+}
+
+.file-row.is-failed .file-status {
+  color: var(--sl-color-danger-600);
+}
+
+.file-row.is-failed {
+  border-color: var(--sl-color-danger-300);
+}
+
+.file-row.is-uploading .file-status {
+  color: var(--sl-color-primary-600);
+}
+
+/* --- Done message --- */
+
+.done-msg {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--sl-color-success-300);
+  border-radius: 6px;
+  background: var(--sl-color-success-50);
+  color: var(--sl-color-success-700);
+  font-size: 0.875rem;
+}
+
+.done-msg sl-icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.indexer-link {
+  color: var(--sl-color-primary-600);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.indexer-link:hover {
+  text-decoration: underline;
+}

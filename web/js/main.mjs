@@ -47,6 +47,7 @@ import './components/pl-admin-collections.js';
 import './components/pl-admin-jobs.js';
 import './components/pl-admin-users.js';
 import './components/pl-collection-form.js';
+import './components/pl-upload.js';
 
 import { initRouter } from './router.mjs';
 

@@ -137,6 +137,12 @@ export function initRouter() {
     ensureAppShell().route('map', { collectionId });
   });
 
+  router.on('/app/c/:collectionId/upload', (match) => {
+    if (!authGuard()) return;
+    let collectionId = resolveCollectionId(match);
+    ensureAppShell().route('upload', { collectionId });
+  });
+
   // --- Admin routes ---
 
   router.on('/admin', () => {

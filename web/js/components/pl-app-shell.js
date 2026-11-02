@@ -114,6 +114,10 @@ class PlAppShell extends HTMLElement {
         <sl-icon name="trash"></sl-icon>
         <span>Trash</span>
       </a>
+      <a class="sidebar-item" data-route="/upload" id="upload-nav-item">
+        <sl-icon name="cloud-upload"></sl-icon>
+        <span>Upload files</span>
+      </a>
     `;
   }
 
@@ -204,11 +208,29 @@ class PlAppShell extends HTMLElement {
     return col?.placeholder_album_text || '';
   }
 
+  /**
+   * Enable/disable the "Upload files" sidebar item based on whether the active
+   * collection has uploads enabled (derived server-side as uploads_enabled on
+   * the collection summary). Mirrors how the disabled Faces item looks, but is
+   * dynamic because it depends on the active collection. Must run before
+   * #attachSidebarListeners, which only wires non-disabled items.
+   */
+  #syncUploadNavState() {
+    const item = this.shadowRoot.getElementById('upload-nav-item');
+    if (!item) return; // admin sidebar has no upload item
+    const col = this.#state.collections.find(c => c.collection_id === this.#state.collection_id);
+    const enabled = !!col?.uploads_enabled;
+    item.toggleAttribute('disabled', !enabled);
+  }
+
   async #fetchCollections() {
     try {
       const collections = await getCollections();
       this.#state.collections = collections;
       this.#renderCollectionPicker();
+      // Collections load async after the sidebar is first applied, so refresh
+      // the upload item's enabled state now that uploads_enabled is known.
+      this.#syncUploadNavState();
     } catch (err) {
       // If fetch fails, fall back to a single default
       this.#state.collections = [{ collection_id: 1, collection_name: 'Default', default_collection: 1, apply_folder_pattern: '' }];
@@ -392,6 +414,10 @@ class PlAppShell extends HTMLElement {
       }
     }
 
+    // Set the upload item's enabled state before attaching listeners (listeners
+    // skip disabled items).
+    this.#syncUploadNavState();
+
     this.#attachSidebarListeners();
   }
 
@@ -408,8 +434,9 @@ class PlAppShell extends HTMLElement {
       });
     }
 
-    // Standard sidebar items with data-route
-    sidebarNav.querySelectorAll('.sidebar-item[data-route]:not([disabled])').forEach(item => {
+    // Standard sidebar items with data-route (the upload item is handled
+    // separately below because its enabled state is dynamic).
+    sidebarNav.querySelectorAll('.sidebar-item[data-route]:not([disabled]):not(#upload-nav-item)').forEach(item => {
       item.addEventListener('click', (e) => {
         e.preventDefault();
         let prefix;
@@ -422,6 +449,20 @@ class PlAppShell extends HTMLElement {
         this.#closeSidebar();
       });
     });
+
+    // The upload item's enabled state is dynamic (depends on the active
+    // collection's uploads_enabled), and collections load after the sidebar is
+    // first built, so it may still be disabled above. Attach its listener
+    // unconditionally and guard on the live disabled state at click time.
+    const uploadItem = sidebarNav.querySelector('#upload-nav-item');
+    if (uploadItem) {
+      uploadItem.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (uploadItem.hasAttribute('disabled')) return;
+        router.navigate(`/app/c/${this.#state.collection_id}/upload`);
+        this.#closeSidebar();
+      });
+    }
   }
 
   // --- Routing ---
@@ -439,6 +480,8 @@ class PlAppShell extends HTMLElement {
       // Sync the picker if visible
       const select = this.shadowRoot.getElementById('collection-select');
       if (select) select.value = String(collectionId);
+      // Refresh the upload item's enabled state for the (possibly new) collection
+      this.#syncUploadNavState();
     }
 
     if (!searchText) {
@@ -497,6 +540,15 @@ class PlAppShell extends HTMLElement {
         this.#mainContent.appendChild(Object.assign(document.createElement('pl-map'), {
           collectionId: this.#state.collection_id,
           placeholderText: this.#getPlaceholderForCurrentCollection()
+        }));
+        break;
+
+      case 'upload':
+        this.#setActiveMenuItem('/upload');
+        this.#mainContent.innerHTML = '';
+        this.#mainContent.style.overflowY = 'auto';
+        this.#mainContent.appendChild(Object.assign(document.createElement('pl-upload'), {
+          collectionId: this.#state.collection_id
         }));
         break;
 
