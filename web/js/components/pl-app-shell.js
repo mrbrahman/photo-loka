@@ -395,8 +395,16 @@ class PlAppShell extends HTMLElement {
   // --- Mode / Sidebar ---
 
   #setMode(mode) {
+    const prevMode = this.#mode;
     if (this.#mode === mode) return;
     this.#applySidebar(mode);
+
+    // Returning to the app from admin: collection settings may have changed
+    // there (e.g. the UI upload folder was set), so refresh the cached
+    // summaries and re-sync the upload item's enabled state.
+    if (prevMode === 'admin' && mode === 'app') {
+      this.#fetchCollections();
+    }
   }
 
   #applySidebar(mode) {
