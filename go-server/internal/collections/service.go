@@ -132,6 +132,28 @@ func validateCollection(col *Collection) error {
 		}
 	}
 
+	// Validate UI upload staging path when provided: it must be an existing
+	// directory (per-session upload dirs are created under it). Empty/unset
+	// disables the upload feature, so only validate when a value is given.
+	if col.UIIntakeUploadPath != nil && *col.UIIntakeUploadPath != "" {
+		uploadPath := filepath.Clean(*col.UIIntakeUploadPath)
+		uInfo, uErr := os.Stat(uploadPath)
+		if uErr != nil {
+			return &auth.AppError{
+				Message:    "ui_intake_upload_path does not exist: " + *col.UIIntakeUploadPath,
+				Code:       "INVALID_PATH",
+				StatusCode: http.StatusBadRequest,
+			}
+		}
+		if !uInfo.IsDir() {
+			return &auth.AppError{
+				Message:    "ui_intake_upload_path is not a directory: " + *col.UIIntakeUploadPath,
+				Code:       "INVALID_PATH",
+				StatusCode: http.StatusBadRequest,
+			}
+		}
+	}
+
 	// Validate intake configs if provided
 	if len(col.IntakeConfigs) > 0 && string(col.IntakeConfigs) != "null" {
 		var configs []intakeConfig

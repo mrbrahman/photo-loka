@@ -20,6 +20,7 @@ type Collection struct {
 	TrashDays            int             `json:"trash_days"`
 	CompressVideos       *int            `json:"compress_videos"`
 	PlaceholderAlbumText *string         `json:"placeholder_album_text"`
+	UIIntakeUploadPath   *string         `json:"ui_intake_upload_path"`
 }
 
 // CollectionSummary is a lightweight view of a collection for list endpoints.
@@ -29,6 +30,10 @@ type CollectionSummary struct {
 	DefaultCollection    *int    `json:"default_collection"`
 	ApplyFolderPattern   string  `json:"apply_folder_pattern"`
 	PlaceholderAlbumText *string `json:"placeholder_album_text"`
+	// UploadsEnabled is derived (ui_intake_upload_path set and non-empty); it
+	// lets the UI enable/disable the upload feature without exposing the raw
+	// server filesystem path to non-admin users.
+	UploadsEnabled bool `json:"uploads_enabled"`
 }
 
 // Create inserts a new collection and returns the new collection_id.
@@ -37,8 +42,8 @@ func insertCollection(col *Collection) (int64, error) {
 		INSERT INTO collections (
 			collection_name, collection_path, album_type, intake_configs,
 			apply_folder_pattern, default_collection, trash_days,
-			compress_videos, placeholder_album_text
-		) VALUES (?, ?, ?, json(?), ?, ?, ?, ?, ?)`
+			compress_videos, placeholder_album_text, ui_intake_upload_path
+		) VALUES (?, ?, ?, json(?), ?, ?, ?, ?, ?, ?)`
 
 	result, err := database.DB.Exec(query,
 		col.CollectionName,
@@ -50,6 +55,7 @@ func insertCollection(col *Collection) (int64, error) {
 		col.TrashDays,
 		col.CompressVideos,
 		col.PlaceholderAlbumText,
+		col.UIIntakeUploadPath,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("inserting collection: %w", err)
@@ -74,7 +80,8 @@ func updateCollectionRow(collectionID int64, col *Collection) error {
 			default_collection = ?,
 			trash_days = ?,
 			compress_videos = ?,
-			placeholder_album_text = ?
+			placeholder_album_text = ?,
+			ui_intake_upload_path = ?
 		WHERE collection_id = ?`
 
 	result, err := database.DB.Exec(query,
@@ -86,6 +93,7 @@ func updateCollectionRow(collectionID int64, col *Collection) error {
 		col.TrashDays,
 		col.CompressVideos,
 		col.PlaceholderAlbumText,
+		col.UIIntakeUploadPath,
 		collectionID,
 	)
 	if err != nil {
@@ -108,7 +116,8 @@ func GetAll() ([]Collection, error) {
 	query := `
 		SELECT collection_id, collection_name, collection_path, album_type,
 			   intake_configs, apply_folder_pattern, default_collection,
-			   trash_days, compress_videos, placeholder_album_text
+			   trash_days, compress_videos, placeholder_album_text,
+			   ui_intake_upload_path
 		FROM collections`
 
 	rows, err := database.DB.Query(query)
@@ -125,7 +134,8 @@ func Get(collectionID int64) (*Collection, error) {
 	query := `
 		SELECT collection_id, collection_name, collection_path, album_type,
 			   intake_configs, apply_folder_pattern, default_collection,
-			   trash_days, compress_videos, placeholder_album_text
+			   trash_days, compress_videos, placeholder_album_text,
+			   ui_intake_upload_path
 		FROM collections
 		WHERE collection_id = ?`
 
@@ -143,6 +153,7 @@ func Get(collectionID int64) (*Collection, error) {
 		&col.TrashDays,
 		&col.CompressVideos,
 		&col.PlaceholderAlbumText,
+		&col.UIIntakeUploadPath,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -163,7 +174,8 @@ func GetDefault() (*Collection, error) {
 	query := `
 		SELECT collection_id, collection_name, collection_path, album_type,
 			   intake_configs, apply_folder_pattern, default_collection,
-			   trash_days, compress_videos, placeholder_album_text
+			   trash_days, compress_videos, placeholder_album_text,
+			   ui_intake_upload_path
 		FROM collections
 		WHERE default_collection = 1`
 
@@ -181,6 +193,7 @@ func GetDefault() (*Collection, error) {
 		&col.TrashDays,
 		&col.CompressVideos,
 		&col.PlaceholderAlbumText,
+		&col.UIIntakeUploadPath,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -200,7 +213,8 @@ func GetDefault() (*Collection, error) {
 func GetSummary() ([]CollectionSummary, error) {
 	query := `
 		SELECT collection_id, collection_name, default_collection,
-			   apply_folder_pattern, placeholder_album_text
+			   apply_folder_pattern, placeholder_album_text,
+			   ui_intake_upload_path
 		FROM collections`
 
 	rows, err := database.DB.Query(query)
@@ -212,15 +226,21 @@ func GetSummary() ([]CollectionSummary, error) {
 	var results []CollectionSummary
 	for rows.Next() {
 		var s CollectionSummary
+		var uploadPath sql.NullString
 		if err := rows.Scan(
 			&s.CollectionID,
 			&s.CollectionName,
 			&s.DefaultCollection,
 			&s.ApplyFolderPattern,
 			&s.PlaceholderAlbumText,
+			&uploadPath,
 		); err != nil {
 			return nil, fmt.Errorf("scanning collection summary: %w", err)
 		}
+		// Derived flag: feature is enabled only when a staging path is set.
+		// The raw path is intentionally not exposed in the summary (non-admin
+		// users read this endpoint).
+		s.UploadsEnabled = uploadPath.Valid && uploadPath.String != ""
 		results = append(results, s)
 	}
 
@@ -236,7 +256,8 @@ func GetByIntakePath(dirPath string) (*Collection, error) {
 	query := `
 		SELECT c.collection_id, c.collection_name, c.collection_path, c.album_type,
 			   c.intake_configs, c.apply_folder_pattern, c.default_collection,
-			   c.trash_days, c.compress_videos, c.placeholder_album_text
+			   c.trash_days, c.compress_videos, c.placeholder_album_text,
+			   c.ui_intake_upload_path
 		FROM collections c, json_each(c.intake_configs) je
 		WHERE json_extract(je.value, '$.path') = ?`
 
@@ -254,6 +275,7 @@ func GetByIntakePath(dirPath string) (*Collection, error) {
 		&col.TrashDays,
 		&col.CompressVideos,
 		&col.PlaceholderAlbumText,
+		&col.UIIntakeUploadPath,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -353,6 +375,7 @@ func scanCollections(rows *sql.Rows) ([]Collection, error) {
 			&col.TrashDays,
 			&col.CompressVideos,
 			&col.PlaceholderAlbumText,
+			&col.UIIntakeUploadPath,
 		); err != nil {
 			return nil, fmt.Errorf("scanning collection: %w", err)
 		}

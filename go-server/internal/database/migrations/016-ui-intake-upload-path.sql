@@ -1,0 +1,13 @@
+-- UI upload staging path per collection.
+--
+-- When set, enables the "Upload files" feature in the web UI for this
+-- collection. Files uploaded from the browser are streamed into a random
+-- per-session subdirectory under this path, then handed to the normal intake
+-- flow (which moves them into the collection by capture date). A daily cron
+-- reclaims the now-empty session dirs; dirs still holding files (abandoned
+-- uploads or files that failed intake for lack of a capture date) are left for
+-- an admin to clean up manually.
+--
+-- Nullable: when NULL/empty the feature is disabled for the collection and the
+-- sidebar item is shown disabled.
+ALTER TABLE collections ADD COLUMN ui_intake_upload_path TEXT;
