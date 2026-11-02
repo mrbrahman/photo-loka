@@ -104,6 +104,12 @@
   color: var(--sl-color-danger-600);
 }
 
+.path-help {
+  font-size: 0.75rem;
+  color: var(--sl-color-neutral-500);
+  margin-top: 0.25rem;
+}
+
 /* --- Intake Section --- */
 
 .intake-section {

@@ -54,6 +54,16 @@ class PlCollectionForm extends HTMLElement {
               <span slot="help-text">Used as the album name when intake creates a new folder. Highlights in the gallery as needing review. Empty disables.</span>
             </sl-input>
 
+            <!-- Native input + datalist (sl-input's Shadow DOM blocks datalist) -->
+            <div class="path-field full-width">
+              <label class="path-label">UI Upload Folder</label>
+              <input id="ui-upload-path" class="path-input" type="text"
+                     placeholder="/path/to/upload/staging/" list="upload-path-suggestions" autocomplete="off" />
+              <datalist id="upload-path-suggestions"></datalist>
+              <div id="upload-path-status" class="path-status"></div>
+              <div class="path-help">Staging folder for files uploaded from the web UI. Uploaded files land in a temporary subfolder here, then intake moves them into the collection. Leave empty to disable UI uploads for this collection.</div>
+            </div>
+
             <sl-switch id="default-collection">Default Collection</sl-switch>
 
             <sl-switch id="compress-videos">Compress Videos</sl-switch>
@@ -194,6 +204,7 @@ class PlCollectionForm extends HTMLElement {
     sr.getElementById('trash-days').value = d.trash_days ?? 30;
     sr.getElementById('folder-pattern').value = d.apply_folder_pattern || '';
     sr.getElementById('placeholder-album-text').value = d.placeholder_album_text ?? 'TBD';
+    sr.getElementById('ui-upload-path').value = d.ui_intake_upload_path || '';
     sr.getElementById('default-collection').checked = !!d.default_collection;
     sr.getElementById('compress-videos').checked = !!d.compress_videos;
 
@@ -208,6 +219,15 @@ class PlCollectionForm extends HTMLElement {
     // Validate pre-filled path (only in create mode)
     if (!this.#isEdit && d.collection_path) {
       this.#validatePath('collection-path', d.collection_path);
+    }
+
+    // Validate pre-filled upload path (create and edit; the field stays
+    // editable in edit mode so admins can set/change it later)
+    if (d.ui_intake_upload_path) {
+      this.#validatePathEl(
+        sr.getElementById('ui-upload-path'),
+        sr.getElementById('upload-path-status')
+      );
     }
 
     // Render existing intake configs
@@ -237,6 +257,27 @@ class PlCollectionForm extends HTMLElement {
       this.#pathTimers['collection-path'] = setTimeout(() => this.#fetchPathSuggestionsEl(pathInput, pathDatalist), 300);
     });
     pathInput.addEventListener('blur', () => this.#validatePath('collection-path', pathInput.value));
+
+    // UI upload folder autocomplete + validation (optional field)
+    let uploadInput = sr.getElementById('ui-upload-path');
+    let uploadDatalist = sr.getElementById('upload-path-suggestions');
+    let uploadStatus = sr.getElementById('upload-path-status');
+    uploadInput.addEventListener('input', () => {
+      clearTimeout(this.#pathTimers['ui-upload-path']);
+      let val = uploadInput.value.trim();
+      if (val.length < 2) return;
+      this.#pathTimers['ui-upload-path'] = setTimeout(() => this.#fetchPathSuggestionsEl(uploadInput, uploadDatalist), 300);
+    });
+    uploadInput.addEventListener('blur', () => {
+      let val = uploadInput.value.trim();
+      if (!val) {
+        // Optional field cleared: reset any prior validation state.
+        uploadInput.classList.remove('valid', 'invalid');
+        this.#setPathStatus(uploadStatus, '', '');
+        return;
+      }
+      this.#validatePathEl(uploadInput, uploadStatus);
+    });
 
     // Folder pattern validation (debounced on input)
     let patternInput = sr.getElementById('folder-pattern');
@@ -497,6 +538,7 @@ class PlCollectionForm extends HTMLElement {
     let trashDays = parseInt(sr.getElementById('trash-days').value) || 30;
     let folderPattern = sr.getElementById('folder-pattern').value.trim();
     let placeholderAlbumText = sr.getElementById('placeholder-album-text').value.trim();
+    let uiUploadPath = sr.getElementById('ui-upload-path').value.trim();
     let defaultCollection = sr.getElementById('default-collection').checked ? 1 : 0;
     let compressVideos = sr.getElementById('compress-videos').checked ? 1 : null;
 
@@ -557,6 +599,7 @@ class PlCollectionForm extends HTMLElement {
       intake_configs: intakeConfigs,
       apply_folder_pattern: folderPattern || null,
       placeholder_album_text: placeholderAlbumText,
+      ui_intake_upload_path: uiUploadPath || null,
       default_collection: defaultCollection,
       trash_days: trashDays,
       compress_videos: compressVideos
