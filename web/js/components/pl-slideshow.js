@@ -125,8 +125,7 @@ class PlSlideshow extends HTMLElement {
     window.addEventListener('keydown', this.#handleLeftArrow);
     window.addEventListener('keydown', this.#handleInfoKey);
 
-    this.#closeWatcher = new CloseWatcher();
-    this.#closeWatcher.onclose = () => this.#slideshowClosed();
+    this.#armCloseWatcher();
 
     // conditionally enable keyboard nav
     if(!this.shadowRoot.getElementById('slides').querySelector('[data-pos="-1"]')){
@@ -142,6 +141,35 @@ class PlSlideshow extends HTMLElement {
     if (!slide) return;
     slide.hasNext = !!this.shadowRoot.getElementById('slides').querySelector('[data-pos="1"]');
     slide.hasPrev = !!this.shadowRoot.getElementById('slides').querySelector('[data-pos="-1"]');
+  }
+
+  // Arm (or re-arm) the CloseWatcher that handles Esc (browser) and the Android
+  // hardware back gesture (mobile, via mobile-back.mjs requestClose()).
+  //
+  // Two-stage close, matching the browser's native behavior:
+  //   - If a slideshow is auto-advancing, the first close STOPS the slideshow
+  //     (halts the timer, exits fullscreen, reveals the on-slide controls) and
+  //     re-arms a fresh watcher for the next press. The user stays on the
+  //     current slide.
+  //   - Otherwise the close DISMISSES the slide viewer back to the gallery.
+  //
+  // A CloseWatcher fires once and is spent, so after a stage-1 stop we must
+  // create a new one for the subsequent stage-2 dismiss. On the browser, Esc
+  // also exits native fullscreen, which fires fullscreenchange -> #slideshowToggle
+  // -> #stopSlideshow; guarding on #slideshowMode here keeps that path and this
+  // one idempotent (whichever runs first stops the slideshow; the second sees
+  // #slideshowMode already false and dismisses).
+  #armCloseWatcher = () => {
+    this.#closeWatcher?.destroy();
+    this.#closeWatcher = new CloseWatcher();
+    this.#closeWatcher.onclose = () => {
+      if (this.#slideshowMode) {
+        this.#stopSlideshow();
+        this.#armCloseWatcher();
+      } else {
+        this.#slideshowClosed();
+      }
+    };
   }
 
   // Explicitly enter slideshow mode: set the flag, mark the active slide, and
@@ -470,6 +498,12 @@ class PlSlideshow extends HTMLElement {
     window.removeEventListener('keydown', this.#handleRightArrow);
     window.removeEventListener('keydown', this.#handleLeftArrow);
     window.removeEventListener('keydown', this.#handleInfoKey);
+    // Safety net: whatever path removed the viewer (back-dismiss, route change,
+    // parent re-render), make sure the auto-advance timer is cleared. Without
+    // this a dismissed-while-running slideshow leaks its setInterval, which
+    // later fires #stopSlideshow -> exitFullscreen seconds after teardown and
+    // restores the Android system bars late (observed as a laggy exit).
+    this.#stopTimer();
     this.#closeWatcher?.destroy();
   }
 

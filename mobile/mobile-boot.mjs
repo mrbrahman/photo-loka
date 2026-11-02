@@ -18,6 +18,7 @@
 import { Preferences } from '@capacitor/preferences';
 import { initBackButton } from './mobile-back.mjs';
 import { installGeolocationShim } from './mobile-geo.mjs';
+import { installFullscreenShim } from './mobile-fullscreen.mjs';
 import './pl-server-setup.mjs';
 
 const SERVER_URL_KEY = 'serverUrl';
@@ -63,6 +64,9 @@ export async function boot() {
   // Route navigator.geolocation through @capacitor/geolocation so the map's
   // "zoom to my location" gets a native permission prompt (also before main.mjs).
   installGeolocationShim();
+  // Polyfill the Fullscreen API onto native immersive-sticky so the slideshow
+  // goes truly fullscreen (hides the system bars) in the WebView.
+  installFullscreenShim();
 
   const stored = await getStoredServerUrl();
   if (stored) {
