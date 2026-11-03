@@ -143,10 +143,19 @@ sl-progress-bar.hide {
   #nav-header > #nav-title {
     display: none;
   }
-  /* Icon-only Upload entry on mobile to save header width (label hidden,
-     icon-only tap target remains). */
+  /* Icon-only Upload entry on mobile. Hiding the label span alone leaves the
+     sl-button's internal label padding (and the prefix<->label gap), so also
+     collapse the label part and tighten the base padding so the control is
+     sized to the icon, not an empty text button. */
   #nav-header > #nav-upload-btn .upload-btn-label {
     display: none;
+  }
+  #nav-header > #nav-upload-btn::part(label) {
+    padding: 0;
+  }
+  #nav-header > #nav-upload-btn::part(base) {
+    padding-left: 0;
+    padding-right: 0;
   }
 }
 
