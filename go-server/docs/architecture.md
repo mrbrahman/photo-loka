@@ -41,7 +41,7 @@ The Go server is a complete port of the Node.js Photo-Loka backend. It compiles 
 | File | Purpose |
 |------|---------|
 | `database.go` | Registers custom SQLite driver with `json_patch_agg` aggregate function. Opens SQLite with WAL mode, NORMAL sync, 5s busy timeout. Creates parent dir if needed. Runs migrations based on PRAGMA user_version. Embeds SQL files via `//go:embed`. Requires build tags: `fts5 sqlite_math_functions`. |
-| `migrations/010-initial-schema.sql` | Full schema: collections, metadata (with indexes), FTS5 tables (porter + unicode), triggers (ai/ad/au for FTS sync), exif_updates, file_audit_log, backup_status, frames, users, refresh_tokens, face_recognition, face_recognition_unmatched, face_dismissed_clusters. |
+| `migrations/010-initial-schema.sql` | Full schema: collections, metadata (with indexes), FTS5 tables (porter + unicode), triggers (ai/ad/au for FTS sync), exif_updates, file_audit_log, frames, users, refresh_tokens, face_recognition, face_recognition_unmatched, face_dismissed_clusters. |
 | `migrations/011-geo-lookups.sql` | geo_lookups table (uuid, source, api_name, request_params, response_json). |
 | `migrations/012-capture-time-columns.sql` | Adds capture_date, capture_time, capture_tz_offset, capture_tz_name to metadata. |
 

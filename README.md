@@ -36,7 +36,6 @@ Also, many things are rough around the edges, simply because I'm the sole user &
 - Select files and move them to a different album
 - Select files and trash them (with cleanup of associated ML data)
 - Mark items as private (search for `private:true` to find them)
-- Backup helper: A helper utility that *incrementally* backs-up all the files into the 'registered' backup drives. See [Backup helper](#backup-helper) section for more information
 
 ## Metadata management
 - Index media photos, videos and audio
@@ -113,21 +112,6 @@ The frame is setup, and available at `http://<server-ip>/frame.html`
 Traditional frames are static and manual. This is dynamic, automated, and server-controlled.
 
 Your memories don’t sit in storage — they stay alive!
-
-## Backup helper
-
-This module helps take backup of the collections to external drives.
-
-When the folders are renamed, backup utilities like `rsync` see them as file-deletions and file-additions. That's a waste of resources especially on large video files. A simple thing could be to just perform `mv` operation on the target backups as well.
-
-That's exactly what this setup aims to help with.
-
-- Register backup device(s) (with UUID of the device)
-- All file operations on a collection are noted in a table
-- When it is time to backup to a specific device, all 'delta' operations are determined and applied to the set of files eligible for backup.
-- The 'last_backup_id' is noted for each backup.
-
-TODO - sync timestamps on +2 level folders
 
 # Features TODO
 **Near future**

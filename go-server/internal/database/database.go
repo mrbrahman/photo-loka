@@ -126,6 +126,7 @@ func runMigrations() error {
 		{version: 14, filename: "migrations/014-pipeline-config.sql"},
 		{version: 15, filename: "migrations/015-geo-stage-split.sql"},
 		{version: 16, filename: "migrations/016-ui-intake-upload-path.sql"},
+		{version: 17, filename: "migrations/017-drop-backup-status.sql"},
 	}
 
 	for _, m := range migrations {
