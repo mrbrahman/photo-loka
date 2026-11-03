@@ -89,6 +89,28 @@ export function initRouter() {
     });
   });
 
+  // Global, collection-agnostic upload page. The page has its own collection
+  // dropdown; no collection id in the URL.
+  router.on('/app/upload', () => {
+    if (!authGuard()) return;
+    let shell = ensureAppShell();
+    // Ensure collections are loaded so the page's dropdown is populated.
+    shell.resolveDefaultCollectionId().then(() => {
+      shell.route('upload', {});
+    });
+  });
+
+  // Share-target landing: the service worker redirects here after stashing
+  // files shared from the OS. Same upload page, with fromShare so it picks the
+  // files up from the inbox.
+  router.on('/app/share-upload', () => {
+    if (!authGuard()) return;
+    let shell = ensureAppShell();
+    shell.resolveDefaultCollectionId().then(() => {
+      shell.route('upload', { fromShare: true });
+    });
+  });
+
   // --- App routes with collection id ---
 
   router.on('/app/c/:collectionId', (match) => {
@@ -135,12 +157,6 @@ export function initRouter() {
     if (!authGuard()) return;
     let collectionId = resolveCollectionId(match);
     ensureAppShell().route('map', { collectionId });
-  });
-
-  router.on('/app/c/:collectionId/upload', (match) => {
-    if (!authGuard()) return;
-    let collectionId = resolveCollectionId(match);
-    ensureAppShell().route('upload', { collectionId });
   });
 
   // --- Admin routes ---

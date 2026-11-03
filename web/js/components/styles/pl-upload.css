@@ -25,21 +25,88 @@
   color: var(--text-primary);
 }
 
-.intro {
-  font-size: 0.875rem;
-  color: var(--text-muted);
-  margin: 0 0 1.25rem 0;
+/* --- Mobile metadata notice (shown only on narrow/mobile viewports) --- */
+
+.mobile-notice {
+  display: none; /* hidden by default; revealed at the mobile breakpoint */
+  gap: 0.6rem;
+  align-items: flex-start;
+  padding: 0.75rem 0.9rem;
+  margin-bottom: 1.25rem;
+  border: 1px solid var(--sl-color-warning-300);
+  border-radius: 6px;
+  background: var(--sl-color-warning-50);
+  color: var(--sl-color-warning-700);
 }
 
-/* --- File picker --- */
+.mobile-notice .notice-icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
 
-.picker {
+.mobile-notice .notice-body {
+  flex: 1;
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.mobile-notice .notice-body p {
+  margin: 0.25rem 0 0 0;
+}
+
+.mobile-notice #notice-close {
+  flex-shrink: 0;
+  font-size: 0.85rem;
+}
+
+/* 640px is the project's mobile breakpoint (see AGENTS.md). */
+@media (max-width: 640px) {
+  .mobile-notice {
+    display: flex;
+  }
+}
+
+/* --- Setup (collection + file picker) --- */
+
+.setup {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
   margin-bottom: 1.5rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.field > label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--sl-color-neutral-700);
+}
+
+.field-help {
+  font-size: 0.75rem;
+  color: var(--text-muted);
 }
 
 #file-input {
   font-size: 0.875rem;
   color: var(--text-primary);
+}
+
+/* --- No uploadable collections --- */
+
+.no-uploads {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  padding: 0.85rem 1rem;
+  border: 1px dashed var(--border-primary);
+  border-radius: 6px;
+  margin-bottom: 1.5rem;
 }
 
 /* --- Total progress --- */

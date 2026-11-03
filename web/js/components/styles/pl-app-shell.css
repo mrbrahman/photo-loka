@@ -94,6 +94,11 @@ sl-progress-bar.hide {
 
 #nav-header > #nav-search-box {
   flex-grow: 1;
+  /* Override flex-shrink:0 inherited from .nav-item so the search box can
+     shrink to fit narrow viewports (e.g. phones) instead of forcing the
+     header wider than the screen. Paired with min-width:0 (required for a
+     flex item to shrink below its content/intrinsic width). */
+  flex-shrink: 1;
   min-width: 0;
   height: 40px;
   border-radius: 20px;
@@ -136,6 +141,11 @@ sl-progress-bar.hide {
 
 @media (max-width: 640px) {
   #nav-header > #nav-title {
+    display: none;
+  }
+  /* Icon-only Upload entry on mobile to save header width (label hidden,
+     icon-only tap target remains). */
+  #nav-header > #nav-upload-btn .upload-btn-label {
     display: none;
   }
 }

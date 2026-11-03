@@ -1,22 +1,30 @@
-// pl-upload: UI page for uploading images/videos into the active collection.
+// pl-upload: global page for uploading images/videos into a chosen collection.
 //
-// Lifecycle (see design): picking files (the native picker's confirm is the
-// user's go-ahead) renders per-file rows, creates an upload session, and
-// auto-starts sequential uploads. Progress is byte-weighted both per file and
-// in a single total bar. Once every transfer reaches a terminal state the
-// "Start indexing" button (top) is enabled; clicking it finalizes the session,
-// which hands the staging dir to intake. The page's job ends there -- indexing
-// progress lives on the Indexer page.
+// Flow (decoupled select + upload):
+//   1. Pick a target collection from the dropdown (preselected to the
+//      last-viewed collection, or the only one if there is a single collection).
+//   2. Choose files with the OS picker (or arrive via the PWA share target).
+//      This only LISTS the files -- it does not start uploading -- so the user
+//      can verify the target collection first.
+//   3. Click "Upload" (top): creates a session for the selected collection,
+//      uploads files sequentially with byte-weighted progress, then
+//      automatically finalizes to kick off indexing.
+//
+// Only collections with an upload staging folder configured (uploads_enabled)
+// can be targets. Uploading from a browser on mobile may strip EXIF/GPS, so a
+// dismissible notice (mobile viewports only) steers users to share from a file
+// manager app instead.
 //
 // Sequential-now, parallel-later: each row owns its own loaded/total and its
 // own upload call, so switching to parallel is just a concurrency limiter over
-// the same per-row model. Re-picking replaces the current batch (starts a fresh
-// session); per-row retry is deferred.
+// the same per-row model. Re-picking replaces the current batch; per-row retry
+// is deferred.
 
 import { isAdmin } from '../authn.mjs';
 import { router } from '../router.mjs';
 import { notify } from '../utils.mjs';
 import { createUploadSession, uploadFile, finalizeUpload } from '../api/upload-api.mjs';
+import { takeSharedFiles } from '../share-inbox.mjs';
 
 import sheet from './styles/pl-upload.css' with { type: 'css' };
 
@@ -37,11 +45,17 @@ function formatBytes(bytes) {
 }
 
 class PlUpload extends HTMLElement {
-  #collectionId = null;
+  // All collections (summaries) passed from the shell; filtered to uploads-enabled.
+  #collections = [];
+  #preferredCollectionId = null;
+  #fromShare = false;
+
+  #selectedCollectionId = null;
   #sessionId = null;
   // Per-file transfer records: { file, state, loaded, total, error, els:{...} }
   #items = [];
-  #finalized = false;
+  #uploading = false;
+  #done = false;
 
   static template = document.createElement('template');
   static {
@@ -50,20 +64,47 @@ class PlUpload extends HTMLElement {
       <div class="container">
         <div class="header">
           <h2>Upload files</h2>
-          <sl-button id="start-index-btn" variant="primary" disabled>
-            <sl-icon slot="prefix" name="play-fill"></sl-icon>
-            Start indexing
+          <sl-button id="upload-btn" variant="primary" disabled>
+            <sl-icon slot="prefix" name="cloud-upload"></sl-icon>
+            Upload
           </sl-button>
         </div>
 
-        <p class="intro">
-          Select images or videos to upload into this collection. Uploading
-          starts automatically once you confirm your selection. When all
-          transfers finish, click "Start indexing" to import them.
-        </p>
+        <!-- Mobile-only metadata notice (dismissible per visit) -->
+        <div id="mobile-notice" class="mobile-notice">
+          <sl-icon class="notice-icon" name="info-circle"></sl-icon>
+          <div class="notice-body">
+            <strong>Uploading from your phone?</strong>
+            <p>
+              To preserve photo details like location (GPS) and the original
+              filename, share your files to Photo-Loka from a file manager app
+              rather than from a photos/gallery app or by choosing the files on
+              this page. Gallery apps and the OS file picker on mobile devices
+              often re-encode images and strip location before sharing.
+            </p>
+          </div>
+          <sl-icon-button id="notice-close" name="x-lg" label="Dismiss"></sl-icon-button>
+        </div>
 
-        <div class="picker">
-          <input id="file-input" type="file" multiple accept="image/*,video/*" />
+        <div id="setup" class="setup">
+          <div class="field">
+            <label for="collection-select">Collection</label>
+            <sl-select id="collection-select" placeholder="Select a collection" hoist></sl-select>
+          </div>
+
+          <div class="field">
+            <label for="file-input">Files</label>
+            <input id="file-input" type="file" multiple accept="*/*" />
+            <div class="field-help">
+              Selecting files only lists them below. Click "Upload" when you have
+              verified the target collection.
+            </div>
+          </div>
+        </div>
+
+        <div id="no-uploads" class="no-uploads" hidden>
+          No collection is set up for uploads. Ask an admin to set a
+          "UI Upload Folder" on a collection (Admin &gt; Collections).
         </div>
 
         <div id="total-wrap" class="total-wrap" hidden>
@@ -105,28 +146,121 @@ class PlUpload extends HTMLElement {
     this.shadowRoot.adoptedStyleSheets = [sheet];
   }
 
-  set collectionId(value) {
-    this.#collectionId = value;
+  set collections(value) {
+    this.#collections = Array.isArray(value) ? value : [];
   }
-  get collectionId() {
-    return this.#collectionId;
+  get collections() {
+    return this.#collections;
+  }
+
+  set preferredCollectionId(value) {
+    this.#preferredCollectionId = value;
+  }
+  get preferredCollectionId() {
+    return this.#preferredCollectionId;
+  }
+
+  set fromShare(value) {
+    this.#fromShare = !!value;
+  }
+  get fromShare() {
+    return this.#fromShare;
   }
 
   connectedCallback() {
     this.shadowRoot.appendChild(this.constructor.template.content.cloneNode(true));
 
+    this.shadowRoot.getElementById('notice-close')
+      .addEventListener('click', () => {
+        this.shadowRoot.getElementById('mobile-notice').remove();
+      });
+
     this.shadowRoot.getElementById('file-input')
       .addEventListener('change', (e) => this.#onFilesPicked(e));
-    this.shadowRoot.getElementById('start-index-btn')
-      .addEventListener('click', () => this.#startIndexing());
+    this.shadowRoot.getElementById('upload-btn')
+      .addEventListener('click', () => this.#upload());
+
+    const select = this.shadowRoot.getElementById('collection-select');
+    select.addEventListener('sl-change', () => {
+      this.#selectedCollectionId = select.value ? parseInt(select.value) : null;
+      this.#updateUploadButton();
+    });
+
+    this.#populateCollections();
+
+    // If we arrived via the PWA share target, pick up the shared files that the
+    // service worker stashed and list them (the user still clicks Upload).
+    if (this.#fromShare) {
+      this.#consumeSharedFiles();
+    }
   }
 
-  // --- File selection ---
+  // --- Collection selection ---
 
-  async #onFilesPicked(e) {
+  #uploadableCollections() {
+    return this.#collections.filter((c) => c.uploads_enabled);
+  }
+
+  #populateCollections() {
+    const select = this.shadowRoot.getElementById('collection-select');
+    const options = this.#uploadableCollections();
+
+    if (options.length === 0) {
+      // Nothing to upload into: disable the whole page and explain.
+      this.shadowRoot.getElementById('no-uploads').hidden = false;
+      this.shadowRoot.getElementById('setup').hidden = true;
+      this.shadowRoot.getElementById('upload-btn').disabled = true;
+      return;
+    }
+
+    select.innerHTML = '';
+    for (const c of options) {
+      const opt = document.createElement('sl-option');
+      opt.value = String(c.collection_id);
+      opt.textContent = c.collection_name;
+      select.appendChild(opt);
+    }
+
+    // Preselect: the only option, else the preferred (last-viewed) collection
+    // when it is uploadable.
+    let preselect = null;
+    if (options.length === 1) {
+      preselect = options[0].collection_id;
+    } else if (
+      this.#preferredCollectionId != null &&
+      options.some((c) => c.collection_id === this.#preferredCollectionId)
+    ) {
+      preselect = this.#preferredCollectionId;
+    }
+
+    if (preselect != null) {
+      this.#selectedCollectionId = preselect;
+      // Set value after options are in the DOM so sl-select picks it up.
+      select.value = String(preselect);
+    }
+
+    this.#updateUploadButton();
+  }
+
+  // --- File selection (lists only; does not upload) ---
+
+  #onFilesPicked(e) {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
+    this.#listFiles(files);
+  }
 
+  async #consumeSharedFiles() {
+    const files = await takeSharedFiles();
+    if (files.length === 0) {
+      notify('No shared files were found to upload', 'warning');
+      return;
+    }
+    this.#listFiles(files);
+  }
+
+  // Render the chosen/shared files as rows without starting the upload.
+  #listFiles(files) {
     // Replace on re-pick: abandon any previous batch/session and start fresh.
     this.#resetForNewBatch();
 
@@ -142,28 +276,18 @@ class PlUpload extends HTMLElement {
     this.#renderRows();
     this.shadowRoot.getElementById('total-wrap').hidden = false;
     this.#updateTotal();
-
-    // Create the session only now that there is something to upload.
-    try {
-      this.#sessionId = await createUploadSession(this.#collectionId);
-    } catch (err) {
-      notify(err.error?.message || err.message || 'Failed to start upload session', 'error', 0);
-      return;
-    }
-
-    this.#uploadAllSequential();
+    this.#updateUploadButton();
   }
 
   #resetForNewBatch() {
     this.#sessionId = null;
-    this.#finalized = false;
+    this.#done = false;
+    this.#uploading = false;
     this.#items = [];
     this.shadowRoot.getElementById('file-list').innerHTML = '';
     this.shadowRoot.getElementById('done-msg').hidden = true;
     this.shadowRoot.getElementById('done-msg').innerHTML = '';
-    const btn = this.shadowRoot.getElementById('start-index-btn');
-    btn.disabled = true;
-    btn.loading = false;
+    this.shadowRoot.getElementById('total-wrap').hidden = true;
   }
 
   #renderRows() {
@@ -184,15 +308,76 @@ class PlUpload extends HTMLElement {
     }
   }
 
-  // --- Uploading ---
+  // --- Upload button state ---
+
+  #updateUploadButton() {
+    const btn = this.shadowRoot.getElementById('upload-btn');
+    const ready =
+      this.#selectedCollectionId != null &&
+      this.#items.length > 0 &&
+      !this.#uploading &&
+      !this.#done;
+    btn.disabled = !ready;
+  }
+
+  // --- Upload + auto-finalize ---
+
+  async #upload() {
+    if (this.#uploading || this.#done) return;
+    if (this.#selectedCollectionId == null || this.#items.length === 0) return;
+
+    this.#uploading = true;
+    const btn = this.shadowRoot.getElementById('upload-btn');
+    btn.loading = true;
+    btn.disabled = true;
+    // Lock collection + file choice during the upload.
+    this.shadowRoot.getElementById('collection-select').disabled = true;
+    this.shadowRoot.getElementById('file-input').disabled = true;
+
+    // Create the session for the chosen collection.
+    try {
+      this.#sessionId = await createUploadSession(this.#selectedCollectionId);
+    } catch (err) {
+      notify(err.error?.message || err.message || 'Failed to start upload session', 'error', 0);
+      this.#uploading = false;
+      btn.loading = false;
+      this.shadowRoot.getElementById('collection-select').disabled = false;
+      this.shadowRoot.getElementById('file-input').disabled = false;
+      this.#updateUploadButton();
+      return;
+    }
+
+    await this.#uploadAllSequential();
+
+    // Auto-finalize (kick off indexing) if anything uploaded successfully.
+    const anyUploaded = this.#items.some((i) => i.state === STATE.UPLOADED);
+    if (anyUploaded) {
+      try {
+        await finalizeUpload(this.#sessionId);
+        this.#done = true;
+        this.#showDoneMessage();
+      } catch (err) {
+        notify(err.error?.message || err.message || 'Failed to start indexing', 'error', 0);
+      }
+    } else {
+      notify('No files were uploaded successfully', 'warning');
+    }
+
+    this.#uploading = false;
+    btn.loading = false;
+    // Allow a fresh batch after a failed/finished run (unless done).
+    if (!this.#done) {
+      this.shadowRoot.getElementById('collection-select').disabled = false;
+      this.shadowRoot.getElementById('file-input').disabled = false;
+    }
+    this.#updateUploadButton();
+  }
 
   async #uploadAllSequential() {
     for (const item of this.#items) {
-      // Skip anything not pending (defensive; all start queued).
       if (item.state !== STATE.QUEUED) continue;
       await this.#uploadOne(item);
     }
-    this.#maybeEnableIndexing();
   }
 
   async #uploadOne(item) {
@@ -265,36 +450,7 @@ class PlUpload extends HTMLElement {
     error.textContent = state === STATE.FAILED ? (item.error || '') : '';
   }
 
-  // --- Finalize / indexing ---
-
-  #allTerminal() {
-    return this.#items.length > 0 &&
-      this.#items.every((i) => i.state === STATE.UPLOADED || i.state === STATE.FAILED);
-  }
-
-  #maybeEnableIndexing() {
-    const btn = this.shadowRoot.getElementById('start-index-btn');
-    const anyUploaded = this.#items.some((i) => i.state === STATE.UPLOADED);
-    // Enable only once every transfer is terminal and at least one succeeded
-    // (nothing to index if they all failed).
-    btn.disabled = !(this.#allTerminal() && anyUploaded && !this.#finalized);
-  }
-
-  async #startIndexing() {
-    if (this.#finalized || !this.#sessionId) return;
-    const btn = this.shadowRoot.getElementById('start-index-btn');
-    btn.loading = true;
-    try {
-      await finalizeUpload(this.#sessionId);
-      this.#finalized = true;
-      btn.disabled = true;
-      this.#showDoneMessage();
-    } catch (err) {
-      notify(err.error?.message || err.message || 'Failed to start indexing', 'error', 0);
-    } finally {
-      btn.loading = false;
-    }
-  }
+  // --- Done message ---
 
   #showDoneMessage() {
     const el = this.shadowRoot.getElementById('done-msg');

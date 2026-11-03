@@ -85,6 +85,22 @@ Rules going forward:
   without a button). `message` is inserted as HTML, so never pass unsanitized
   user input into it.
 
+- **Responsive breakpoints** - There are three tiers, split by two lines:
+  - **`640px`** is the mobile line (phone vs. larger). At `max-width: 640px`
+    phone content reflows -- the app shell hides the title, and the gallery,
+    gallery-controls, admin-jobs/users, and the upload notice adapt. Default
+    any new "phone vs. not" split to `640px`.
+  - **`1280px`** is the desktop line, used by the app shell for the sidebar:
+    at `max-width: 1280px` (mobile + tablet) the sidebar is a hamburger
+    overlay; at `min-width: 1281px` (desktop) it sits in the layout. So the
+    three tiers are mobile (<=640px), tablet (641-1280px), and desktop
+    (>1280px).
+
+  A few components use other breakpoints for element-specific reasons
+  (`768px` for slideshow/map media, `500px` for the collection form's
+  two-column grid, `480px` for login) -- keep those as-is; they are not global
+  tiers. Prefer CSS media queries over user-agent sniffing.
+
 ## Commit message format
 
 - The user always commits manually. Do NOT run `git commit` (or `git add`/`git push`) unless explicitly asked. Prepare and describe the changes; leave the actual commit to the user.

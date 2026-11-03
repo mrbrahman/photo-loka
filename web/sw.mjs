@@ -43,7 +43,7 @@
 
 // Bump this version whenever you deploy frontend changes.
 // The browser compares sw.mjs byte-for-byte; a changed VERSION triggers an update.
-const VERSION = '4.33.1';
+const VERSION = '4.35.0';
 
 const CACHE_NAME = `photo-loka-${VERSION}`;
 
@@ -116,6 +116,16 @@ self.addEventListener('fetch', event => {
   const { request } = event;
   const url = new URL(request.url);
 
+  // PWA share target: the OS share sheet POSTs selected files here as
+  // multipart/form-data (see manifest "share_target"). Intercept it, stash the
+  // files in IndexedDB, and redirect into the app's share-upload route, which
+  // reads them back and runs the normal upload flow. Must come before the
+  // GET-only guard below since this is a POST.
+  if (request.method === 'POST' && url.pathname === '/share-target') {
+    event.respondWith(handleShareTarget(request));
+    return;
+  }
+
   // Only GET responses are cacheable; let everything else pass through.
   if (request.method !== 'GET') return;
 
@@ -162,3 +172,67 @@ self.addEventListener('fetch', event => {
     })
   );
 });
+
+
+// =============================================================================
+// PWA Share Target
+// =============================================================================
+// When the user shares image/video files to Photo-Loka from the Android share
+// sheet (e.g. from a file manager), the OS POSTs them here as multipart form
+// data. We cannot hand File objects straight to a freshly-navigated page, so we
+// stash them in IndexedDB and redirect to the app's share-upload route; the
+// upload page reads them back (see web/js/share-inbox.mjs) and runs the normal
+// createUploadSession -> uploadFile -> finalizeUpload flow.
+//
+// NOTE: the service worker is registered as a classic worker (no `import`), so
+// the IndexedDB helpers are inlined here and mirrored (contract-compatible) in
+// web/js/share-inbox.mjs for the page side. Keep the DB name / store / key in
+// sync between the two files.
+
+const SHARE_DB_NAME = 'photo-loka-share';
+const SHARE_STORE = 'inbox';
+const SHARE_KEY = 'pending';
+
+async function handleShareTarget(request) {
+  try {
+    const formData = await request.formData();
+    const files = formData.getAll('files').filter(f => f && f.size !== undefined);
+    if (files.length > 0) {
+      await swShareInboxPut(files);
+    }
+  } catch (err) {
+    // Even if stashing fails, still navigate into the app so the user is not
+    // left on a blank POST response.
+    // eslint-disable-next-line no-console
+    console.error('[sw] share-target: failed to stash files', err);
+  }
+  // 303 so the browser issues a GET for the redirect target. The hash route is
+  // where the app resolves the active collection and picks up the files.
+  return Response.redirect('/#/app/share-upload', 303);
+}
+
+function swOpenShareDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(SHARE_DB_NAME, 1);
+    req.onupgradeneeded = () => {
+      req.result.createObjectStore(SHARE_STORE);
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function swShareInboxPut(files) {
+  const db = await swOpenShareDB();
+  try {
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(SHARE_STORE, 'readwrite');
+      tx.objectStore(SHARE_STORE).put(files, SHARE_KEY);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  } finally {
+    db.close();
+  }
+}
