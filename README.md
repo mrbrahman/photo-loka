@@ -12,7 +12,7 @@ Also, many things are rough around the edges, simply because I'm the sole user &
 
 1. We don't want to use cloud providers for personal photo collection.
 2. Some of us really care about our media in folders that we have meticulously curated from a long time. With any tool, we want the ability to continue to manage pics in folders.
-3. The single source of truth is the photo itself (*). Hence, we want all metadata, including user tags, ML based face / objects labels etc., to go back to the photo, to the extent possible.
+3. The single source of truth is the photo itself (*). Hence, we want all metadata, including user tags, ML based face / objects labels etc., to go back to the photo, to the extent possible. (TBD - writing metadata back to the photo files is not yet implemented)
 4. In the same vein, we also want the tool to utilize the metadata already existing in the photos (updated by device / other tools).
 5. In other words, we don't want to be locked-down by any one particular tool (including this one!).
 6. Some kind of sensible, not too constrained search is needed, even though it may (will) not be as good as Google.
@@ -40,6 +40,7 @@ The photo collection is a common space, open to everyone in the household by def
 - Support for new files: 
     * Immediate indexing - Watch one or more 'listen' folders for new files, and as new files become available, bring them into the respective collection and index them
     * Delayed indexing - Schedule a daily 'cron' to watch the setup 'intake' folders, to bring in files to the collection that are 'x' days stale
+- Indexing runs as a staged pipeline of per-stage work queues with a configurable resource-gating graph, so contended resources (CPU, GPU, the rate-limited geo API) are not oversubscribed. Tune per-stage concurrency and gates, and watch live per-stage progress with pause/resume, from the Admin > Indexer page.
 - Rename albums (similar to renaming folders on a File Explorer program)
 - Select files and move them to a different album
 - Select files and trash them (with cleanup of associated ML data)
@@ -49,10 +50,10 @@ The photo collection is a common space, open to everyone in the household by def
 - Index media photos, videos and audio
   - Extract key exif data (metadata), and store in SQLite db
   - Thumbnail generation
+  - Face recognition and CLIP image embeddings (powers AI search)
   - Compress video files into smaller webm files
-  - Indexer has the ability to run and gather metadata for multiple files at the same time. See `updateIndexerConcurrency` below
 - Mark as favorite / stars (there is no favorite in exif, but there is a 'rating' field)
-- Optimize write of metadata to files by delaying the write. This enables grouping all the changes together and writing to file at one go
+- Update the description for an item
 
 ## Enrichments
 - Lookup GPS location
