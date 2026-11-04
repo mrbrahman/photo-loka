@@ -19,6 +19,14 @@ Also, many things are rough around the edges, simply because I'm the sole user &
 
 (*) For those who are not aware, a photo/video taken by a modern camera/phone not only stores the image/video content, but also metadata about the photo/video. For e.g. GPS coordinates, dimensions, orientation, duration for videos etc. There are also provisions to update metadata when they are discovered. For e.g. recognized faces, address based on reverse geo-coding etc.
 
+# A shared family space
+
+Photo-Loka is a family's photo library.
+
+Most photo platforms are built around individual libraries. Each person has their own account and photos, and sharing memories with others means explicitly granting them access. Photo-Loka takes a different approach. It starts with the idea that a family's memories are already shared.
+
+The photo collection is a common space, open to everyone in the household by default. Much like the home you live in, the walls adorned with family photographs, or the albums on a shared bookshelf, these memories belong to the family as a whole. There's no need to share what was never meant to be separate in the first place.
+
 # Key Terms
 1. **Item**: The individual media item (photo / video / audio)
 2. **Album**: A group of related media items, identified by a date and a descriptive name. For e.g. (`2021-10-01`, `Trip to SVBF`). On disk, these become folders like `2021/2021-10-01 Trip to SVBF` (configurable via the collection's folder pattern).
