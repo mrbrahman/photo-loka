@@ -29,6 +29,7 @@ import (
 	"photo-loka/internal/media"
 	"photo-loka/internal/ml"
 	"photo-loka/internal/pipeline"
+	"photo-loka/internal/push"
 	"photo-loka/internal/search"
 	"photo-loka/internal/upload"
 )
@@ -91,6 +92,7 @@ func setupRoutes() {
 		geo.RegisterRoutes(apiGroup)
 		ml.RegisterRoutes(apiGroup)
 		upload.RegisterRoutes(apiGroup)
+		push.RegisterRoutes(apiGroup)
 	}
 
 	// Media routes (with frame IP bypass)

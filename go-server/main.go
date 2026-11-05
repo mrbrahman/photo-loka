@@ -23,6 +23,7 @@ import (
 	"photo-loka/internal/media"
 	"photo-loka/internal/ml"
 	"photo-loka/internal/pipeline"
+	"photo-loka/internal/push"
 	"photo-loka/internal/scheduler"
 	"photo-loka/internal/server"
 )
@@ -174,6 +175,13 @@ func runServe() {
 
 	// Initialize package-level singletons that read config.Startup.
 	auth.Init()
+
+	// Initialize Web Push: load (or first-time generate) the server VAPID
+	// keypair. A failure here should not prevent the server from starting
+	// (notifications are non-critical), so log and continue degraded.
+	if err := push.Init(); err != nil {
+		slog.Error("failed to initialize web push; notifications disabled", "error", err)
+	}
 
 	// Initialize ML package (HTTP client). Non-queue subsystem used by search,
 	// ML routes, and trash cleanup as well as the pipeline. Must precede
