@@ -68,6 +68,11 @@ type Pipeline struct {
 	// stage functions can Reserve a budget unit before each API call, and so
 	// StopAll can tear down its rollover timer + persist counters).
 	geoRate *geoRateGater
+
+	// batch detects the indexing batch lifecycle (a new item opens a batch; the
+	// aggregate busy->idle edge, debounced, closes it) and emits a BatchEnded
+	// signal. One per pipeline; torn down in StopAll.
+	batch *batchWatcher
 }
 
 // P is the package-level pipeline singleton, built by Init.
@@ -194,6 +199,17 @@ func newPipelineWithQueues(funcs stageFuncs, cfg PipelineConfig, qf queueFactory
 	p.geoRate = newGeoRateGater([]string{StageGeoAddr, StageGeoCity}, dataDir)
 	p.gaters = []Gater{p.resource, p.geoRate}
 	p.wireGates()
+
+	// Batch lifecycle watcher: subscribe to every stage queue's event stream so
+	// it can track the aggregate busy state. Built and started after the stages
+	// exist. Its onBatchEnded callback is unset here (wired in Bit 3).
+	p.batch = newBatchWatcher()
+	srcs := make([]<-chan queue.Event, 0, len(p.stages))
+	for _, s := range p.stages {
+		srcs = append(srcs, s.Queue.Subscribe())
+	}
+	p.batch.start(srcs)
+
 	return p
 }
 
@@ -370,6 +386,9 @@ func (p *Pipeline) ResumeAll() {
 // StopAll stops every stage's dispatch goroutine (shutdown) and tears down each
 // gater (e.g. the resource gater's drained-event subscribers).
 func (p *Pipeline) StopAll() {
+	if p.batch != nil {
+		p.batch.Stop()
+	}
 	p.resource.Stop()
 	p.geoRate.Stop()
 	for _, s := range p.stages {
@@ -507,6 +526,12 @@ func (p *Pipeline) aggregateErrors() interface{} {
 // submitEntry is the indexing.SubmitEntry hook: build a fresh item and enqueue
 // it at the entry stage with Normal priority (orchestrator always uses Normal).
 func (p *Pipeline) submitEntry(collection *collections.Collection, sourceFile, existingUUID string, inPlace bool) {
+	// Record this new item's collection into the current batch (opens a batch if
+	// none is open). Pure refreshes (submitRefresh) and standalone stage runs do
+	// not call this, so they never open a "new items" batch.
+	if p.batch != nil && collection != nil {
+		p.batch.noteEntry(collection.CollectionID)
+	}
 	item := &PipelineItem{
 		Collection:   collection,
 		SourceFile:   sourceFile,
