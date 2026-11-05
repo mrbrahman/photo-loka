@@ -8,9 +8,9 @@ import (
 )
 
 // TestHandleBatchEnded_FansOutPerCollection: one notification per collection id,
-// each carrying that collection's id, the batch's local end-date query, and a
-// body with the collection name (or a generic fallback when the name lookup
-// fails).
+// each carrying that collection's id, the batch's local end-date query, a title
+// with the collection name (or a generic fallback), and a body with today's
+// indexed count (singular/plural).
 func TestHandleBatchEnded_FansOutPerCollection(t *testing.T) {
 	// Stub the collection-name lookup: 1 -> "Family", 2 unknown.
 	origName := collectionNameFn
@@ -21,6 +21,16 @@ func TestHandleBatchEnded_FansOutPerCollection(t *testing.T) {
 		return "", false
 	}
 	t.Cleanup(func() { collectionNameFn = origName })
+
+	// Stub the day-count: collection 1 -> 5 items, collection 2 -> 1 item.
+	origCount := countIndexedTodayFn
+	countIndexedTodayFn = func(id int64, date string) (int, error) {
+		if id == 1 {
+			return 5, nil
+		}
+		return 1, nil
+	}
+	t.Cleanup(func() { countIndexedTodayFn = origCount })
 
 	// Capture notifications instead of sending.
 	var got []push.Payload
@@ -45,17 +55,18 @@ func TestHandleBatchEnded_FansOutPerCollection(t *testing.T) {
 		if p.Query != wantQuery {
 			t.Errorf("query = %q, want %q", p.Query, wantQuery)
 		}
-		if p.Title == "" {
-			t.Errorf("title should be set")
-		}
 	}
 
-	// Collection 1 carries its id + name in the body.
-	if got[0].CollectionID != 1 || got[0].Body != "New items in Family" {
+	// Collection 1: named title + plural body.
+	if got[0].CollectionID != 1 ||
+		got[0].Title != "Family - new items added!" ||
+		got[0].Body != "5 items indexed today" {
 		t.Errorf("collection 1 payload wrong: %+v", got[0])
 	}
-	// Collection 2 (unknown name) falls back to the generic body.
-	if got[1].CollectionID != 2 || got[1].Body != "New items were brought into your collection." {
+	// Collection 2: fallback title + singular body.
+	if got[1].CollectionID != 2 ||
+		got[1].Title != "New items added!" ||
+		got[1].Body != "1 item indexed today" {
 		t.Errorf("collection 2 payload wrong: %+v", got[1])
 	}
 }
