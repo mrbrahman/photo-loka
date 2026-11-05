@@ -82,7 +82,7 @@ func deliver(payload []byte, devices []device) {
 					pushLogger().Info("pruned dead push device", "endpoint", d.Endpoint)
 				}
 			case status >= 200 && status < 300:
-				// Delivered.
+				pushLogger().Debug("push delivered", "endpoint", d.Endpoint, "status", status)
 			default:
 				pushLogger().Warn("push service returned non-success",
 					"endpoint", d.Endpoint, "status", status)
@@ -114,6 +114,7 @@ func NotifyAll(p Payload) {
 			pushLogger().Error("loading devices for notify failed", "error", err)
 			return
 		}
+		pushLogger().Info("notifying devices", "count", len(devices), "title", p.Title)
 		if len(devices) == 0 {
 			return
 		}
