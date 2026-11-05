@@ -49,7 +49,7 @@ import './components/pl-admin-users.js';
 import './components/pl-collection-form.js';
 import './components/pl-upload.js';
 
-import { initRouter } from './router.mjs';
+import { initRouter, router } from './router.mjs';
 
 // PWA install prompt handling
 let deferredPrompt;
@@ -57,6 +57,20 @@ window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   deferredPrompt = e;
 });
+
+// Service worker -> page navigation: when a push notification is clicked and a
+// PWA window is already running, the service worker focuses it and posts a
+// navigate message (hash-route navigation of a live window via client.navigate
+// is unreliable across browsers, so we route through the app's own router).
+// The url is a hash route like '/#/app/c/1/search/...'; Navigo (hash mode)
+// wants the path without the leading '/#'.
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', (e) => {
+    if (e.data?.type === 'navigate' && e.data.url) {
+      router.navigate(e.data.url.replace(/^\/#/, ''));
+    }
+  });
+}
 
 // Event listeners for component communication
 document.addEventListener('DOMContentLoaded', () => {

@@ -43,7 +43,7 @@
 
 // Bump this version whenever you deploy frontend changes.
 // The browser compares sw.mjs byte-for-byte; a changed VERSION triggers an update.
-const VERSION = '4.36.0';
+const VERSION = '4.37.0';
 
 const CACHE_NAME = `photo-loka-${VERSION}`;
 
@@ -66,6 +66,76 @@ self.addEventListener('message', event => {
     event.ports[0]?.postMessage({ version: VERSION });
   }
 });
+
+// =============================================================================
+// Web Push notifications
+// =============================================================================
+// The server (on a finished indexing batch) delivers a JSON payload
+// { title, body, collectionId, query }. We render it as a notification; on
+// click we open/focus the PWA on the collection-scoped search route built from
+// collectionId + query (the server emits what to search, the client owns the
+// route format). See internal/push and internal/pipeline/batch_notify.go.
+
+self.addEventListener('push', event => {
+  if (!event.data) return;
+  let p;
+  try {
+    p = event.data.json();
+  } catch {
+    return; // ignore a malformed payload rather than showing a broken toast
+  }
+  event.waitUntil(
+    self.registration.showNotification(p.title || 'Photo-Loka', {
+      body: p.body || '',
+      icon: '/assets/icon-454.png',
+      badge: '/assets/icon-454.png',
+      // Coalesce per collection: a newer batch for the same collection replaces
+      // the previous notification instead of stacking (they all click through
+      // to the same date(indexed_at) search anyway).
+      tag: `batch-${p.collectionId}`,
+      // Carry the structured fields through to the click handler.
+      data: { collectionId: p.collectionId, query: p.query }
+    })
+  );
+});
+
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const data = event.notification.data || {};
+  const { collectionId, query } = data;
+  if (!collectionId || !query) return;
+
+  // Hash route the app understands; encode the query (it contains spaces,
+  // quotes, parens from the raw: syntax) for the path segment.
+  const url = `/#/app/c/${collectionId}/search/${encodeURIComponent(query)}`;
+  event.waitUntil(focusOrOpen(url));
+});
+
+// focusOrOpen brings an already-running PWA window to the front and navigates
+// it via the app's own router (reliable for a hash route), or opens a fresh
+// window when none is running. Navigating an existing window purely by hash
+// change via client.navigate is unreliable across browsers, so for a live
+// window we postMessage it and let the in-app router handle the route; the
+// page-side listener lives in main.mjs.
+async function focusOrOpen(url) {
+  const clientsArr = await self.clients.matchAll({
+    type: 'window',
+    includeUncontrolled: true
+  });
+  // Prefer an existing same-origin app window.
+  for (const client of clientsArr) {
+    if (new URL(client.url).origin === self.location.origin) {
+      await client.focus();
+      client.postMessage({ type: 'navigate', url });
+      return;
+    }
+  }
+  // Nothing running: open fresh on the target route (the app reads the hash on
+  // boot and routes to it).
+  if (self.clients.openWindow) {
+    await self.clients.openWindow(url);
+  }
+}
 
 // Same-origin app code that is safe to cache-first. It is immutable within a
 // VERSION (baked into the Go binary / served from ../web in dev), and every web
