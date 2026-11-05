@@ -2,6 +2,8 @@ import { isAdmin } from '../authn.mjs';
 import { getTheme, toggleTheme } from '../theme.mjs';
 import { router, getStoredCollectionId, setStoredCollectionId } from '../router.mjs';
 import { getCollections } from '../api/collections-api.mjs';
+import { isPushSupported, getSubscriptionState, enablePush, disablePush } from '../push.mjs';
+import { notify } from '../utils.mjs';
 
 import sheet from "./styles/pl-app-shell.css" with { type: "css" };
 
@@ -68,6 +70,10 @@ class PlAppShell extends HTMLElement {
               <sl-menu-item id="theme-toggle-btn">
                 <sl-icon slot="prefix" id="theme-icon" name="moon"></sl-icon>
                 <span id="theme-label">Dark mode</span>
+              </sl-menu-item>
+              <sl-menu-item id="push-toggle-btn" style="display:none">
+                <sl-icon slot="prefix" id="push-icon" name="bell"></sl-icon>
+                <span id="push-label">Enable notifications</span>
               </sl-menu-item>
               <sl-divider></sl-divider>
               <sl-menu-item id="logout-btn">
@@ -344,6 +350,12 @@ class PlAppShell extends HTMLElement {
     this.shadowRoot.getElementById('theme-toggle-btn').addEventListener('click', () => {
       toggleTheme();
       this.#updateThemeToggle();
+    });
+
+    // Notifications toggle (user dropdown). Enabling requests browser
+    // permission and subscribes this device; disabling unsubscribes it.
+    this.shadowRoot.getElementById('push-toggle-btn').addEventListener('click', () => {
+      this.#togglePush();
     });
 
     // Slideshow URL management
@@ -653,6 +665,10 @@ class PlAppShell extends HTMLElement {
         this.#pageVersion = await this.#getSwVersion(this.#swRegistration.active);
       }
 
+      // Reflect the current push-notification state in the user menu now that a
+      // service worker registration exists (subscribe needs it).
+      this.#updatePushToggle();
+
       // Listen for new SWs found during the page's lifetime.
       this.#swRegistration.addEventListener('updatefound', () => {
         console.log('[sw] updatefound: new version detected, installing');
@@ -742,6 +758,65 @@ class PlAppShell extends HTMLElement {
     const isDark = getTheme() === 'dark';
     this.shadowRoot.getElementById('theme-icon').name = isDark ? 'sun' : 'moon';
     this.shadowRoot.getElementById('theme-label').textContent = isDark ? 'Light mode' : 'Dark mode';
+  }
+
+  // Reflect the current push-notification state in the user-menu item: hide it
+  // entirely on unsupported browsers, otherwise show Enable/Disable (or a
+  // blocked hint when the user denied permission).
+  async #updatePushToggle() {
+    const item = this.shadowRoot.getElementById('push-toggle-btn');
+    const icon = this.shadowRoot.getElementById('push-icon');
+    const label = this.shadowRoot.getElementById('push-label');
+    if (!item) return;
+
+    if (!isPushSupported()) {
+      item.style.display = 'none';
+      return;
+    }
+    item.style.display = '';
+
+    const state = await getSubscriptionState(this.#swRegistration);
+    switch (state) {
+      case 'subscribed':
+        icon.name = 'bell-slash';
+        label.textContent = 'Disable notifications';
+        item.disabled = false;
+        break;
+      case 'denied':
+        icon.name = 'bell-slash';
+        label.textContent = 'Notifications blocked';
+        item.disabled = true;
+        break;
+      default: // 'unsubscribed'
+        icon.name = 'bell';
+        label.textContent = 'Enable notifications';
+        item.disabled = false;
+        break;
+    }
+  }
+
+  // Toggle push on/off from the user menu, then refresh the item and toast the
+  // outcome. Errors (network, subscribe failure) surface as an error toast and
+  // leave the menu reflecting the actual post-attempt state.
+  async #togglePush() {
+    try {
+      const state = await getSubscriptionState(this.#swRegistration);
+      if (state === 'subscribed') {
+        await disablePush(this.#swRegistration);
+        notify('Notifications disabled', 'success');
+      } else {
+        const result = await enablePush(this.#swRegistration);
+        if (result === 'subscribed') {
+          notify('Notifications enabled', 'success');
+        } else if (result === 'denied') {
+          notify('Notifications are blocked. Enable them in your browser settings.', 'warning');
+        }
+      }
+    } catch (err) {
+      notify('Could not change notification settings', 'error', 0);
+    } finally {
+      this.#updatePushToggle();
+    }
   }
 }
 
