@@ -43,7 +43,7 @@
 
 // Bump this version whenever you deploy frontend changes.
 // The browser compares sw.mjs byte-for-byte; a changed VERSION triggers an update.
-const VERSION = '4.37.0';
+const VERSION = '4.37.2';
 
 const CACHE_NAME = `photo-loka-${VERSION}`;
 
@@ -77,13 +77,18 @@ self.addEventListener('message', event => {
 // route format). See internal/push and internal/pipeline/batch_notify.go.
 
 self.addEventListener('push', event => {
-  if (!event.data) return;
-  let p;
-  try {
-    p = event.data.json();
-  } catch {
-    return; // ignore a malformed payload rather than showing a broken toast
+  // Parse the server JSON payload. Tolerate a non-JSON payload (e.g. a plain
+  // string from the DevTools "Push" test button) by falling back to a generic
+  // notification, so a manual test still renders something.
+  let p = {};
+  if (event.data) {
+    try {
+      p = event.data.json();
+    } catch {
+      p = { title: 'Photo-Loka', body: event.data.text() };
+    }
   }
+
   event.waitUntil(
     self.registration.showNotification(p.title || 'Photo-Loka', {
       body: p.body || '',
@@ -92,10 +97,11 @@ self.addEventListener('push', event => {
       // Coalesce per collection: a newer batch for the same collection replaces
       // the previous notification instead of stacking (they all click through
       // to the same date(indexed_at) search anyway).
-      tag: `batch-${p.collectionId}`,
+      tag: p.collectionId != null ? `batch-${p.collectionId}` : 'photo-loka',
       // Carry the structured fields through to the click handler.
       data: { collectionId: p.collectionId, query: p.query }
     })
+    .catch(err => console.error('[sw] showNotification failed', err))
   );
 });
 
