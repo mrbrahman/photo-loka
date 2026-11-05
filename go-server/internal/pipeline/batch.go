@@ -3,6 +3,7 @@ package pipeline
 import (
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"photo-loka/internal/queue"
@@ -64,9 +65,12 @@ type BatchEnded struct {
 // collection ids of the current batch, emitting a BatchEnded on each
 // busy->idle (debounced) edge of an open batch.
 type batchWatcher struct {
-	// onBatchEnded is invoked once per closed batch. nil until Bit 3 wires it;
-	// a nil callback means the watcher still logs but notifies no one.
-	onBatchEnded func(BatchEnded)
+	// onBatchEnded is invoked once per closed batch. nil until wired; a nil
+	// callback means the watcher still logs but notifies no one. Stored
+	// atomically because it is set by Init on the startup goroutine after the
+	// run goroutine has already started (production sets it before any batch can
+	// open, but the atomic keeps the set/read race-free regardless).
+	onBatchEnded atomic.Pointer[func(BatchEnded)]
 
 	// now is injectable for deterministic elapsed assertions in tests; in
 	// production it is time.Now. The quiet-period close uses real timers (quiet,
@@ -116,8 +120,9 @@ func newBatchWatcher() *batchWatcher {
 	}
 }
 
-// setOnBatchEnded sets the batch-end callback. Safe to call before start.
-func (w *batchWatcher) setOnBatchEnded(fn func(BatchEnded)) { w.onBatchEnded = fn }
+// setOnBatchEnded sets the batch-end callback. Safe to call before or after
+// start (the pointer is stored atomically).
+func (w *batchWatcher) setOnBatchEnded(fn func(BatchEnded)) { w.onBatchEnded.Store(&fn) }
 
 // noteEntry records that a new item for collectionID entered the pipeline. Call
 // from submitEntry. Non-blocking: if the buffer is briefly full the signal is
@@ -269,8 +274,8 @@ func (w *batchWatcher) closeBatch() {
 		"collections", ids,
 	)
 
-	if w.onBatchEnded != nil {
-		w.onBatchEnded(BatchEnded{
+	if fn := w.onBatchEnded.Load(); fn != nil {
+		(*fn)(BatchEnded{
 			StartedAt:     w.startedAt,
 			EndedAt:       ended,
 			CollectionIDs: ids,

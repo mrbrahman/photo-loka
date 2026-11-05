@@ -108,6 +108,11 @@ func Init() *Pipeline {
 		return p.StageStatus(StageGeoCache)
 	}
 
+	// Wire the batch-end push notification. newPipelineWithQueues leaves the
+	// batch callback unset so tests do not fire real notifications; Init (the
+	// production path) sets it to the push fan-out.
+	p.batch.setOnBatchEnded(handleBatchEnded)
+
 	P = p
 	return p
 }

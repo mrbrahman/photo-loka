@@ -9,13 +9,20 @@ import (
 )
 
 // Payload is the JSON body delivered to the service worker's push handler. The
-// client renders title/body as the notification and navigates to url on click.
-// Bit 3 populates these (message text + the date(indexed_at) click-through
-// URL); the push package only transports it.
+// client renders title/body as the notification and, on click, builds a search
+// route from collectionId + query (the search string, e.g. the raw: query that
+// finds items indexed on the batch's date). The push package only transports
+// this; the batch-end caller fills it in and the service worker interprets it.
+//
+// This shape is specific to the one notification we have today (new items
+// indexed, click-through to a collection-scoped search). When other
+// notification kinds arrive, revisit this (e.g. a type discriminator) as its
+// own change rather than speculatively generalizing now.
 type Payload struct {
-	Title string `json:"title"`
-	Body  string `json:"body"`
-	URL   string `json:"url"`
+	Title        string `json:"title"`
+	Body         string `json:"body"`
+	CollectionID int64  `json:"collectionId"`
+	Query        string `json:"query"`
 }
 
 // maxSendConcurrency bounds how many pushes are in flight at once so a large
