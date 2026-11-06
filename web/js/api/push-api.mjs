@@ -42,3 +42,19 @@ export async function unregisterDevice(endpoint) {
   });
   if (!res.ok) return throwError(res);
 }
+
+// sendTestPush asks the server to push a test notification to this device
+// (identified by its subscription endpoint; it must belong to the current
+// user). Resolves to the server's per-device result
+// { device_id, status, error?, pruned? }. Throws the server's error body on
+// failure (404 not registered, 502 transport failure carries { result }).
+export async function sendTestPush(endpoint) {
+  let res = await authenticatedFetch('/api/push/devices/test', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ endpoint })
+  });
+  if (!res.ok) return throwError(res);
+  let data = await res.json();
+  return data.result;
+}

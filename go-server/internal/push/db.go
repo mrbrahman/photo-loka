@@ -67,11 +67,45 @@ func upsertDevice(userID int64, endpoint, p256dh, auth, userAgent string) error 
 	return nil
 }
 
-// deleteDeviceByEndpoint removes a device by its endpoint. Used both for an
-// explicit client unsubscribe and for pruning a dead endpoint (404/410 Gone).
+// deleteDeviceByEndpoint removes a device by its endpoint regardless of owner.
+// Used only for pruning a dead endpoint (404/410 Gone from the push service);
+// the client-facing unsubscribe uses deleteDeviceForUser.
 func deleteDeviceByEndpoint(endpoint string) error {
 	if _, err := database.DB.Exec(
 		`DELETE FROM push_devices WHERE endpoint = ?`, endpoint,
+	); err != nil {
+		return fmt.Errorf("deleting push device: %w", err)
+	}
+	return nil
+}
+
+// deviceForUser returns the device with the given endpoint only if it belongs
+// to userID; (nil, nil) when there is no such device for that user. Used by the
+// test send so a user can only push to their own devices.
+func deviceForUser(userID int64, endpoint string) (*device, error) {
+	var d device
+	err := database.DB.QueryRow(
+		`SELECT id, user_id, endpoint, p256dh, auth FROM push_devices
+		 WHERE endpoint = ? AND user_id = ?`,
+		endpoint, userID,
+	).Scan(&d.ID, &d.UserID, &d.Endpoint, &d.P256dh, &d.Auth)
+	switch err {
+	case nil:
+		return &d, nil
+	case sql.ErrNoRows:
+		return nil, nil
+	default:
+		return nil, fmt.Errorf("loading push device: %w", err)
+	}
+}
+
+// deleteDeviceForUser removes a device by its endpoint only if it belongs to
+// userID. Used by the explicit unsubscribe endpoint so a user can only remove
+// their own devices. Deleting an unknown (or someone else's) endpoint is a
+// silent no-op, keeping unsubscribe idempotent.
+func deleteDeviceForUser(userID int64, endpoint string) error {
+	if _, err := database.DB.Exec(
+		`DELETE FROM push_devices WHERE endpoint = ? AND user_id = ?`, endpoint, userID,
 	); err != nil {
 		return fmt.Errorf("deleting push device: %w", err)
 	}

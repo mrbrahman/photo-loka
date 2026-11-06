@@ -8,7 +8,7 @@
 // once those handlers exist; until then the subscription is registered server
 // side but a delivered push is simply not displayed.
 
-import { getVapidPublicKey, registerDevice, unregisterDevice } from './api/push-api.mjs';
+import { getVapidPublicKey, registerDevice, unregisterDevice, sendTestPush } from './api/push-api.mjs';
 
 // isPushSupported reports whether this browser can do Web Push at all.
 export function isPushSupported() {
@@ -72,6 +72,67 @@ export async function disablePush(registration) {
     }
   }
   return 'unsubscribed';
+}
+
+// RECEIPT_TIMEOUT_MS is how long testPush waits for the service worker to
+// report that the test push arrived on this device. Push services normally
+// deliver within a few seconds to an awake device.
+const RECEIPT_TIMEOUT_MS = 20000;
+
+// testPush asks the server to send a test notification to this device and
+// waits for the service worker to confirm it arrived. Resolves to one of:
+//   { outcome: 'received' }            - arrived and the notification was shown
+//   { outcome: 'shown-failed', error } - arrived but showNotification failed
+//   { outcome: 'not-received' }        - server/push service accepted it, but it
+//                                        did not arrive here within the timeout
+//   { outcome: 'expired' }             - push service reported the subscription
+//                                        gone; the server removed this device
+//   { outcome: 'rejected', status }    - push service returned another non-2xx
+//   { outcome: 'error', message }      - could not send (server/network error)
+// The receipt listener is attached BEFORE sending so a fast delivery cannot
+// arrive before we start listening.
+export async function testPush(registration) {
+  const sub = registration && await registration.pushManager.getSubscription();
+  if (!sub) return { outcome: 'error', message: 'no push subscription on this device' };
+
+  const receipt = waitForReceipt(RECEIPT_TIMEOUT_MS);
+  let result;
+  try {
+    result = await sendTestPush(sub.endpoint);
+  } catch (err) {
+    receipt.cancel();
+    return { outcome: 'error', message: err?.error?.message || err?.result?.error || 'send failed' };
+  }
+
+  if (result.pruned) { receipt.cancel(); return { outcome: 'expired' }; }
+  if (result.status < 200 || result.status >= 300) {
+    receipt.cancel();
+    return { outcome: 'rejected', status: result.status };
+  }
+
+  const r = await receipt.promise;
+  if (!r) return { outcome: 'not-received' };
+  if (r.shown === false) return { outcome: 'shown-failed', error: r.error };
+  return { outcome: 'received' };
+}
+
+// waitForReceipt resolves with the service worker's push-received message
+// ({ shown, error? }), or null after timeoutMs. cancel() stops waiting early.
+function waitForReceipt(timeoutMs) {
+  let onMessage, timer, settle;
+  const promise = new Promise(resolve => {
+    settle = (v) => {
+      clearTimeout(timer);
+      navigator.serviceWorker.removeEventListener('message', onMessage);
+      resolve(v);
+    };
+    onMessage = (e) => {
+      if (e.data?.type === 'push-received') settle(e.data);
+    };
+    navigator.serviceWorker.addEventListener('message', onMessage);
+    timer = setTimeout(() => settle(null), timeoutMs);
+  });
+  return { promise, cancel: () => settle(null) };
 }
 
 // urlBase64ToUint8Array converts a base64url VAPID public key (as served by the

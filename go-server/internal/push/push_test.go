@@ -162,3 +162,139 @@ type transportErr struct{}
 func (transportErr) Error() string { return "transport failure" }
 
 var errTransport = transportErr{}
+
+// TestSendTest_OwnershipAndResult: the test send only reaches the caller's own
+// device, reports the push service's status, and refuses someone else's device.
+func TestSendTest_OwnershipAndResult(t *testing.T) {
+	openTestDB(t)
+	vapidPrivateKey = "test-key" // sendOne is faked; just needs to be non-empty
+
+	if err := upsertDevice(1, "https://push/mine", "p", "a", "UA"); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if err := upsertDevice(2, "https://push/theirs", "p", "a", "UA"); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	var sentTo []string
+	orig := sendOne
+	t.Cleanup(func() { sendOne = orig })
+	sendOne = func(payload []byte, d device) (int, error) {
+		sentTo = append(sentTo, d.Endpoint)
+		return http.StatusCreated, nil
+	}
+
+	res, err := sendTest(1, "https://push/mine")
+	if err != nil {
+		t.Fatalf("sendTest own device: %v", err)
+	}
+	if res.Status != http.StatusCreated || res.Err != "" || res.Pruned {
+		t.Fatalf("unexpected result: %+v", res)
+	}
+
+	// User 1 must not be able to push to user 2's device.
+	if _, err := sendTest(1, "https://push/theirs"); err != errDeviceNotFound {
+		t.Fatalf("want errDeviceNotFound for someone else's device, got %v", err)
+	}
+	// Unknown endpoint likewise.
+	if _, err := sendTest(1, "https://push/unknown"); err != errDeviceNotFound {
+		t.Fatalf("want errDeviceNotFound for unknown endpoint, got %v", err)
+	}
+
+	if len(sentTo) != 1 || sentTo[0] != "https://push/mine" {
+		t.Fatalf("should have sent only to the caller's device, sent to %v", sentTo)
+	}
+}
+
+// TestSendTest_PrunedAndErrors: a gone subscription is reported as pruned (and
+// removed), a transport error is reported in the result, and an uninitialized
+// server refuses.
+func TestSendTest_PrunedAndErrors(t *testing.T) {
+	openTestDB(t)
+
+	// Not initialized: no VAPID key.
+	if _, err := sendTest(1, "https://push/x"); err != errNotInitialized {
+		t.Fatalf("want errNotInitialized, got %v", err)
+	}
+	vapidPrivateKey = "test-key"
+
+	if err := upsertDevice(1, "https://push/gone", "p", "a", "UA"); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if err := upsertDevice(1, "https://push/err", "p", "a", "UA"); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	orig := sendOne
+	t.Cleanup(func() { sendOne = orig })
+	sendOne = func(payload []byte, d device) (int, error) {
+		if d.Endpoint == "https://push/gone" {
+			return http.StatusGone, nil
+		}
+		return 0, errTransport
+	}
+
+	res, err := sendTest(1, "https://push/gone")
+	if err != nil {
+		t.Fatalf("sendTest gone: %v", err)
+	}
+	if !res.Pruned || res.Status != http.StatusGone {
+		t.Fatalf("want pruned 410 result, got %+v", res)
+	}
+	if d, _ := deviceForUser(1, "https://push/gone"); d != nil {
+		t.Fatal("gone device should have been removed")
+	}
+
+	res, err = sendTest(1, "https://push/err")
+	if err != nil {
+		t.Fatalf("sendTest err: %v", err)
+	}
+	if res.Err == "" || res.Status != 0 {
+		t.Fatalf("want transport error in result, got %+v", res)
+	}
+}
+
+// TestDeleteDeviceForUser_OnlyOwnDevice: unsubscribing removes the caller's own
+// device but leaves another user's device untouched (and does not error).
+func TestDeleteDeviceForUser_OnlyOwnDevice(t *testing.T) {
+	openTestDB(t)
+
+	if err := upsertDevice(1, "https://push/mine", "p", "a", "UA"); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if err := upsertDevice(2, "https://push/theirs", "p", "a", "UA"); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	// User 1 tries to delete user 2's device: no-op, no error.
+	if err := deleteDeviceForUser(1, "https://push/theirs"); err != nil {
+		t.Fatalf("delete other user's device: %v", err)
+	}
+	if d, _ := deviceForUser(2, "https://push/theirs"); d == nil {
+		t.Fatal("another user's device was deleted")
+	}
+
+	// User 1 deletes their own device.
+	if err := deleteDeviceForUser(1, "https://push/mine"); err != nil {
+		t.Fatalf("delete own device: %v", err)
+	}
+	if d, _ := deviceForUser(1, "https://push/mine"); d != nil {
+		t.Fatal("own device was not deleted")
+	}
+}
+
+// TestSendOptions_TTLAndIdentity: sends carry the long TTL (so a sleeping or
+// offline device still gets the notification later) and the server's VAPID
+// identity.
+func TestSendOptions_TTLAndIdentity(t *testing.T) {
+	vapidPublicKey, vapidPrivateKey = "pub", "priv"
+	t.Cleanup(func() { vapidPublicKey, vapidPrivateKey = "", "" })
+
+	o := sendOptions()
+	if o.TTL != 86400 {
+		t.Errorf("TTL = %d, want 86400 (24h)", o.TTL)
+	}
+	if o.VAPIDPublicKey != "pub" || o.VAPIDPrivateKey != "priv" || o.Subscriber != vapidSubscriber {
+		t.Errorf("unexpected VAPID identity in options: %+v", o)
+	}
+}

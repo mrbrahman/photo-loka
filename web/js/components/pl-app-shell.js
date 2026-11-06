@@ -2,7 +2,7 @@ import { isAdmin } from '../authn.mjs';
 import { getTheme, toggleTheme } from '../theme.mjs';
 import { router, getStoredCollectionId, setStoredCollectionId } from '../router.mjs';
 import { getCollections } from '../api/collections-api.mjs';
-import { isPushSupported, getSubscriptionState, enablePush, disablePush } from '../push.mjs';
+import { isPushSupported, getSubscriptionState, enablePush, disablePush, testPush } from '../push.mjs';
 import { notify } from '../utils.mjs';
 
 import sheet from "./styles/pl-app-shell.css" with { type: "css" };
@@ -807,7 +807,10 @@ class PlAppShell extends HTMLElement {
       } else {
         const result = await enablePush(this.#swRegistration);
         if (result === 'subscribed') {
-          notify('Notifications enabled', 'success');
+          notify('Notifications enabled. Sending a test notification...', 'success');
+          // Reflect the new state now; the test below can take a while.
+          this.#updatePushToggle();
+          await this.#runPushTest();
         } else if (result === 'denied') {
           notify('Notifications are blocked. Enable them in your browser settings.', 'warning');
         }
@@ -816,6 +819,36 @@ class PlAppShell extends HTMLElement {
       notify('Could not change notification settings', 'error', 0);
     } finally {
       this.#updatePushToggle();
+    }
+  }
+
+  // Send a test push to this device and report what happened, so a user (and
+  // we, when debugging) can tell whether the push reached the device and was
+  // displayed. Messages are static text (notify() inserts HTML); error details
+  // go to the console only.
+  async #runPushTest() {
+    const r = await testPush(this.#swRegistration);
+    switch (r.outcome) {
+      case 'received':
+        notify('Test notification delivered to this device.', 'success');
+        break;
+      case 'shown-failed':
+        console.error('[push] test arrived but showNotification failed:', r.error);
+        notify('Test arrived, but the notification could not be shown. Check this device\'s notification settings.', 'warning', 0);
+        break;
+      case 'not-received':
+        notify('Test was sent, but it has not reached this device yet. It may be delayed, or blocked by this device or browser.', 'warning', 0);
+        break;
+      case 'expired':
+        notify('This device\'s subscription had expired and was removed. Please enable notifications again.', 'warning', 0);
+        break;
+      case 'rejected':
+        console.error('[push] push service rejected the test, status', r.status);
+        notify(`The push service rejected the test (status ${Number(r.status)}).`, 'error', 0);
+        break;
+      default:
+        console.error('[push] test send failed:', r.message);
+        notify('Could not send a test notification.', 'error', 0);
     }
   }
 }

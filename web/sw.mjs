@@ -43,7 +43,7 @@
 
 // Bump this version whenever you deploy frontend changes.
 // The browser compares sw.mjs byte-for-byte; a changed VERSION triggers an update.
-const VERSION = '4.37.2';
+const VERSION = '4.38.0';
 
 const CACHE_NAME = `photo-loka-${VERSION}`;
 
@@ -101,9 +101,24 @@ self.addEventListener('push', event => {
       // Carry the structured fields through to the click handler.
       data: { collectionId: p.collectionId, query: p.query }
     })
-    .catch(err => console.error('[sw] showNotification failed', err))
+    .then(() => postPushReceipt({ shown: true }))
+    .catch(err => {
+      console.error('[sw] showNotification failed', err);
+      return postPushReceipt({ shown: false, error: String(err) });
+    })
   );
 });
+
+// postPushReceipt tells any open app windows that a push arrived on this
+// device and whether its notification was shown. The enable-notifications
+// test (web/js/push.mjs testPush) waits for this to distinguish "push never
+// arrived" from "arrived but not displayed". Harmless when no window listens.
+async function postPushReceipt(receipt) {
+  const clientsArr = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  for (const client of clientsArr) {
+    client.postMessage({ type: 'push-received', ...receipt });
+  }
+}
 
 self.addEventListener('notificationclick', event => {
   event.notification.close();
