@@ -379,6 +379,19 @@ class PlAppShell extends HTMLElement {
     document.addEventListener('pl-gallery-slideshow-changed', this.handleSlideshowChanged);
     document.addEventListener('pl-gallery-slideshow-closed', this.handleSlideshowClosed);
 
+    // Navigate to a search for the clicked day's date. Uses the same search
+    // route as the search box so the results render in the gallery.
+    this.handleDayHeaderClicked = (evt) => {
+      const day = evt.detail?.day;
+      if (!day) return;
+      router.navigate(`/app/c/${this.#state.collection_id}/search/${encodeURIComponent(`date:${day}`)}`);
+    };
+
+    // Clicking a gallery day header searches for that day's date. The event
+    // bubbles (composed) out of the gallery's shadow DOM to document. detail.day
+    // is 'YYYY-MM-DD', which we turn into a `date:` search.
+    document.addEventListener('pl-day-header-clicked', this.handleDayHeaderClicked);
+
     // Global progress bar events (any component can trigger via showProgress/hideProgress utils)
     document.addEventListener('pl-progress-show', this.#handleProgressShow);
     document.addEventListener('pl-progress-hide', this.#handleProgressHide);
@@ -388,6 +401,7 @@ class PlAppShell extends HTMLElement {
     document.removeEventListener('pl-gallery-slideshow-opened', this.handleSlideshowOpened);
     document.removeEventListener('pl-gallery-slideshow-changed', this.handleSlideshowChanged);
     document.removeEventListener('pl-gallery-slideshow-closed', this.handleSlideshowClosed);
+    document.removeEventListener('pl-day-header-clicked', this.handleDayHeaderClicked);
     document.removeEventListener('pl-progress-show', this.#handleProgressShow);
     document.removeEventListener('pl-progress-hide', this.#handleProgressHide);
     document.removeEventListener('visibilitychange', this.#handleVisibilityChange);

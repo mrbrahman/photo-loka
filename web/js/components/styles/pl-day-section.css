@@ -24,7 +24,21 @@
 }
 
 #day-text {
-  flex: 1;
+  /* Only the text is the click target (not the whole header row), but it
+     still needs to push the group-toggle to the right edge. */
+  margin-right: auto;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: color 0.2s;
+}
+
+#day-text:hover {
+  color: var(--sl-color-primary-600, #4a90e2);
+}
+
+#day-text:focus-visible {
+  outline: 2px solid var(--sl-color-primary-600, #4a90e2);
+  outline-offset: 2px;
 }
 
 #group-toggle {

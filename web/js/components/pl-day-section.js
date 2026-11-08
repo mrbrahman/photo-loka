@@ -43,7 +43,12 @@ class PlDaySection extends HTMLElement {
     this.template.innerHTML = // html
     `
       <header id="day-header">
-        <span id="day-text"></span>
+        <span
+          id="day-text"
+          role="button"
+          tabindex="0"
+          title="Search photos from this day"
+        ></span>
         <sl-icon
           id="group-toggle"
           name="folder"
@@ -73,6 +78,25 @@ class PlDaySection extends HTMLElement {
         this.#handleToggleGroupMode();
       }
     });
+
+    // Clicking (or Enter/Space on) the day text searches for that day's date.
+    // The gallery bubbles this up to the app shell, which navigates to the
+    // search route. #day is already 'YYYY-MM-DD', the exact date: value.
+    let dayText = this.shadowRoot.getElementById('day-text');
+    dayText.addEventListener('click', this.#handleDayTextActivate);
+    dayText.addEventListener('keydown', (evt) => {
+      if (evt.key === 'Enter' || evt.key === ' ') {
+        evt.preventDefault();
+        this.#handleDayTextActivate();
+      }
+    });
+  }
+
+  #handleDayTextActivate = () => {
+    this.dispatchEvent(new CustomEvent('pl-day-header-clicked', {
+      bubbles: true, composed: true,
+      detail: { day: this.#day }
+    }));
   }
 
   #paintHeader() {
