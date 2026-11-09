@@ -6,7 +6,7 @@ Photo-Loka is (planned to be) a no frills, self-hosted photos app that helps in 
 
 Currently this project is very much a work-in-progress.
 
-Also, many things are rough around the edges, simply because I'm the sole user & developer. In case someone else comes along that finds this beneficial and can contribute, at that time we can make things more 'user-friendly'! :-)
+Also, many things are rough around the edges, simply because I'm the sole developer & user. In case someone else comes along that finds this beneficial, at that time we can make things more 'user-friendly'! :-)
 
 # Philosophy
 
