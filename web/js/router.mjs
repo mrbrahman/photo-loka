@@ -1,6 +1,7 @@
 import 'navigo';
 
 import { isAuthenticated, isAdmin, logout } from './authn.mjs';
+import { localDateString } from './utils.mjs';
 
 const router = new Navigo('/', { hash: true });
 
@@ -64,6 +65,11 @@ function resolveCollectionId(match) {
   return parseInt(id);
 }
 
+// Shape check only (YYYY-MM-DD); the server does the full validation.
+function isValidDate(s) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(s);
+}
+
 export function initRouter() {
   router.on('/login', () => {
     if (isAuthenticated()) {
@@ -116,13 +122,29 @@ export function initRouter() {
   router.on('/app/c/:collectionId', (match) => {
     if (!authGuard()) return;
     let collectionId = resolveCollectionId(match);
-    ensureAppShell().route('gallery', { collectionId });
+    // Landing URL always carries the timeline's anchor date (local today), so
+    // every gallery URL has the same shape. Replace (not push) the history
+    // entry so the back button does not bounce off this redirect.
+    router.navigate(`/app/c/${collectionId}/d/${localDateString()}`, { historyAPIMethod: 'replaceState' });
   });
 
-  router.on('/app/c/:collectionId/slideshow/:itemId', (match) => {
+  // Timeline window of 12 months ending on :date (YYYY-MM-DD)
+  router.on('/app/c/:collectionId/d/:date', (match) => {
     if (!authGuard()) return;
     let collectionId = resolveCollectionId(match);
-    ensureAppShell().route('gallery', { collectionId, slideshowItemId: match.data.itemId });
+    if (!isValidDate(match.data.date)) return router.navigate(`/app/c/${collectionId}`, { historyAPIMethod: 'replaceState' });
+    ensureAppShell().route('gallery', { collectionId, date: match.data.date });
+  });
+
+  router.on('/app/c/:collectionId/d/:date/slideshow/:itemId', (match) => {
+    if (!authGuard()) return;
+    let collectionId = resolveCollectionId(match);
+    if (!isValidDate(match.data.date)) return router.navigate(`/app/c/${collectionId}`, { historyAPIMethod: 'replaceState' });
+    ensureAppShell().route('gallery', {
+      collectionId,
+      date: match.data.date,
+      slideshowItemId: match.data.itemId
+    });
   });
 
   router.on('/app/c/:collectionId/search/:searchText', (match) => {

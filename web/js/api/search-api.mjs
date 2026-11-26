@@ -28,14 +28,8 @@ export async function searchByGpsCoordinates(collectionId, bounds) {
   return await res.json();
 }
 
-// Browser-local date as YYYY-MM-DD (toISOString would give the UTC date).
-function localDateString(d = new Date()) {
-  const pad = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-// Items for the 12 months ending on `date` (YYYY-MM-DD); defaults to the browser's local today.
-export async function getTimelineItems(collectionId, date = localDateString()) {
+// Items for the 12 months ending on `date` (YYYY-MM-DD, required).
+export async function getTimelineItems(collectionId, date) {
   const params = new URLSearchParams({ date });
   if (collectionId) params.set('collection_id', collectionId);
   let url = `/api/getTimeline?${params}`;

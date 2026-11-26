@@ -32,7 +32,7 @@
 // 5. Slideshow continues to receive a flat [{album, items[]}] shape; we
 //    flatten the day-sections' albums when opening it.
 
-import { throttle, notify, showConfirmDialog, showProgress, hideProgress } from '../utils.mjs';
+import { throttle, notify, showConfirmDialog, showProgress, hideProgress, localDateString } from '../utils.mjs';
 import { searchItems, getTrashedItems, searchByGpsCoordinates, getTimelineItems } from '../api/search-api.mjs';
 import { updateRating, trashItems, togglePrivate, restoreFromTrash, cleanupTrash, emptyTrash, moveItems } from '../api/media-api.mjs';
 import { updateAlbumName } from '../api/albums-api.mjs';
@@ -70,6 +70,8 @@ class PlGallery extends HTMLElement {
   #mode = 'default';
   #query = {};
   #slideshowItemId = null;
+  // Anchor date (YYYY-MM-DD) of the timeline window; set only in default mode.
+  #date = null;
   #placeholderText = '';
 
   // Drag-select sweep state. Armed by a pl-thumb long-press. The sweep selects
@@ -184,12 +186,14 @@ class PlGallery extends HTMLElement {
   async #fetchData() {
     showProgress();
     try {
-      const { collectionId = 1, searchText, bounds } = this.#query;
+      const { collectionId = 1, searchText, bounds, date } = this.#query;
       switch (this.#mode) {
         case 'search':  return await searchItems(collectionId, searchText);
         case 'trash':   return await getTrashedItems(collectionId);
         case 'geo':     return await searchByGpsCoordinates(collectionId, bounds);
-        default:        return await getTimelineItems(collectionId);
+        default:
+          this.#date = date || localDateString();
+          return await getTimelineItems(collectionId, this.#date);
       }
     } catch (err) {
       notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
@@ -1026,12 +1030,15 @@ class PlGallery extends HTMLElement {
   /**
    * Mode-specific parameters for data fetching.
    * @param {object} _ - Query object, shape depends on mode:
-   *   mode 'default': { collectionId: number }
+   *   mode 'default': { collectionId: number, date?: 'YYYY-MM-DD' } (date defaults to local today)
    *   mode 'search':  { collectionId: number, searchText: string }
    *   mode 'trash':   { collectionId: number }
    *   mode 'geo':     { collectionId: number, bounds: { sw: {lat, lng}, ne: {lat, lng} } }
    */
   set query(_) { this.#query = _ || {}; }
+
+  // The anchor date the timeline was loaded with (default mode), else null.
+  get date() { return this.#date; }
 
   get slideshowItemId() { return this.#slideshowItemId; }
   set slideshowItemId(_) { this.#slideshowItemId = _ || null; }
@@ -1068,7 +1075,7 @@ class PlGallery extends HTMLElement {
 
     this.dispatchEvent(new CustomEvent('pl-gallery-slideshow-opened', {
       composed: true, bubbles: true,
-      detail: { currentItemId: startFromId }
+      detail: { currentItemId: startFromId, date: this.#date }
     }));
   }
 

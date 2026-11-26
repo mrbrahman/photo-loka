@@ -359,9 +359,16 @@ class PlAppShell extends HTMLElement {
     });
 
     // Slideshow URL management
+    // In default mode the link carries the timeline's anchor date so it stays
+    // shareable: /app/c/:id/d/:date/slideshow/:itemId. Closing returns to
+    // /app/c/:id/d/:date (the slideshow suffix is stripped), so the URL keeps
+    // matching what is displayed.
     this.handleSlideshowOpened = (evt) => {
-      const base = window.location.hash.replace(/^#/, '').replace(/\/slideshow\/.*$/, '');
-      router.navigate(`${base}/slideshow/${evt.detail.currentItemId}`, { callHandler: false, updateState: true });
+      const { currentItemId, date } = evt.detail;
+      const base = date
+        ? `/app/c/${this.#state.collection_id}/d/${date}`
+        : window.location.hash.replace(/^#/, '').replace(/\/slideshow\/.*$/, '');
+      router.navigate(`${base}/slideshow/${currentItemId}`, { callHandler: false, updateState: true });
     };
 
     this.handleSlideshowChanged = (evt) => {
@@ -477,7 +484,7 @@ class PlAppShell extends HTMLElement {
     const mode = params.mode || 'app';
     this.#setMode(mode);
 
-    const { collectionId, slideshowItemId, searchText, fromShare } = params;
+    const { collectionId, slideshowItemId, searchText, fromShare, date } = params;
 
     // Update active collection from route param
     if (collectionId) {
@@ -505,7 +512,7 @@ class PlAppShell extends HTMLElement {
         this.#mainContent.style.overflowY = 'hidden';
         this.#mainContent.appendChild(Object.assign(document.createElement('pl-gallery'), {
           mode: 'default',
-          query: { collectionId: this.#state.collection_id },
+          query: { collectionId: this.#state.collection_id, date },
           placeholderText: this.#getPlaceholderForCurrentCollection(),
           slideshowItemId
         }));

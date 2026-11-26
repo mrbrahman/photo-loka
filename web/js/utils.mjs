@@ -30,6 +30,12 @@ export function notify(message, type='info', duration=3000) {
 
 // A simple debounce implementation
 // https://www.freecodecamp.org/news/javascript-debounce-example/
+// Browser-local date as YYYY-MM-DD (toISOString would give the UTC date).
+export function localDateString(d = new Date()) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 export function debounce(func, timeout = 300){
   let timer;
   return (...args) => {
