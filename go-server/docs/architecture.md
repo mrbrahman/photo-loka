@@ -87,7 +87,7 @@ The Go server is a complete port of the Node.js Photo-Loka backend. It compiles 
 |------|---------|
 | `query_builder.go` | Ports the FTS5 query parser. textCols (porter: album_name, description, keywords), metaCols (unicode: filename, mimetype, mediatype, faces, make, model, geo_address, album_date). Aliases map. BuildFilter(): splits by spaces (respecting quotes), resolves aliases, routes to broad/text/meta/other buckets, builds subquery pattern with rowid IN (SELECT rowid FROM fts_table WHERE MATCH ...). Supports: key:value, logical (AND/OR), rating, private, uuid, raw. |
 | `db.go` | SearchDB. RunSearch: builds SQL with json_object() item select (albumDate, albumName, data:{ar, id, type, rating, dur, hasGps, hasDesc, hasTags, private, t, hasTime, localTime, tzOffset, tzName}). Supports day-grouped (CTE + json_group_array) and flat modes. Date range filter. GetItemInfo (full metadata + face_details subquery). GetGpsCoordinates (rounded, grouped). SearchByGps (bounding box via raw filter). |
-| `handler.go` | GET /getAll (default 365-day window), POST /search, GET /getItemInfo, GET /getGpsCoordinates, GET /searchForExistingAlbums, POST /searchByGpsCoordinates, GET /getTrashedItems. |
+| `handler.go` | GET /getTimeline (required `date`; 12 months ending on that date), POST /search, GET /getItemInfo, GET /getGpsCoordinates, GET /searchForExistingAlbums, POST /searchByGpsCoordinates, GET /getTrashedItems. |
 
 ### internal/media/
 

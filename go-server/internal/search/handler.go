@@ -16,7 +16,7 @@ import (
 
 // RegisterRoutes registers search routes on the given router group.
 func RegisterRoutes(rg *gin.RouterGroup) {
-	rg.GET("/getAll", getAll)
+	rg.GET("/getTimeline", getTimeline)
 	rg.POST("/search", search)
 	rg.GET("/getItemInfo", getItemInfo)
 	rg.GET("/getGpsCoordinates", getGpsCoordinates)
@@ -25,8 +25,10 @@ func RegisterRoutes(rg *gin.RouterGroup) {
 	rg.GET("/getTrashedItems", getTrashedItems)
 }
 
-// getAll returns all items within a date range (default: last 365 days), grouped by day.
-func getAll(c *gin.Context) {
+// getTimeline returns the items for the 12 months ending on the required
+// "date" query param (YYYY-MM-DD), grouped by day. The window is
+// (date - 1 year, date].
+func getTimeline(c *gin.Context) {
 	cidStr := c.Query("collection_id")
 	if cidStr == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -43,14 +45,18 @@ func getAll(c *gin.Context) {
 	}
 	collectionID := &cid
 
-	// Default date range: last 365 days, no upper bound
-	now := time.Now()
-	toDate := c.Query("to")
-	fromDate := c.DefaultQuery("from", now.AddDate(-1, 0, 0).Format("2006-01-02"))
+	const dateLayout = "2006-01-02"
+	date, err := time.Parse(dateLayout, c.Query("date"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": gin.H{"message": "date is required in YYYY-MM-DD format", "code": "VALIDATION_ERROR"},
+		})
+		return
+	}
 
 	dateRange := &DateRange{
-		FromDate: fromDate,
-		ToDate:   toDate,
+		AfterDate: date.AddDate(-1, 0, 0).Format(dateLayout),
+		UntilDate: date.Format(dateLayout),
 	}
 
 	results, err := RunSearch(collectionID, "", false, true, "", dateRange)

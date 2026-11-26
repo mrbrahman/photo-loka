@@ -1,4 +1,4 @@
-// Search and data fetching (FTS, geo, getAll, trashed items)
+// Search and data fetching (FTS, geo, timeline, trashed items)
 
 import { authenticatedFetch } from '../authn.mjs';
 
@@ -28,9 +28,17 @@ export async function searchByGpsCoordinates(collectionId, bounds) {
   return await res.json();
 }
 
-export async function getAllItems(collectionId) {
-  let url = '/api/getAll';
-  if (collectionId) url += `?collection_id=${collectionId}`;
+// Browser-local date as YYYY-MM-DD (toISOString would give the UTC date).
+function localDateString(d = new Date()) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+// Items for the 12 months ending on `date` (YYYY-MM-DD); defaults to the browser's local today.
+export async function getTimelineItems(collectionId, date = localDateString()) {
+  const params = new URLSearchParams({ date });
+  if (collectionId) params.set('collection_id', collectionId);
+  let url = `/api/getTimeline?${params}`;
   let res = await authenticatedFetch(url);
   if (!res.ok) throw await res.json().catch(() => ({ error: { message: `${res.status} ${res.statusText}` } }));
   return await res.json();

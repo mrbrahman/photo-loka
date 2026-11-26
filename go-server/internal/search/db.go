@@ -21,10 +21,11 @@ type FlatResult struct {
 	Item  json.RawMessage `json:"item"`
 }
 
-// DateRange constrains results to a date window.
+// DateRange constrains results to a date window: AfterDate < album_date <= UntilDate.
+// Both are YYYY-MM-DD strings and must be validated by the caller. Empty means unbounded.
 type DateRange struct {
-	FromDate string
-	ToDate   string
+	AfterDate string
+	UntilDate string
 }
 
 // itemSelect is the json_object() SQL expression that produces the standard item JSON shape.
@@ -59,7 +60,7 @@ const itemSelect = `
 // RunSearch builds and executes a search query, returning either day-grouped or flat results.
 func RunSearch(collectionID *int64, searchStr string, trashed bool, groupByDay bool, orderBy string, dateRange *DateRange) (interface{}, error) {
 	var filters []string
-	limit := false
+	var args []interface{}
 
 	// Trashed filter
 	trashedVal := 0
@@ -85,17 +86,17 @@ func RunSearch(collectionID *int64, searchStr string, trashed bool, groupByDay b
 		if parsedCondition != "" {
 			filters = append(filters, parsedCondition)
 		}
-	} else {
-		limit = true
 	}
 
-	// Optional date-range filter
+	// Optional date-range filter (bound as named parameters)
 	if dateRange != nil {
-		if dateRange.FromDate != "" {
-			filters = append(filters, fmt.Sprintf("album_date >= '%s'", dateRange.FromDate))
+		if dateRange.AfterDate != "" {
+			filters = append(filters, "album_date > @afterDate")
+			args = append(args, sql.Named("afterDate", dateRange.AfterDate))
 		}
-		if dateRange.ToDate != "" {
-			filters = append(filters, fmt.Sprintf("album_date <= '%s'", dateRange.ToDate))
+		if dateRange.UntilDate != "" {
+			filters = append(filters, "album_date <= @untilDate")
+			args = append(args, sql.Named("untilDate", dateRange.UntilDate))
 		}
 	}
 
@@ -105,10 +106,6 @@ func RunSearch(collectionID *int64, searchStr string, trashed bool, groupByDay b
 	if groupByDay {
 		// Day grouping: items within a day ordered by captured_at DESC,
 		// album_name ASC, filename ASC as tiebreakers.
-		limitClause := ""
-		if limit {
-			limitClause = "LIMIT 365"
-		}
 		sqlQuery = fmt.Sprintf(`
 			WITH t AS (
 				SELECT
@@ -125,24 +122,18 @@ func RunSearch(collectionID *int64, searchStr string, trashed bool, groupByDay b
 			FROM t
 			GROUP BY day
 			ORDER BY day DESC
-			%s
-		`, itemSelect, whereClause, limitClause)
+		`, itemSelect, whereClause)
 	} else {
-		limitClause := ""
-		if limit {
-			limitClause = "LIMIT 300"
-		}
 		sqlQuery = fmt.Sprintf(`
 			SELECT album_name, %s AS item
 			FROM metadata
 			WHERE %s
 			AND mediatype IN ('image', 'video')
 			%s
-			%s
-		`, itemSelect, whereClause, orderByClause(orderBy), limitClause)
+		`, itemSelect, whereClause, orderByClause(orderBy))
 	}
 
-	rows, err := database.DB.Query(sqlQuery)
+	rows, err := database.DB.Query(sqlQuery, args...)
 	if err != nil {
 		return nil, fmt.Errorf("executing search query: %w", err)
 	}

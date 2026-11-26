@@ -33,7 +33,7 @@
 //    flatten the day-sections' albums when opening it.
 
 import { throttle, notify, showConfirmDialog, showProgress, hideProgress } from '../utils.mjs';
-import { searchItems, getTrashedItems, searchByGpsCoordinates, getAllItems } from '../api/search-api.mjs';
+import { searchItems, getTrashedItems, searchByGpsCoordinates, getTimelineItems } from '../api/search-api.mjs';
 import { updateRating, trashItems, togglePrivate, restoreFromTrash, cleanupTrash, emptyTrash, moveItems } from '../api/media-api.mjs';
 import { updateAlbumName } from '../api/albums-api.mjs';
 
@@ -189,7 +189,7 @@ class PlGallery extends HTMLElement {
         case 'search':  return await searchItems(collectionId, searchText);
         case 'trash':   return await getTrashedItems(collectionId);
         case 'geo':     return await searchByGpsCoordinates(collectionId, bounds);
-        default:        return await getAllItems(collectionId);
+        default:        return await getTimelineItems(collectionId);
       }
     } catch (err) {
       notify(`<strong>Error</strong>:</br>${err.error?.message || err}`, 'error', -1);
