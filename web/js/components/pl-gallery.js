@@ -281,8 +281,14 @@ class PlGallery extends HTMLElement {
     layout.addEventListener('touchcancel', this.#handlePinchEnd);
     window.addEventListener('resize', this.#throttleHandleResize);
 
+    // Direct link to a slideshow: the gallery behind it is still at the top.
+    // Scroll to the item first (instant, hidden under the slideshow) so that
+    // closing animates into the thumbnail's real position.
     if (this.#slideshowItemId) {
-      requestAnimationFrame(() => this.openSlideshow(this.#slideshowItemId));
+      requestAnimationFrame(() => {
+        this.#layout.scrollToItem(this.#slideshowItemId);
+        this.openSlideshow(this.#slideshowItemId);
+      });
     }
   }
 
