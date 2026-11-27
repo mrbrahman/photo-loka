@@ -100,6 +100,18 @@
   background: var(--sidebar-active-text);
 }
 
+/* While hidden (or before the first scroll sets data-vis), the ticks and
+   pill are invisible but would still catch clicks meant for the gallery
+   underneath. Make them inert until they become visible. */
+:host(:not([data-vis])) .major-tick,
+:host(:not([data-vis])) .minor-tick,
+:host(:not([data-vis])) #marker-pill,
+:host([data-vis="hidden"]) .major-tick,
+:host([data-vis="hidden"]) .minor-tick,
+:host([data-vis="hidden"]) #marker-pill {
+  pointer-events: none;
+}
+
 /* --- Marker (line + pill) --- */
 
 #marker {
